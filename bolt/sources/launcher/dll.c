@@ -1,3 +1,18 @@
+// Copyright (C) 2021 iDigitalFlame
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
 // ThunderStorm Bolt Agent DLL Launcher
 //  Wraps the Go archive and will control a Guardian context.
 //
@@ -16,11 +31,12 @@
 
 #include <windows.h>
 
-#define STACK_SIZE 256000000
+#define STACK_SIZE 512000000*2
 #define EXPORT __declspec(dllexport)
 #define TIMEOUT 30000
 
 // Bolt Includes (Generated before compile)
+#include "opts.h"
 #include "bolt.h"
 
 HANDLE svcEvent;

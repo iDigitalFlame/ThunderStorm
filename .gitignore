@@ -3,6 +3,10 @@ bolt/build.py
 bolt/resources
 bolt/sources/xsupport
 
+.bolt-cfg
+.bolt-cfg.bak
+.bolt-cfg.old
+
 # Binaries for programs and plugins
 *.exe
 *.exe~

