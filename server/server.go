@@ -1,92 +1,133 @@
-package main
+package server
 
 import (
-	"encoding/json"
+	"context"
+	"flag"
+	"net/http"
+	"os"
+	"syscall"
 
 	"github.com/PurpleSec/logx"
+	"github.com/iDigitalFlame/ThunderStorm/cirrus"
 	"github.com/iDigitalFlame/xmt/c2"
-	"github.com/iDigitalFlame/xmt/c2/cfg"
-	"github.com/iDigitalFlame/xmt/c2/rest"
-	"github.com/iDigitalFlame/xmt/com"
-	"github.com/iDigitalFlame/xmt/device"
+	"github.com/iDigitalFlame/xmt/com/limits"
 )
 
-var logUser logx.Log
+const usage = `Cirrus C2/Rest Engine
+Part of the ThunderStorm Project (https://dij.sh/ts)
+(c) 2019 - 2022 iDigitalFlame
 
-var configTCP = []byte{}
+Usage: cirrus -b <bind_address:port> [-p password] [-no-auth] [-l log_file] [-n log_level] [-c csv_output] [-t tracker]
 
-func main() {
-	f, err := logx.File("/tmp/storm.log", logx.Append, logx.Debug)
-	if err != nil {
-		panic(err)
-	}
-	if logUser, err = logx.File("/tmp/storm-extra.log", logx.Append, logx.Trace); err != nil {
-		panic(err)
-	}
-	c2.Default.SetLog(logx.Multiple(f, logx.Console(logx.Debug)))
-	c2.Default.New = newSession
-	c2.Default.Oneshot = newOneshot
+Required Arguments:
+  -b <bind_address:port>        Specify a "address:port" that the ReST API will
+                                 be bound to.
 
-	if err := startTCPListener("tcp-alt", "172.16.10.184:9090"); err != nil {
-		panic("tcp-alt listen " + err.Error())
-	}
-	if err := startTCPListener("tcp", "172.16.10.184:443"); err != nil {
-		panic("tcp listen " + err.Error())
-	}
+Optional Arguments:
+  -p <password>                 Specify a password to be used in the "X-CirrusAuth"
+                                 HTTP header for connections. If this is empty, the
+                                 "-no-auth" argument must be specified to force no
+                                 password authentication.
+  -no-auth                      Argument that can be used to force Cirrus to NOT
+                                 validate connections with a password. If a password
+                                 is specified with "-p", this argument is ignored.
+  -l <log_file>                 Path to a log file to write to. If no path is
+                                 specified or this argument is ignored, stdout will
+                                 be used instead.
+  -n <log_level [0-5]>          Specify the log level to be used when logging. By
+                                 default, or if unspecified, this will default to
+                                 Informational (2). Values 0-5 are valid, anything
+                                 else will default to Informational (2). Values are
+                                 0: Trace, 1:Debug, 2:Informational, 3:Warning,
+                                 4: Error, 5:Fatal.
+  -c <csv_output>               Specify a file path for a CSV file to capture/log
+                                 all C2 events. If the file already exists, it will
+                                 be appended to.
+  -t <tracker>                  Specify a file path to be used for tracking updates.
+                                 This file will be cleared and rewritten with
+                                 statistics every minute.
+`
 
-	r := rest.New(c2.Default, "")
-	go r.Listen("127.0.0.1:7771")
-
-	c2.Default.Wait()
-	r.Close()
-	c2.Default.Close()
-}
-func newSession(s *c2.Session) {
-	d := map[string]string{
-		"username":  s.Device.User,
-		"os":        s.Device.Version,
-		"hostname":  s.Device.Hostname,
-		"ipaddress": ip(s.Device),
-	}
-	if s.Device.Elevated {
-		d["username"] = "*" + d["username"]
-	}
-	b, _ := json.Marshal(d)
-	logUser.Info(string(b))
-	logUser.Info(
-		"New Session: Host: %s (%s), User: %s (Admin=%t), OS: %s",
-		s.Device.Hostname, d["ipaddress"], s.Device.User, s.Device.Elevated, s.Device.Version,
-	)
-}
-func newOneshot(n *com.Packet) {
+// CmdLine will attempt to build and run a Cirrus instance. This function
+// will block until completion.
+func CmdLine() {
 	var (
-		u, _ = n.StringVal()
-		p, _ = n.StringVal()
-		d    device.Machine
+		p, a, l, c, t string
+		n             bool
+		e             int
+		err           error
+		f             = flag.NewFlagSet("Cirrus C2/Rest Engine - ThunderStorm", flag.ContinueOnError)
 	)
-	d.UnmarshalStream(n)
-	logUser.Warning(
-		"%q [%s] from %s (%s)", u, p, d.Hostname, ip(d),
-	)
-}
-func ip(d device.Machine) string {
-	for _, n := range d.Network {
-		for _, a := range n.Address {
-			if a.IsZero() || a.IsLinkLocalUnicast() || a.IsLoopback() {
-				continue
-			}
-			return a.String()
+	f.Usage = func() {
+		os.Stdout.WriteString(usage)
+		os.Exit(2)
+	}
+	f.StringVar(&p, "p", "", "")
+	f.StringVar(&a, "b", "", "")
+	f.StringVar(&l, "l", "", "")
+	f.StringVar(&c, "c", "", "")
+	f.StringVar(&t, "t", "", "")
+	f.BoolVar(&n, "no-auth", false, "")
+	f.IntVar(&e, "n", int(logx.Info), "")
+
+	switch err = f.Parse(os.Args[1:]); err {
+	case nil:
+	case flag.ErrHelp:
+		f.Usage()
+	default:
+		errExit(err)
+	}
+
+	if len(a) == 0 {
+		f.Usage()
+	}
+
+	var log logx.Log
+	if len(l) > 0 {
+		if log, err = logx.File(l, logx.Normal(e, logx.Info), logx.Append); err != nil {
+			errExit(err)
 		}
+	} else {
+		log = logx.Console(logx.Normal(e, logx.Info))
 	}
-	return ""
+
+	if len(p) == 0 && !n {
+		os.Stderr.WriteString(`Argument "-no-auth" must be specified if no password is specified!` + "\n")
+		os.Exit(1)
+	}
+
+	var (
+		x, q = context.WithCancel(context.Background())
+		srv  = c2.NewServerContext(x, log)
+		api  = cirrus.NewContext(x, srv, p)
+	)
+	if err = api.TrackStats(c, t); err != nil {
+		api.Close()
+		srv.Close()
+		errExit(err)
+	}
+
+	go func() {
+		if err := api.Listen(a); err != http.ErrServerClosed {
+			os.Stderr.WriteString("Error during start up: " + err.Error() + "!\n")
+		}
+		q()
+	}()
+
+	w := make(chan os.Signal, 1)
+	limits.MemorySweep(x)
+	limits.Notify(w, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGSTOP)
+	select {
+	case <-w:
+	case <-x.Done():
+	case <-srv.Done():
+	}
+	api.Close()
+	srv.Close()
+	q()
+	close(w)
 }
-func startTCPListener(s, a string) error {
-	p, err := cfg.Raw(configTCP)
-	if err != nil {
-		return err
-	}
-	if _, err = c2.Default.Listen(s, a, com.TCP, p); err != nil {
-		return err
-	}
-	return nil
+func errExit(e error) {
+	os.Stderr.WriteString("Error " + e.Error() + "!\n")
+	os.Exit(1)
 }

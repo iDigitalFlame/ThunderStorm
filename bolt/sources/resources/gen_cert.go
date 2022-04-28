@@ -31,7 +31,9 @@ import (
 	"time"
 )
 
-const target = "microsoft.com:443"
+// BUG(dij): I've gotten reports that this is broken, will fix.
+
+const target = "windows.com:443"
 
 func main() {
 	if len(os.Args) != 2 {
@@ -56,7 +58,7 @@ func certs() ([]byte, error) {
 			break
 		}
 	}
-	if b.Len() == 0 {
+	if c.Close(); b.Len() == 0 {
 		return nil, io.EOF
 	}
 	return b.Bytes(), nil

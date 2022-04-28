@@ -1,0 +1,28 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "settings": {
+        "cSpell.words": [
+            "begidx",
+            "endidx",
+            "HKCU",
+            "HKLM",
+            "KMGTPEZ",
+            "lastcmd",
+            "lsass",
+            "onecmd",
+            "pexec",
+            "PHELL",
+            "pname",
+            "postcmd",
+            "precmd",
+            "Protos",
+            "zasm",
+            "zdll",
+            "zombified"
+        ]
+    }
+}
