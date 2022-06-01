@@ -4562,7 +4562,7 @@ Any commands entered here will ONLY be checked for valid parameters and will be
 written to the script "{script}".
 
 These will only be executed ONCE the script is ran on a target (as a connection
-script of using the "script" command).
+script or using the "script" command).
 
 Some operations are not available in scripts and any "output" or "destination"
 arguments will be omitted and instead randomally generated.
