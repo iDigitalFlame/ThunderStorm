@@ -1,10 +1,12 @@
-# ThunderStorm
+# The ThunderStorm Project
+
+|||||
 
 Golang Full C2 Solution using [XMT](https://github.com/iDigitalFlame/xmt)
 
 ThunderStorm is made up of multiple components that work together.
 
-## Cirrus
+##  Cirrus
 
 Cirrus is a ReST cradle for XMT and acts as the primary "teamserver". This can
 be used to control and task Bolts (implants).
@@ -14,7 +16,7 @@ that can be used to get quick up-to-date information on what's happening.
 
 __ReST documentation is in progress (I swear!)__
 
-## Bolt
+##  Bolt
 
 A Bolt is a basic implant that can be used on any client device. Bolts can be
 built in multiple modes and will initially talk to the C2 with whatever their
@@ -22,13 +24,21 @@ built-in Profile is.
 
 Bolts can be customized to run as services/daemons or as DLLs.
 
-## Launcher (Need a better name for this)
+##  JetStream
+
+JetStream is a compact, complex Bolt builder engine. JetStream is able to create
+new Bolts for many different platforms (including Windows DLLs) and can obfuscate,
+encrypt, sign and pack binaries easily.
+
+##  CloudSeed
+
+##  Flurry/Blizzard? | Launcher (Need a better name for this)
 
 Launchers tap into the Guardian function of XMT and can automatically resurrect a
 killed or crashed Bolt in a dirrent process. These rely on a configured Guardian
 type and a list of stored filesystem paths (or URLS!) to get a Bolt from.
 
-## Doppler
+##  Doppler
 
 Doppler is a Python frontend CLI that can be used to interact with Cirrus. Doppler
 supports multiple users at once (it can be ran multiple times) and uses the Cirrus

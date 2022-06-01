@@ -3,6 +3,9 @@
 from math import floor
 from io import StringIO
 from datetime import datetime
+from argparse import ArgumentParser
+
+_BOOLEANS = ["1", "on", "t", "true", "y", "yes", "en", "enable"]
 
 
 def nes(v):
@@ -29,6 +32,28 @@ def split(v):
     return e
 
 
+def xor(k, d):
+    if len(d) == 0 or len(k) == 0:
+        return bytearray()
+    r = bytearray(len(d))
+    for i in range(0, len(r)):
+        r[i] = d[i] ^ k[i % len(k)]
+    return r
+
+
+def do_ask(m):
+    try:
+        v = input(f"[?] {m}? [Y/n] ")
+        if not nes(v) or v.lower() != "y":
+            return False
+        return True
+    except EOFError:
+        print()
+    except KeyboardInterrupt:
+        pass
+    return False
+
+
 def ip_str(s):
     if "network" not in s["device"]:
         return ""
@@ -45,7 +70,7 @@ def ip_str(s):
 def is_true(v):
     if not nes(v):
         return False
-    return v.strip().lower() in ["1", "t", "y", "true", "yes", "on"]
+    return v.strip().lower() in _BOOLEANS
 
 
 def perm_str(v):
@@ -111,6 +136,25 @@ def perm_str(v):
     return r
 
 
+def split_user_domain(u, d):
+    if not nes(u):
+        if nes(d):
+            raise ValueError("empty user with non-empty domain")
+        return "", ""
+    if nes(d):
+        return u, d
+    if "\\" in u:
+        i = u.find("\\")
+        return u[i + 1 :], u[:i]
+    if "/" in u:
+        i = u.find("/")
+        return u[i + 1 :], u[:i]
+    if "@" in u:
+        i = u.find("@")
+        return u[:i], u[i + 1 :]
+    return u, ""
+
+
 def size_str(v, align=False):
     if v < 1024.0:
         if align:
@@ -148,3 +192,57 @@ def time_str(n, s, exact=False):
     if m > 0:
         return f"{m}m {n}s"
     return f"{n}s"
+
+
+class Parser(ArgumentParser):
+    def __init__(self):
+        ArgumentParser.__init__(
+            self,
+            prog="",
+            usage="",
+            epilog="",
+            add_help=False,
+            description="",
+            allow_abbrev=True,
+            fromfile_prefix_chars=None,
+        )
+        self.add = self.add_argument
+
+    def error(self, _):
+        pass
+
+    def print_help(Self, _):
+        pass
+
+    def print_usage(self, _):
+        pass
+
+    def exit(self, _=0, m=None):
+        pass
+
+    def parse_args(self, args=None, namespace=None, nones=True, cat=None):
+        r = super(__class__, self).parse_args(args, namespace)
+        if r is None:
+            return r
+        for i in r.__dict__.keys():
+            try:
+                v = getattr(r, i)
+                if not isinstance(v, list):
+                    continue
+                if len(v) == 1:
+                    if not nones and v[0] is None:
+                        setattr(r, i, "")
+                    else:
+                        setattr(r, i, v[0])
+                    continue
+                if len(v) > 0:
+                    if nes(cat):
+                        setattr(r, i, cat.join(v))
+                    continue
+                if not nones:
+                    setattr(r, i, "")
+                else:
+                    setattr(r, i, None)
+            except AttributeError:
+                pass
+        return r

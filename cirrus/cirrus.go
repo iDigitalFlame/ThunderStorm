@@ -3,8 +3,10 @@ package cirrus
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/PurpleSec/routex"
@@ -12,6 +14,7 @@ import (
 	"github.com/iDigitalFlame/xmt/c2"
 	"github.com/iDigitalFlame/xmt/c2/cfg"
 	"github.com/iDigitalFlame/xmt/com"
+	"github.com/iDigitalFlame/xmt/device"
 )
 
 const (
@@ -26,9 +29,9 @@ const (
 // Cirrus also supplies a stats module that can be used to log and track
 // event counts.
 type Cirrus struct {
-	srv   http.Server
-	ctx   context.Context
-	socks *websocket.Upgrader
+	srv http.Server
+	ctx context.Context
+	ws  *websocket.Upgrader
 
 	s      *c2.Server
 	st     *stats
@@ -38,6 +41,8 @@ type Cirrus struct {
 
 	jobs      *jobManager
 	events    *eventManager
+	packets   *packetManager
+	scripts   *scriptManager
 	profiles  *profileManager
 	sessions  *sessionManager
 	listeners *listenerManager
@@ -53,8 +58,88 @@ func (c *Cirrus) Close() error {
 	if c.cancel(); c.st != nil {
 		<-c.st.ch
 	}
+	if atomic.LoadUint32(&c.events.status) == 0 {
+		c.events.shutdown()
+	}
 	<-c.ch
-	return c.srv.Close()
+	var (
+		x, f = context.WithTimeout(context.Background(), time.Second*5)
+		err  = c.srv.Shutdown(x)
+	)
+	f()
+	c.srv.Close()
+	return err
+}
+
+// Save will attempt to save the current state of Cirrus (Listeners, Scripts and
+// Profiles) to the supplied file path as pretty JSON. If successful, the file
+// will be truncated (if it exists) and overwritten.
+//
+// Any environment variables will be parsed and expanded before writing.
+//
+// This function will bail and return any encoding or writing errors that may
+// occur during the operation.
+func (c *Cirrus) Save(s string) error {
+	b, err := json.MarshalIndent(map[string]any{
+		"auth":      c.Auth,
+		"timeout":   c.Timeout,
+		"scripts":   c.scripts,
+		"profiles":  c.profiles,
+		"listeners": c.listeners,
+	}, "", "    ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(device.Expand(s), b, 0o644)
+}
+
+// Load will attempt to load in a previously saved Cirrus state from the provided
+// JSON file. If the path does not exist, this function will return without an
+// error (allows loading from an empty state file).
+//
+// Any environment variables will be parsed and expanded before loading.
+//
+// This function will bail and return any encoding or reading errors that may
+// occur during the operation.
+func (c *Cirrus) Load(s string) error {
+	p := device.Expand(s)
+	if _, err := os.Stat(p); err != nil {
+		return nil
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return err
+	}
+	var m map[string]json.RawMessage
+	if err = json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	if t, ok := m["scripts"]; ok {
+		if err = json.Unmarshal(t, &c.scripts); err != nil {
+			return err
+		}
+	}
+	if t, ok := m["profiles"]; ok {
+		if err = json.Unmarshal(t, &c.profiles); err != nil {
+			return err
+		}
+	}
+	if t, ok := m["listeners"]; ok {
+		if err = json.Unmarshal(t, &c.listeners); err != nil {
+			return err
+		}
+	}
+	if t, ok := m["auth"]; ok && len(t) > 2 {
+		if err = json.Unmarshal(t, &c.Auth); err != nil {
+			return err
+		}
+	}
+	if t, ok := m["timeout"]; ok {
+		if err = json.Unmarshal(t, &c.Timeout); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // New creates a new Cirrus REST server instance using the supplied C2 Server.
@@ -73,7 +158,34 @@ func (c *Cirrus) Listen(addr string) error {
 	return c.ListenTLS(addr, "", "")
 }
 func configureRoutes(c *Cirrus, m *routex.Mux) {
+	m.Must(prefix+`/script$`, routex.Func(c.scripts.httpScriptsGet), http.MethodGet)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Func(c.scripts.httpScriptGet), http.MethodGet)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Func(c.scripts.httpScriptDelete), http.MethodDelete)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Wrap(valScriptRollback, routex.WrapFunc(c.scripts.httpScriptRollback)), http.MethodPatch)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Marshal[scriptArgs](valScript, routex.MarshalFunc[scriptArgs](c.scripts.httpScriptPutPost)), http.MethodPut, http.MethodPost)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/note$`, routex.Wrap(ws(nil), routex.WrapFunc(c.scripts.httpScriptNote)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/exec$`, routex.Marshal[taskCommand](ws(valTaskSimple), routex.MarshalFunc[taskCommand](c.scripts.httpScriptCommand)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/proxy$`, routex.Wrap(valScriptProxyDelete, routex.WrapFunc(c.scripts.httpScriptProxyDelete)), http.MethodDelete)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/proxy$`, routex.Wrap(valScriptProxyAddUpdate, routex.WrapFunc(c.scripts.httpScriptProxyPutPost)), http.MethodPut, http.MethodPost)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/pull$`, routex.Wrap(ws(valTaskPull), routex.WrapFunc(c.scripts.httpScriptPull)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/login$`, routex.Wrap(ws(valTaskLogin), routex.WrapFunc(c.scripts.httpScriptLogin)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/io$`, routex.Wrap(ws(valTaskSystemIo), routex.WrapFunc(c.scripts.httpScriptSystemIo)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/ui$`, routex.Wrap(ws(valTaskWindowUI), routex.WrapFunc(c.scripts.httpScriptWindowUI)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/upload$`, routex.Wrap(ws(valTaskUpload), routex.WrapFunc(c.scripts.httpScriptUpload)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/profile$`, routex.Wrap(ws(valTaskProfile), routex.WrapFunc(c.scripts.httpScriptProfile)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/regedit$`, routex.Wrap(ws(valTaskRegistry), routex.WrapFunc(c.scripts.httpScriptRegistry)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/download$`, routex.Wrap(ws(valTaskDownload), routex.WrapFunc(c.scripts.httpScriptDownload)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/dll$`, routex.Marshal[taskDLL](ws(valTaskDLL), routex.MarshalFunc[taskDLL](c.scripts.httpScriptDLL)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/pexec$`, routex.Marshal[taskPull](ws(valPullEx), routex.MarshalFunc[taskPull](c.scripts.httpScriptPexec)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/spawn$`, routex.Marshal[taskSpawn](ws(valTaskSpawn), routex.MarshalFunc[taskSpawn](c.scripts.httpScriptSpawn)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/sys$`, routex.Marshal[taskSystem](ws(valTaskSystem), routex.MarshalFunc[taskSystem](c.scripts.httpScriptSystem)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/zombie$`, routex.Marshal[taskZombie](ws(valTaskZombie), routex.MarshalFunc[taskZombie](c.scripts.httpScriptZombie)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/exec$`, routex.Marshal[taskCommand](ws(valTaskSimple), routex.MarshalFunc[taskCommand](c.scripts.httpScriptCommand)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/migrate$`, routex.Marshal[taskMigrate](ws(valTaskMigrate), routex.MarshalFunc[taskMigrate](c.scripts.httpScriptMigrate)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/asm$`, routex.Marshal[taskAssembly](ws(valTaskAssembly), routex.MarshalFunc[taskAssembly](c.scripts.httpScriptAssembly)), http.MethodPut)
 	m.Must(prefix+`/events$`, routex.Func(c.websocket), http.MethodGet)
+	m.Must(prefix+`/packet$`, routex.Func(c.packets.httpPacketsGet), http.MethodGet)
+	m.Must(prefix+`/packet/(?P<name>[a-z]+)$`, routex.Func(c.packets.httpPacketGetDelete), http.MethodGet, http.MethodDelete)
 	m.Must(prefix+`/profile$`, routex.Func(c.profiles.httpProfilesGet), http.MethodGet)
 	m.Must(prefix+`/profile/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Func(c.profiles.httpProfileGet), http.MethodGet)
 	m.Must(prefix+`/profile/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Func(c.profiles.httpProfilePut), http.MethodPut)
@@ -84,28 +196,32 @@ func configureRoutes(c *Cirrus, m *routex.Mux) {
 	m.Must(prefix+`/listener/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Func(c.listeners.httpListenerDelete), http.MethodDelete)
 	m.Must(prefix+`/listener/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Wrap(valListener, routex.WrapFunc(c.listeners.httpListenerPut)), http.MethodPut)
 	m.Must(prefix+`/listener/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Wrap(valListener, routex.WrapFunc(c.listeners.httpListenerPost)), http.MethodPost)
+	m.Must(prefix+`/listener/(?P<name>[a-zA-Z0-9\-._]+)/script$`, routex.Wrap(valListenerScript, routex.WrapFunc(c.listeners.httpListenerScriptPost)), http.MethodPost)
 	m.Must(prefix+`/session$`, routex.Func(c.sessions.httpSessionsGet), http.MethodGet)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)$`, routex.Func(c.sessions.httpSessionGet), http.MethodGet)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)$`, routex.Func(c.sessions.httpSessionDelete), http.MethodDelete)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/proxy/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Func(c.sessions.httpSessionProxyDelete), http.MethodDelete)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/proxy/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Wrap(valListener, routex.WrapFunc(c.sessions.sessions.httpSessionProxyPutPost)), http.MethodPut, http.MethodPost)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/proxy/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Wrap(valListener, routex.WrapFunc(c.sessions.httpSessionProxyPutPost)), http.MethodPut, http.MethodPost)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/job$`, routex.Func(c.jobs.httpJobsGet), http.MethodGet)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/job/(?P<job>[0-9]+)$`, routex.Func(c.jobs.httpJobGetDelete), http.MethodGet, http.MethodDelete)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/job/(?P<job>[0-9]+)/result$`, routex.Func(c.jobs.httpJobResultGetDelete), http.MethodGet, http.MethodDelete)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/sys$`, routex.Marshal(valTaskSystem, taskSystem{}, routex.MarshalFunc(c.sessions.httpTaskSystem)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/sys/spawn$`, routex.Marshal(valTaskSpawn, taskSpawn{}, routex.MarshalFunc(c.sessions.httpTaskSpawn)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/sys/migrate$`, routex.Marshal(valTaskMigrate, taskMigrate{}, routex.MarshalFunc(c.sessions.httpTaskMigrate)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/pull$`, routex.Wrap(valTaskPull, routex.WrapFunc(c.sessions.httpTaskPull)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/login$`, routex.Wrap(valTaskLogin, routex.WrapFunc(c.sessions.httpTaskLogin)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/io$`, routex.Wrap(valTaskSystemIo, routex.WrapFunc(c.sessions.httpTaskSystemIo)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/ui$`, routex.Wrap(valTaskWindowUI, routex.WrapFunc(c.sessions.httpTaskWindowUI)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/script$`, routex.Wrap(valTaskScript, routex.WrapFunc(c.sessions.httpTaskScript)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/upload$`, routex.Wrap(valTaskUpload, routex.WrapFunc(c.sessions.httpTaskUpload)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/profile$`, routex.Wrap(valTaskProfile, routex.WrapFunc(c.sessions.httpTaskProfile)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/regedit$`, routex.Wrap(valTaskRegistry, routex.WrapFunc(c.sessions.httpTaskRegistry)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/download$`, routex.Wrap(valTaskDownload, routex.WrapFunc(c.sessions.httpTaskDownload)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/dll$`, routex.Marshal(valTaskDLL, taskDLL{}, routex.MarshalFunc(c.sessions.httpTaskDLL)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/pexec$`, routex.Marshal(valPullEx, taskPull{}, routex.MarshalFunc(c.sessions.httpTaskPexec)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/asm$`, routex.Marshal(valTaskAssembly, taskPayload{}, routex.MarshalFunc(c.sessions.httpTaskAssembly)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/exec$`, routex.Marshal(valTaskSimple, taskCommand{}, routex.MarshalFunc(c.sessions.httpTaskCommand)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/zombie$`, routex.Marshal(valTaskZombie, taskZombie{}, routex.MarshalFunc(c.sessions.httpTaskZombie)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/dll$`, routex.Marshal[taskDLL](valTaskDLL, routex.MarshalFunc[taskDLL](c.sessions.httpTaskDLL)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/pexec$`, routex.Marshal[taskPull](valPullEx, routex.MarshalFunc[taskPull](c.sessions.httpTaskPexec)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/spawn$`, routex.Marshal[taskSpawn](valTaskSpawn, routex.MarshalFunc[taskSpawn](c.sessions.httpTaskSpawn)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/sys$`, routex.Marshal[taskSystem](valTaskSystem, routex.MarshalFunc[taskSystem](c.sessions.httpTaskSystem)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/zombie$`, routex.Marshal[taskZombie](valTaskZombie, routex.MarshalFunc[taskZombie](c.sessions.httpTaskZombie)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/exec$`, routex.Marshal[taskCommand](valTaskSimple, routex.MarshalFunc[taskCommand](c.sessions.httpTaskCommand)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/migrate$`, routex.Marshal[taskMigrate](valTaskMigrate, routex.MarshalFunc[taskMigrate](c.sessions.httpTaskMigrate)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/asm$`, routex.Marshal[taskAssembly](valTaskAssembly, routex.MarshalFunc[taskAssembly](c.sessions.httpTaskAssembly)), http.MethodPut)
 }
 
 // Listen is a quick utility function that allows for creation of a new
@@ -129,12 +245,19 @@ func (c *Cirrus) TrackStats(csv, tracker string) error {
 	if len(csv) == 0 && len(tracker) == 0 {
 		return nil
 	}
-	if c.st = new(stats); len(csv) > 0 {
+	c.st = &stats{
+		ch: make(chan struct{}),
+		ej: make(chan statJobEvent, 64),
+		ep: make(chan statPacketEvent, 64),
+		es: make(chan statSessionEvent, 64),
+	}
+	if len(csv) > 0 {
 		var (
-			_, err = os.Stat(csv)
-			h      = err == nil
+			v, err = os.Stat(csv)
+			h      = err != nil || v.Size() == 0
 		)
-		if c.st.f, err = os.OpenFile(csv, os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_SYNC, 0644); err != nil {
+		// 0x1441 - os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_SYNC
+		if c.st.f, err = os.OpenFile(csv, 0x1441, 0o644); err != nil {
 			return err
 		}
 		if h {
@@ -147,7 +270,8 @@ func (c *Cirrus) TrackStats(csv, tracker string) error {
 		return nil
 	}
 	var err error
-	if c.st.t, err = os.OpenFile(csv, os.O_TRUNC|os.O_CREATE|os.O_WRONLY|os.O_SYNC, 0644); err != nil {
+	// 0x1441 - os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_SYNC
+	if c.st.t, err = os.OpenFile(tracker, 0x1441, 0o644); err != nil {
 		return err
 	}
 	return nil
@@ -203,6 +327,8 @@ func (c *Cirrus) ListenTLS(addr, cert, key string) error {
 func NewContext(x context.Context, s *c2.Server, key string) *Cirrus {
 	c := &Cirrus{s: s, Auth: key, Timeout: timeout, ch: make(chan struct{})}
 	c.jobs = &jobManager{Cirrus: c, e: make(map[uint64]*c2.Job)}
+	c.packets = &packetManager{Cirrus: c, e: make(map[string]*packet)}
+	c.scripts = &scriptManager{Cirrus: c, e: make(map[string]*script)}
 	c.sessions = &sessionManager{Cirrus: c, e: make(map[string]*session)}
 	c.profiles = &profileManager{Cirrus: c, e: make(map[string]cfg.Config)}
 	c.listeners = &listenerManager{Cirrus: c, e: make(map[string]*listener)}
@@ -212,7 +338,7 @@ func NewContext(x context.Context, s *c2.Server, key string) *Cirrus {
 	c.mux.Middleware(encoding)
 	c.mux.Middleware(c.auth)
 	c.mux.Error = routex.ErrorFunc(writeError)
-	c.socks = &websocket.Upgrader{
+	c.ws = &websocket.Upgrader{
 		CheckOrigin:      func(_ *http.Request) bool { return true },
 		ReadBufferSize:   1024,
 		WriteBufferSize:  1024,
@@ -232,10 +358,10 @@ func NewContext(x context.Context, s *c2.Server, key string) *Cirrus {
 		f := s.Oneshot
 		s.Oneshot = func(n *com.Packet) {
 			f(n)
-			//s.cache.catch(n)
+			c.packetNew(n)
 		}
 	} else {
-		s.Oneshot = func(n *com.Packet) {}
+		s.Oneshot = c.packetNew
 	}
 	if s.Shutdown != nil {
 		f := s.Shutdown

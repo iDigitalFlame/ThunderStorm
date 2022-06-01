@@ -1,0 +1,36 @@
+{
+    "_": "Example Jetstream Config",
+    "binary": {
+        "garble": "/home/dij/.local/lib/go/bin/garble",
+        "gcc": "/usr/bin/gcc",
+        "go": "/usr/bin/go",
+        "openssl": "/usr/bin/openssl",
+        "osslsigncode": "/usr/bin/osslsigncode",
+        "upx": "/usr/bin/upx",
+        "wgcc32": "/usr/bin/i686-w64-mingw32-gcc",
+        "wgcc64": "/usr/bin/x86_64-w64-mingw32-gcc",
+        "wres32": "/usr/bin/i686-w64-mingw32-windres",
+        "wres64": "/usr/bin/x86_64-w64-mingw32-windres"
+    },
+    "build": {
+        "crypt": true,
+        "garble": true,
+        "root": null,
+        "tags": [
+            "implant",
+            "nojson",
+            "noproxy",
+            "crypt"
+        ],
+        "tiny": true
+    },
+    "config": {
+        "critical": true,
+        "guard": "derp0",
+        "ignore": false,
+        "key": null,
+        "linker": null,
+        "load": true,
+        "pipe": "pipe-me"
+    }
+}

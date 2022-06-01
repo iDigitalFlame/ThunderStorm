@@ -22,30 +22,31 @@ type jobManager struct {
 }
 
 func (c *Cirrus) removeJob(j *c2.Job) {
-	c.events.publishJobDelete(j.Session.ID.String(), j.ID)
+	c.events.publishJobDelete(j.Session().ID.String(), j.ID)
 }
 func (c *Cirrus) completeJob(j *c2.Job) {
-	switch c.jobEvent(j.Session, j, ""); j.Status {
+	switch c.jobEvent(j.Session(), j, ""); j.Status {
 	case c2.StatusAccepted:
-		c.events.publishJobUpdate(j.Session.ID.String(), j.ID)
+		c.events.publishJobUpdate(j.Session().ID.String(), j.ID)
 	case c2.StatusReceiving:
-		c.events.publishJobReceiving(j.Session.ID.String(), j.ID) // Maybe we should add frag context
+		c.events.publishJobReceiving(j.Session().ID.String(), j.ID, j.Frags, j.Current)
 	case c2.StatusCompleted, c2.StatusError:
-		c.events.publishJobComplete(j.Session.ID.String(), j.ID)
+		c.events.publishJobComplete(j.Session().ID.String(), j.ID)
 	}
 }
 func (j *jobManager) prune(x context.Context) {
 	for t := time.NewTicker(time.Minute); ; {
 		select {
 		case n := <-t.C:
+			j.prunePackets()
 			if j.Lock(); len(j.e) > 0 {
 				for k, v := range j.e {
 					var t time.Duration
 					switch {
-					case v.Session.Last.IsZero():
+					case v.Session().Last.IsZero():
 						t = time.Hour
 					case !v.IsDone() || v.Complete.IsZero():
-						t = time.Since(v.Session.Last)*3 + (time.Minute * 15)
+						t = time.Since(v.Session().Last)*3 + (time.Minute * 15)
 					default:
 						t = v.Complete.Sub(v.Start)*3 + (time.Minute * 15)
 					}
@@ -197,8 +198,9 @@ func (j *jobManager) httpJobResultGetDelete(_ context.Context, w http.ResponseWr
 	case v.Result == nil || v.Result.Empty():
 		w.WriteHeader(http.StatusNoContent)
 	default:
-		if err := writeJobJSON(v.Type, v.Result, w); err != nil {
+		if err := writeJobJSON(false, v.Type, v.Result, w); err != nil {
 			writeError(http.StatusInternalServerError, "job type is invald", w, r)
 		}
+		v.Result.Seek(0, 0)
 	}
 }

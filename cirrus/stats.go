@@ -2,12 +2,15 @@ package cirrus
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/iDigitalFlame/xmt/c2"
+	"github.com/iDigitalFlame/xmt/com"
 )
 
 const (
@@ -45,6 +48,7 @@ type statJobEvent struct {
 type statPacketEvent struct {
 	Time    time.Time
 	Session string
+	Data    string
 	ID      uint8
 }
 type statSessionEvent struct {
@@ -60,14 +64,19 @@ func (s *stats) writeTacker() {
 	}
 	s.t.Truncate(0)
 	s.t.Seek(0, 0)
-	s.f.WriteString("Sessions:\t" + strconv.FormatUint(s.s, 10) + "\n\n")
-	s.f.WriteString("Jobs:\t" + strconv.FormatUint(s.j, 10) + "\n")
+	s.t.WriteString("Sessions:\t" + strconv.FormatUint(s.s, 10) + "\n\n")
+	s.t.WriteString("Jobs:\t" + strconv.FormatUint(s.j, 10) + "\n")
 	s.Lock()
 	for i := range s.e {
 		if s.e[i] == 0 {
 			continue
 		}
-		s.f.WriteString("  " + strconv.FormatUint(uint64(i), 16) + ":\t" + strconv.FormatUint(s.e[i], 10) + "\n")
+		if i < 16 {
+			s.t.WriteString("   ")
+		} else {
+			s.t.WriteString("  ")
+		}
+		s.t.WriteString(strings.ToUpper(strconv.FormatUint(uint64(i), 16)) + ":\t" + strconv.FormatUint(s.e[i], 10) + "\n")
 	}
 	s.Unlock()
 	s.t.Sync()
@@ -89,22 +98,27 @@ loop:
 		case <-x.Done():
 			break loop
 		case v := <-s.ej:
-			s.Lock()
-			s.e[v.Type]++
-			s.Unlock()
-			s.j++
+			if v.Status == sJobWaiting {
+				s.Lock()
+				s.e[v.Type]++
+				s.Unlock()
+				s.j++
+			}
 			s.writeJobEvent(v)
 		case v := <-s.es:
-			s.s++
+			if v.Type == sSessionNew {
+				s.s++
+			}
 			s.writeSessionEvent(v)
 		case v := <-s.ep:
 			s.writePacketEvent(v)
 		}
 	}
-	if t.Stop(); s.t != nil {
+	if s.t != nil {
 		s.writeTacker()
 		s.t.Sync()
 		s.t.Close()
+		t.Stop()
 	}
 	if s.f != nil {
 		s.f.Sync()
@@ -114,6 +128,21 @@ loop:
 	close(s.ej)
 	close(s.es)
 	close(s.ch)
+}
+func (c *Cirrus) packetEvent(n *com.Packet) {
+	if c.st == nil {
+		return
+	}
+	var d string
+	if !n.Empty() {
+		d = base64.StdEncoding.EncodeToString(n.Payload())
+	}
+	c.st.ep <- statPacketEvent{
+		ID:      n.ID,
+		Data:    d,
+		Time:    time.Now(),
+		Session: n.Device.String(),
+	}
 }
 func (s *stats) writeJobEvent(e statJobEvent) {
 	if s.f == nil {
@@ -144,7 +173,7 @@ func (s *stats) writePacketEvent(e statPacketEvent) {
 	}
 	s.f.WriteString(
 		e.Time.Format(time.RFC3339) + "," + e.Session + ",,ONESHOT," +
-			strconv.FormatUint(uint64(e.ID), 10) + ",,,\r\n",
+			strconv.FormatUint(uint64(e.ID), 10) + ",," + e.Data + ",\r\n",
 	)
 	s.f.Sync()
 }

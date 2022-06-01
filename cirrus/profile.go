@@ -3,6 +3,7 @@ package cirrus
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -23,16 +24,38 @@ type profileManager struct {
 	e map[string]cfg.Config
 }
 
-func (c *Cirrus) profile(n string) cfg.Config {
+func (p *profileManager) MarshalJSON() ([]byte, error) {
+	p.Lock()
+	m := make(map[string][]byte, len(p.e))
+	for k, v := range p.e {
+		m[k] = v
+	}
+	p.Unlock()
+	return json.Marshal(m)
+}
+func (p *profileManager) UnmarshalJSON(b []byte) error {
+	var m map[string][]byte
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	p.Lock()
+	for k, v := range m {
+		p.e[k] = cfg.Config(v)
+	}
+	p.Unlock()
+	return nil
+}
+func (c *Cirrus) profile(n string) (cfg.Config, string) {
 	if len(n) == 0 || !isValidName(n) {
-		return nil
+		return nil, ""
 	}
+	i := strings.ToLower(n)
 	c.profiles.RLock()
-	v, ok := c.profiles.e[strings.ToLower(n)]
+	v, ok := c.profiles.e[i]
 	if c.profiles.RUnlock(); !ok {
-		return nil
+		return nil, ""
 	}
-	return v
+	return v, i
 }
 func readProfileFromBody(r io.ReadCloser) (cfg.Config, error) {
 	var (
@@ -52,7 +75,7 @@ func readProfileFromBody(r io.ReadCloser) (cfg.Config, error) {
 	return c, nil
 }
 func (p *profileManager) httpProfileGet(_ context.Context, w http.ResponseWriter, r *routex.Request) {
-	v := p.profile(r.Values.StringDefault("name", ""))
+	v, _ := p.profile(r.Values.StringDefault("name", ""))
 	if len(v) == 0 {
 		writeError(http.StatusNotFound, msgNoProfile, w, r)
 		return
@@ -66,7 +89,7 @@ func (p *profileManager) httpProfilePut(_ context.Context, w http.ResponseWriter
 		writeError(http.StatusBadRequest, "profile name is invalid", w, r)
 		return
 	}
-	v := p.profile(n)
+	v, _ := p.profile(n)
 	if len(v) > 0 {
 		writeError(http.StatusConflict, "profile already exists", w, r)
 		return
@@ -82,7 +105,7 @@ func (p *profileManager) httpProfilePut(_ context.Context, w http.ResponseWriter
 	p.Unlock()
 	p.events.publishProfileNew(i)
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(`{"result":` + escape.JSON(c.String()) + `}`))
+	w.Write([]byte(`{"result":"` + c.String() + `"}`))
 }
 func (p *profileManager) httpProfilesGet(_ context.Context, w http.ResponseWriter, _ *routex.Request) {
 	p.RLock()
@@ -103,10 +126,7 @@ func (p *profileManager) httpProfilesGet(_ context.Context, w http.ResponseWrite
 	w.Write([]byte{'}'})
 }
 func (p *profileManager) httpProfilePost(_ context.Context, w http.ResponseWriter, r *routex.Request) {
-	var (
-		n = r.Values.StringDefault("name", "")
-		v = p.profile(n)
-	)
+	v, n := p.profile(r.Values.StringDefault("name", ""))
 	if len(v) == 0 {
 		writeError(http.StatusNotFound, msgNoProfile, w, r)
 		return
@@ -116,29 +136,24 @@ func (p *profileManager) httpProfilePost(_ context.Context, w http.ResponseWrite
 		writeError(http.StatusBadRequest, err.Error(), w, r)
 		return
 	}
-	i := strings.ToLower(n)
 	p.Lock()
-	p.e[i] = c
+	p.e[n] = c
 	p.Unlock()
-	p.events.publishProfileUpdate(i)
+	p.events.publishProfileUpdate(n)
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"result":` + escape.JSON(c.String()) + `}`))
+	w.Write([]byte(`{"result":` + c.String() + `}`))
 }
 func (p *profileManager) httpProfileDelete(_ context.Context, w http.ResponseWriter, r *routex.Request) {
-	var (
-		n = r.Values.StringDefault("name", "")
-		v = p.profile(n)
-	)
+	v, n := p.profile(r.Values.StringDefault("name", ""))
 	if len(v) == 0 {
 		writeError(http.StatusNotFound, msgNoProfile, w, r)
 		return
 	}
 	v = nil
-	i := strings.ToLower(n)
 	p.Lock()
-	p.e[i] = nil
-	delete(p.e, i)
+	p.e[n] = nil
+	delete(p.e, n)
 	p.Unlock()
-	p.events.publishProfileDelete(i)
+	p.events.publishProfileDelete(n)
 	w.WriteHeader(http.StatusOK)
 }
