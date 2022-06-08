@@ -91,24 +91,6 @@ func generate(p string) error {
 			SignatureAlgorithm: x509.SHA256WithRSA,
 		}
 	)
-	/*
-		Try to enable Microsoft Tcb signing extensions.
-		i.Extensions = append(i.Extensions, pkix.Extension{
-			Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 10, 3, 22},
-			Critical: false,
-		})
-		i.Extensions = append(i.Extensions, pkix.Extension{
-			Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 10, 3, 23},
-			Critical: false,
-		})
-		i.ExtraExtensions = append(i.ExtraExtensions, pkix.Extension{
-			Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 10, 3, 22},
-			Critical: false,
-		})
-		i.ExtraExtensions = append(i.ExtraExtensions, pkix.Extension{
-			Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 10, 3, 23},
-			Critical: false,
-		})*/
 	k, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return errors.New("cannot generate RSA key: " + err.Error())

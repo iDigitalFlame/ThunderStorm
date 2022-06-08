@@ -1,4 +1,19 @@
 #!/usr/bin/python3
+# Copyright (C) 2021 - 2022 iDigitalFlame
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
 
 from cmd import Cmd
 from json import dumps
@@ -441,7 +456,9 @@ def _menu(v, menu, inv=False):
         return menu
     r = list()
     for e in menu:
-        if e.startswith(s):
+        if inv and e.upper().startswith(s):
+            r.append(e)
+        elif not inv and e.startswith(s):
             r.append(e)
     return r
 
@@ -714,7 +731,7 @@ def print_job_result(id, job, res, arg, out, multi=False):
     d = res["entries"]
     for x in range(0, len(d)):
         print(f"[+] {x+1:>2}: ", end="")
-        _print_job_result(id, job, d[x].get("type", "unknown"), d[x], None, True, multi)
+        _print_job_result(id, job, d[x].get("type", "unknown"), d[x], None, True)
     del d
 
 
@@ -5348,7 +5365,7 @@ class Shell(Cmd):
                     y = n[1:].lower()
                     for x in range(1, get_history_length()):
                         u = get_history_item(x)
-                        if not u.lower().startswith(y):
+                        if nes(u) and not u.lower().startswith(y):
                             continue
                         r.append((x, u))
                     for i in r:

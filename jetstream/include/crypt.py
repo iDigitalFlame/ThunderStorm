@@ -1,4 +1,19 @@
 #!/usr/bin/python3
+# Copyright (C) 2021 - 2022 iDigitalFlame
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
 
 from json import loads
 from io import BytesIO
@@ -29,21 +44,6 @@ def _is_abc(c):
     return c >= ord("a") and c <= ord("z")
 
 
-def strip_binary(file):
-    with open(file, "rb") as f:
-        b = bytearray(f.read())
-    x = b.find(CRUMB)
-    if x <= 0:
-        raise RuntimeError()
-    v, n = dict(), dict()
-    x = _next_block(b, x + 4, v, n)
-    for _ in range(0, 5):
-        for i in CRUMBS:
-            _find_next_push(b, x, i, v, n)
-    with open(file, "wb") as f:
-        f.write(b)
-
-
 def _use_tag(tags, values):
     if not isinstance(tags, list) or not isinstance(values, list):
         return True
@@ -65,7 +65,22 @@ def generate_crypt(tags, file):
     return b.key(), b.out()
 
 
-def _next_block(b, start, v, n):
+def strip_binary(file, log=None):
+    with open(file, "rb") as f:
+        b = bytearray(f.read())
+    x = b.find(CRUMB)
+    if x <= 0:
+        raise RuntimeError()
+    v, n = dict(), dict()
+    x = _next_block(b, x + 4, v, n, log)
+    for _ in range(0, 5):
+        for i in CRUMBS:
+            _find_next_push(b, x, i, v, n, log)
+    with open(file, "wb") as f:
+        f.write(b)
+
+
+def _next_block(b, start, v, n, log):
     s, e, c = start, start, 0
     while e < len(b):
         if b[e] == 0:
@@ -79,17 +94,18 @@ def _next_block(b, start, v, n):
             break
         e += 1
     _map_swap(b, s, e, v, n)
-    print(f"Remapped {s:X} => {e:X}")
+    if callable(log):
+        log(f"Strip remapped {s:X} => {e:X}")
     return e
 
 
-def _find_next_push(b, x, c, v, n):
+def _find_next_push(b, x, c, v, n, log):
     i = b.find(c, x)
     if i > 0 and i < x:
         raise IOError(f"invalid next offset {x:X} => {i:X}")
     if i == -1:
         return
-    _next_block(b, i + 2, v, n)
+    _next_block(b, i + 2, v, n, log)
 
 
 def _map_swap(b, start, end, vars, names):

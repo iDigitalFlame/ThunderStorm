@@ -1,16 +1,29 @@
 #!/usr/bin/python3
+# Copyright (C) 2021 - 2022 iDigitalFlame
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
 
-from glob import glob
-from requests import get
-from shutil import which
-from shutil import copytree
+from io import StringIO
+from random import choice
+from random import randint
+from base64 import b64decode
 from include.util import nes
 from os import remove, rename
-from json import dumps, loads
-from os.path import join, dirname
-from include.crypt import generate_crypt
-from include.files import Rc, Binary, Dll, DllService, MANIFEST
-
+from os.path import isfile, join
+from datetime import datetime, timedelta
+from string import ascii_letters, Template
 
 OS = [
     "aix",
@@ -65,42 +78,161 @@ ARCH = {
     "s390x": ["linux"],
     "wasm": ["js"],
 }
-_VALIDS = {
-    "build": [
-        "tags",
-        "root",
-        "tiny",
-        "crypt",
-        "garble",
-    ],
-    "config": [
-        "key",
-        "pipe",
-        "load",
-        "guard",
-        "linker",
-        "ignore",
-        "critical",
-    ],
-    "binary": [
-        "go",
-        "gcc",
-        "wgcc32",
-        "wgcc64",
-        "wres32",
-        "wres64",
-        "openssl",
-        "osslsigncode",
-        "garble",
-    ],
+RC = """#include <windows.h>
+{icon}
+VS_VERSION_INFO  VERSIONINFO
+FILEVERSION      {version}
+PRODUCTVERSION   {version}
+FILEFLAGSMASK    VS_FFI_FILEFLAGSMASK
+FILEFLAGS        0
+FILEOS           VOS__WINDOWS32
+FILETYPE         VFT_DLL
+FILESUBTYPE      VFT2_UNKNOWN
+
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "Comments", ""
+            VALUE "CompanyName", "{company}"
+            VALUE "FileDescription", "{title}"
+            VALUE "FileVersion", "{version_string}"
+            VALUE "InternalName", "{title}"
+            VALUE "LegalCopyright", "{copyright}"
+            VALUE "OriginalFilename", "{file}"
+            VALUE "ProductName", "{product}"
+            VALUE "ProductVersion", "{version_string}"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+"""
+MANIFEST = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+    <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+        <application>
+            <supportedOS Id="{e2011457-1546-43c5-a5fe-008deee3d3f0}" />
+            <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}" />
+            <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}" />
+            <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+            <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+        </application>
+    </compatibility>
+</assembly>
+"""
+CERT_GEN = """package main
+
+import (
+    "bytes"
+    "crypto/rand"
+    "crypto/rsa"
+    "crypto/tls"
+    "crypto/x509"
+    "crypto/x509/pkix"
+    "encoding/pem"
+    "errors"
+    "io"
+    "net"
+    "os"
+    "time"
+)
+
+func main() {
+    if len(os.Args) != 2 {
+        os.Stderr.WriteString(os.Args[0] + " <target_name>\\n")
+        os.Exit(2)
+    }
+    if err := generate(os.Args[1]); err != nil {
+        os.Exit(1)
+    }
 }
+func certs() ([]byte, error) {
+    c, err := tls.DialWithDialer(
+        &net.Dialer{Timeout: time.Second * 10, KeepAlive: time.Second * 10, DualStack: true},
+        "tcp", "$target:443", &tls.Config{InsecureSkipVerify: true},
+    )
+    if err != nil {
+        return nil, err
+    }
+    var b bytes.Buffer
+    for _, x := range c.ConnectionState().PeerCertificates {
+        if err := pem.Encode(&b, &pem.Block{Type: "CERTIFICATE", Bytes: x.Raw}); err == nil {
+            break
+        }
+    }
+    if c.Close(); b.Len() == 0 {
+        return nil, io.EOF
+    }
+    return b.Bytes(), nil
+}
+func generate(p string) error {
+    d, err := certs()
+    if err != nil {
+        return err
+    }
+    var (
+        v, _ = pem.Decode(d)
+        c, _ = x509.ParseCertificate(v.Bytes)
+        t    = x509.Certificate{
+            IsCA:                  true,
+            Subject:               pkix.Name{CommonName: $rename},
+            NotAfter:              c.NotAfter,
+            KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+            NotBefore:             c.NotBefore,
+            ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+            SerialNumber:          c.SerialNumber,
+            PublicKeyAlgorithm:    x509.RSA,
+            SignatureAlgorithm:    x509.SHA256WithRSA,
+            BasicConstraintsValid: true,
+        }
+        i = x509.Certificate{
+            Subject:            pkix.Name{CommonName: c.Issuer.CommonName},
+            NotAfter:           c.NotAfter,
+            NotBefore:          c.NotBefore,
+            SerialNumber:       c.SerialNumber,
+            SignatureAlgorithm: x509.SHA256WithRSA,
+        }
+    )
+    k, err := rsa.GenerateKey(rand.Reader, 4096)
+    if err != nil {
+        return errors.New("cannot generate RSA key: " + err.Error())
+    }
+    b, err := x509.CreateCertificate(rand.Reader, &t, &i, &k.PublicKey, k)
+    if err != nil {
+        return errors.New("cannot generate certificate: " + err.Error())
+    }
+    f, err := os.Create(p + ".pem")
+    if err != nil {
+        return errors.New(`cannot create file "` + p + `.pem": ` + err.Error())
+    }
+    var o []byte
+    if o, err = x509.MarshalPKCS8PrivateKey(k); err == nil {
+        err = pem.Encode(f, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: o})
+    }
+    if f.Close(); err != nil {
+        return errors.New("cannot marshal RSA key: " + err.Error())
+    }
+    if f, err = os.Create(p + ".crt"); err != nil {
+        return errors.New(`cannot create file "` + p + `.crt": ` + err.Error())
+    }
+    err = pem.Encode(f, &pem.Block{Type: "CERTIFICATE", Bytes: b})
+    if f.Close(); err != nil {
+        return errors.New("cannot marshal certificate: " + err.Error())
+    }
+    return nil
+}
+"""
 
 
-def upx(build, file):
-    build.log(f'UPX Packing file "{file}"..')
-    build.run(
+def upx(js, file):
+    js.log.debug(f'UPX Packing file "{file}"..')
+    js._exec(
         [
-            build.get("binary", "upx"),
+            js.opts.get_bin("upx"),
             "--compress-exports=0",
             "--strip-relocs=1",
             "--compress-icons=2",
@@ -116,440 +248,169 @@ def upx(build, file):
     )
 
 
-def tiny_root(old, new):
-    try:
-        copytree(old, new)
-    except OSError:
-        raise OSError(f'copytree from "{old}" to "{new}" failed')
-    for i in glob(join(new, "src", "fmt", "*.go"), recursive=False):
-        remove(i)
-    for i in glob(join(new, "src", "unicode", "*.go"), recursive=False):
-        remove(i)
-    b = join(new, "src", "fmt")
-    _download_to(
-        "https://raw.githubusercontent.com/iDigitalFlame/TinyPatchedGo/main/fmt/print.go",
-        join(b, "print.go"),
-    )
-    _download_to(
-        "https://raw.githubusercontent.com/iDigitalFlame/TinyPatchedGo/main/fmt/quick.go",
-        join(b, "quick.go"),
-    )
-    _download_to(
-        "https://raw.githubusercontent.com/iDigitalFlame/TinyPatchedGo/main/fmt/scan.go",
-        join(b, "scan.go"),
-    )
+def random_chars(size):
+    return "".join(choice(ascii_letters) for _ in range(size))
+
+
+def _sign_range(d, exp):
+    if nes(d):
+        t = datetime.fromisoformat(d)
+    else:
+        t = datetime.now()
+    if not isinstance(exp, int) or exp <= 0:
+        return str(t.timestamp())
+    n, v = datetime.now(), t + timedelta(days=exp)
+    if v < n and randint(0, 1) == 1:
+        return str((t - timedelta(days=randint(0, exp) * -1)).timestamp())
+    return str((t - timedelta(days=randint(0, exp))).timestamp())
+
+
+def go_bytes(v, limit=20):
+    if len(v) == 0:
+        return ""
+    b = StringIO()
+    c = 0
+    for x in v:
+        if c > 0 and c % limit == 0:
+            b.write("\n\t")
+        b.write(f"0x{hex(x)[2:].upper().zfill(2)}, ")
+        c += 1
+    r = b.getvalue()
+    b.close()
     del b
-    _download_to(
-        "https://raw.githubusercontent.com/iDigitalFlame/TinyPatchedGo/main/unicode/unicode.go",
-        join(new, "src", "unicode", "unicode.go"),
-    )
-    _sed_file(
-        join(new, "src", "net", "http", "transport.go"),
-        [
-            "return envProxyFunc()(req.URL)",
-            "envProxyFuncValue = httpproxy.FromEnvironment().ProxyFunc()",
-            '"golang.org/x/net/http/httpproxy"',
-        ],
-        [
-            "return req.URL, nil",
-            "envProxyFuncValue = nil",
-            "",
-        ],
-    )
-    _sed_file(
-        join(new, "src", "net", "http", "h2_bundle.go"),
-        [
-            "if a, err := idna.ToASCII(host); err == nil {",
-            '"golang.org/x/net/idna"',
-        ],
-        [
-            'if a := ""; len(a) > 0 {',
-            "",
-        ],
-    )
-    _sed_file(
-        join(new, "src", "net", "http", "request.go"),
-        [
-            "return idna.Lookup.ToASCII(v)",
-            '"golang.org/x/net/idna"',
-        ],
-        [
-            "return v, nil",
-            "",
-        ],
-    )
-    _sed_file(
-        join(
-            new,
-            "src",
-            "vendor",
-            "golang.org",
-            "x",
-            "net",
-            "http",
-            "httpguts",
-            "httplex.go",
-        ),
-        [
-            "host, err = idna.ToASCII(host)",
-            '"golang.org/x/net/idna"',
-        ],
-        [
-            "host, err = host, nil",
-            "",
-        ],
-    )
-    return new
+    del c
+    return r
 
 
-def _download_to(url, path):
-    r = get(url)
-    r.raise_for_status()
-    with open(path, "wb") as f:
-        f.write(r.content)
-    r.close()
-    del r
-
-
-def _sed_file(path, old, new):
-    with open(path, "r") as f:
-        d = f.read()
-    with open(path, "w") as f:
-        for x in range(0, len(old)):
-            d = d.replace(old[x], new[x])
-        f.write(d)
-    del d
-
-
-def sign(build, pfx, pw, file):
-    build.log(f'Signing file "{file}"..')
-    build.run(
-        [
-            build.get("binary", "osslsigncode"),
-            "sign",
-            "-pkcs12",
-            pfx,
-            "-h",
-            "sha2",
-            "-in",
+def sign(js, o, date, date_range, base, file):
+    if nes(o.get_sign("pfx")):
+        return sign_with_pfx(
+            js,
+            _sign_range(date, date_range),
             file,
-            "-out",
-            f"{file}.sig",
-            "-pass",
-            pw,
-        ],
-        out=False,
-    )
+            o.get_sign("pfx"),
+            o.get_sign("pfx_password"),
+        )
+    if nes(o.get_sign("pfx_raw")):
+        c = join(base, "sign.pfx")
+        with open(c, "wb") as f:
+            f.write(b64decode(o.get_sign("pfx_raw"), validate=True))
+        sign_with_pfx(
+            js,
+            _sign_range(date, date_range),
+            file,
+            c,
+            o.get_sign("pfx_password"),
+        )
+        return remove(c)
+    if nes(o.get_sign("cert")):
+        if nes(o.get_sign("pem")):
+            return sign_with_certs(
+                js,
+                _sign_range(date, date_range),
+                file,
+                o.get_sign("cert"),
+                o.get_sign("pem"),
+            )
+        if nes(o.get_sign("pem_raw")):
+            c = join(base, "sign-pem.pem")
+            with open(c, "wb") as f:
+                f.write(b64decode(o.get_sign("pem_raw"), validate=True))
+            sign_with_certs(
+                js, _sign_range(date, date_range), file, o.get_sign("cert"), c
+            )
+            return remove(c)
+    if nes(o.get_sign("pem")) and nes(o.get_sign("cert_raw")):
+        c = join(base, "sign-cert.crt")
+        with open(c, "wb") as f:
+            f.write(b64decode(o.get_sign("cert_raw"), validate=True))
+        sign_with_certs(js, _sign_range(date, date_range), file, c, o.get_sign("pem"))
+        return remove(c)
+    if nes(o.get_sign("cert_raw")) and nes(o.get_sign("pem_raw")):
+        c, p = join(base, "sign-cert.crt"), join(base, "sign-pem.pem")
+        with open(c, "wb") as f:
+            f.write(b64decode(o.get_sign("cert_raw"), validate=True))
+        with open(p, "wb") as f:
+            f.write(b64decode(o.get_sign("pem_raw"), validate=True))
+        sign_with_certs(js, _sign_range(date, date_range), file, c, p)
+        remove(c)
+        return remove(p)
+    if nes(o.get_sign("generate_target")):
+        return sign_with_target(
+            js,
+            _sign_range(date, date_range),
+            file,
+            base,
+            o.get_sign("generate_target"),
+            o.get_sign("generate_name"),
+        )
+
+
+def sign_with_pfx(js, when, file, pfx, pfx_pw):
+    x = [
+        js.opts.get_bin("osslsigncode"),
+        "sign",
+        "-h",
+        "sha2",
+        "-pkcs12",
+        pfx,
+        "-in",
+        file,
+        "-out",
+        f"{file}.sig",
+        "-st",
+        when,
+    ]
+    if nes(pfx_pw):
+        x += ["-pass", pfx_pw]
+    js._exec(x)
+    del x
+    js.log.debug(f'Signed "{file}" with "{pfx}".')
     remove(file)
     rename(f"{file}.sig", file)
 
 
-def build_go(build, env, go, os, arch):
-    v = join(build.dir, "main.go")
-    with open(v, "w") as f:
-        f.write(go)
-    r = join(build.dir, "out")
-    _go_build(
-        build,
-        v,
-        env,
-        os,
-        arch,
-        "-s -w",
-        r,
-        ["-gcflags", "-G=0"],
+def sign_with_certs(js, when, file, cert, pem):
+    js._exec(
+        [
+            js.opts.get_bin("osslsigncode"),
+            "sign",
+            "-h",
+            "sha2",
+            "-certs",
+            cert,
+            "-key",
+            pem,
+            "-in",
+            file,
+            "-out",
+            f"{file}.sig",
+            "-st",
+            when,
+        ]
     )
-    return r
+    js.log.debug(f'Signed "{file}" with "{cert}" and "{pem}".')
+    remove(file)
+    rename(f"{file}.sig", file)
 
 
-def build_cgo(build, env, go, x64, rec, **kw):
-    if "//export " not in go:
-        raise ValueError("build: CGO file does not have an export")
-    x = go.find("//export ")
-    if not isinstance(x, int) or x < 10:
-        raise ValueError("build: could not find CGO export")
-    e = go.find("\n", x + 10)
-    n = go[x + 9 : e]
-    del x
-    del e
-    if f"//export {n}\nfunc {n}() {{\n" not in go:
-        raise ValueError("build: could not find CGO export")
-    v = join(build.dir, "main.go")
-    with open(v, "w") as f:
-        f.write(go)
-    gc = build.get("binary", "wgcc64")
-    if not x64:
-        gc = build.get("binary", "wgcc32")
-    env["CC"] = gc
-    env["CGO_ENABLED"] = "1"
-    _go_build(
-        build,
-        v,
-        env,
-        "windows",
-        "amd64" if x64 else "386",
-        "-s -w -H=windowsgui",
-        join(build.dir, "stub.a"),
-        ["-buildmode=c-archive", "-gcflags", "-G=0"],
-    )
-    del v
-    e = list()
-    if isinstance(rec, dict):
-        build.log("Building resource file..")
-        r = join(build.dir, "res.rc")
-        with open(r, "w") as f:
-            f.write(Rc(rec))
-        o = join(build.dir, "res.o")
-        x = build.get("binary", "wres64")
-        if not x64:
-            x = build.get("binary", "wres32")
-        build.run([x, "-i", r, "-o", o])
-        del x
-        del r
-        e.append(o)
-        del o
-    dll = kw.get("dll", False)
-    h = join(build.dir, "man.rc")
-    m = join(build.dir, "man.o")
-    v = None
-    if rec is not None:
-        v = rec.get("file")
-    if not nes(v):
-        v = "result"
-    if dll and not v.endswith(".dll"):
-        v += ".dll"
-    if not dll and not v.endswith(".exe"):
-        v += ".exe"
-    build.log(f'Building manifest file "{v}.manifest"..')
-    with open(join(build.dir, f"{v}.manifest"), "w") as f:
-        f.write(MANIFEST)
-    with open(h, "w") as f:
-        f.write('#include "winuser.h"\n')
-        if dll:
-            f.write("2 ")
-        else:
-            f.write("1 ")
-        f.write(f"RT_MANIFEST {v}.manifest\n")
-    x = build.get("binary", "wres64")
-    if not x64:
-        x = build.get("binary", "wres32")
-    build.run([x, "--output-format=coff", "-i", h, "-o", m])
-    e.append(m)
-    del m
-    del h
-    del x
-    c = join(build.dir, "base.c")
-    if not dll:
-        build.log("Building CGO Binary..")
-        with open(c, "w") as f:
-            f.write(Binary(n))
-        r = join(build.dir, v)
-        del v
-        x = [
-            gc,
-            "-mwindows",
-            "-o",
-            r,
-            "-fPIC",
-            "-pthread",
-            "-lwinmm",
-            "-lntdll",
-            "-lws2_32",
-            "-Wl,-x,-s,-nostdlib",
-            c,
-            join(build.dir, "stub.a"),
-        ] + e
-        build.run(x, env=env, wd=build.dir)
-        del x
-        del e
-        del c
-        del n
-        return r
-    build.log("Building CGO DLL..")
-    with open(c, "w") as f:
-        if nes(kw.get("dll_svc")):
-            f.write(
-                DllService(
-                    n,
-                    kw.get("dll_thread"),
-                    kw.get("dll_func"),
-                    kw.get("dll_svc"),
-                    kw.get("dll_timeout"),
-                )
-            )
-        else:
-            f.write(Dll(n, kw.get("dll_thread"), kw.get("dll_func")))
-    r = join(build.dir, v)
-    del v
-    x = [
-        gc,
-        "-c",
-        "-o",
-        f"{r}.o",
-        "-mwindows",
-        "-fPIC",
-        "-pthread",
-        "-lwinmm",
-        "-lntdll",
-        "-lws2_32",
-        "-Wl,-x,-s,-nostdlib",
-        c,
-    ]
-    build.run(x, env=env, wd=build.dir)
-    del x
-    x = [
-        gc,
-        "-shared",
-        "-o",
-        r,
-        "-mwindows",
-        "-fPIC",
-        "-pthread",
-        "-lwinmm",
-        "-lntdll",
-        "-lws2_32",
-        "-Wl,-x,-s,-nostdlib",
-        f"{r}.o",
-        join(build.dir, "stub.a"),
-    ] + e
-    build.run(x, env=env, wd=build.dir)
-    del x
-    del e
-    del c
+def sign_with_target(js, when, file, base, target, name):
+    r = join(base, "grab.go")
+    n = f'"{name}"'
+    if not nes(name):
+        n = "c.Issuer.CommonName"
+    with open(r, "w") as f:
+        f.write(Template(CERT_GEN).substitute(target=target, rename=n))
     del n
-    return r
-
-
-def _go_build(build, f, env, os, arch, ld, out, extra):
-    b = build.get("binary", "go")
-    a = []
-    if build.get("build", "garble"):
-        b = build.get("binary", "garble")
-        if not nes(b):
-            raise ValueError('build: Garble is enabled but "garble" is not in PATH')
-        a += ["-tiny", "-seed=random"]
-        a.append("-literals")  # I think this makes the file bigger
-    a.insert(0, b)
-    del b
-    a += ["build", "-o", out, "-buildvcs=false", "-trimpath"]
-    t = build.get("build", "tags")
-    if not isinstance(t, list):
-        t = list()
-    if not nes(ld):
-        ld = ""
-    if build.get("build", "crypt"):
-        q = [os, arch]
-        if len(t) > 0:
-            q += t
-        build.log("Starting crypt build..")
-        k, v = generate_crypt(q, join(dirname(__file__), "strs.json"))
-        if len(ld) > 0:
-            ld += " "
-        ld += (
-            f"-X 'github.com/iDigitalFlame/xmt/util/crypt.key={k}' "
-            f"-X 'github.com/iDigitalFlame/xmt/util/crypt.payload={v}'"
-        )
-        if "crypt" not in t:
-            t.append("crypt")
-        del k
-        del v
-        del q
-    if len(t) > 0:
-        a += ["-tags", ",".join(t)]
-    del t
-    if len(ld) > 0:
-        a += ["-ldflags", ld]
-    del ld
-    if isinstance(extra, list) and len(extra) > 0:
-        a += extra
-    a.append(f)
-    build.run(a, env=env, trunc=build.get("build", "crypt"))
-    del a
-
-
-class Options(dict):
-    def __init__(self, p=None):
-        dict.__init__(self)
-        self.load(p)
-
-    def __str__(self):
-        return dumps(self, indent=4, sort_keys=True)
-
-    def load(self, p):
-        if not nes(p):
-            return
-        with open(p) as f:
-            d = loads(f.read())
-        if not isinstance(d, dict):
-            raise ValueError(f'load: file "{p}" is not valid')
-        if len(d) == 0:
-            return
-        for k, v in _VALIDS.items():
-            if k not in d:
-                continue
-            if not isinstance(d[k], dict) or len(d[k]) == 0:
-                continue
-            self[k] = dict()
-            for i in v:
-                if i not in d[k]:
-                    continue
-                self[k][i] = d[k][i]
-        del d
-
-    def save(self, p):
-        if not nes(p):
-            return
-        with open(p, "w") as f:
-            f.write(dumps(self, indent=4, sort_keys=True))
-
-    def validate(self):
-        self.get("binary", "upx", which("upx"))
-        self.get("binary", "garble", which("garble"))
-        if not nes(self.get("binary", "go", which("go"))):
-            raise ValueError('binary: "go" was not found')
-        if not nes(self.get("binary", "gcc", which("gcc"))):
-            raise ValueError('binary: "gcc" was not found')
-        if not nes(self.get("binary", "openssl", which("openssl"))):
-            raise ValueError('binary: "openssl" was not found')
-        if not nes(self.get("binary", "osslsigncode", which("osslsigncode"))):
-            raise ValueError('binary: "osslsigncode" was not found')
-        if not nes(self.get("binary", "wgcc32", which("i686-w64-mingw32-gcc"))):
-            raise ValueError('binary: "i686-w64-mingw32-gcc" was not found')
-        if not nes(self.get("binary", "wgcc64", which("x86_64-w64-mingw32-gcc"))):
-            raise ValueError('binary: "x86_64-w64-mingw32-gcc" was not found')
-        if not nes(self.get("binary", "wres32", which("i686-w64-mingw32-windres"))):
-            raise ValueError('binary: "i686-w64-mingw32-windres" was not found')
-        if not nes(self.get("binary", "wres64", which("x86_64-w64-mingw32-windres"))):
-            raise ValueError('binary: "x86_64-w64-mingw32-windres" was not found')
-        if self.get("config", "load", True) and not nes(self.get("config", "pipe")):
-            raise ValueError('config: "pipe" is missing/empty')
-        if not self.get("config", "ignore", False):
-            if not nes(self.get("config", "guard")):
-                raise ValueError('config: "guard" is missing/empty')
-        v = self.get("config", "key")
-        if isinstance(v, (bytes, bytearray)) and len(v) > 0:
-            self.set("config", "key", v.encode("UTF-8"))
-        del v
-        self.get("config", "critical", True)
-        # self.get("build", "root")
-        self.get("build", "tags", ["implant", "nojson", "noproxy"])
-        self.get("build", "tiny", False)
-        self.get("build", "crypt", False)
-        self.get("build", "garble", True)
-
-    def set(self, b, n, v):
-        if b not in self:
-            self[b] = dict()
-        self[b][n] = v
-
-    def get(self, b, n, d=None):
-        if not nes(b) or not nes(n):
-            return d
-        if b not in self:
-            self[b] = dict()
-        # if d is None:
-        #    return None
-        if n not in self[b]:
-            self[b][n] = d
-            return d
-        return self[b][n]
+    js.log.debug(f'Wrote cert grabbing script to "{r}".')
+    t = join(base, "gens")
+    js._exec([js.opts.get_bin("go"), "run", r, t])
+    remove(r)
+    del r
+    c, p = t + ".crt", t + ".pem"
+    if not isfile(p) or not isfile(c):
+        raise ValueError("certificate script did not result in any valid output")
+    sign_with_certs(js, when, file, c, p)
+    remove(c)
+    remove(p)
+    del c, p, t

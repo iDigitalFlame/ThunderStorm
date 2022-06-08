@@ -1,4 +1,19 @@
 #!/usr/bin/python3
+# Copyright (C) 2021 - 2022 iDigitalFlame
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
 
 from os import getenv
 from base64 import b64encode
@@ -835,18 +850,17 @@ class _Parser(ArgumentParser):
     def _setup(self):
         self.add("-a", "--api", type=str, dest="cirrus", default=getenv("DOPPLER_HOST"))
         self.add("-p", "--password", type=str, dest="pw", default=getenv("DOPPLER_PW"))
-
+        # List Arguments
         self.add("-j", "--jobs", action="store_true", dest="list_jobs")
         self.add("-s", "--scripts", action="store_true", dest="list_scripts")
         self.add("-n", "--profiles", action="store_true", dest="list_profiles")
         self.add("-l", "--listeners", action="store_true", dest="list_listeners")
-
         self.add("-b", "--bolts", action="store_true", dest="list_bolts")
         self.add("-B", "--bolts-adv", action="store_true", dest="list_bolts_adv")
-
+        # Execution Arguments
         self.add("-c", "--cmd", type=str, dest="cmd")
         self.add("-w", "--timeout", type=str, dest="timeout")
-
+        # CLI Modification Arguments
         self.add("-z", "--input", type=str, dest="input")
         self.add("-k", "--oneline", type=str, dest="oneline")
         self.add("-i", "--interact", action="store_true", dest="shell")
