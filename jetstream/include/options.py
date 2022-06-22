@@ -383,6 +383,26 @@ def _vet_list_strs(name, v, null=False, empty=True):
 
 
 class Rc(object):
+    __slots__ = (
+        "file",
+        "json",
+        "icon",
+        "title",
+        "enabled",
+        "version",
+        "company",
+        "product",
+        "filename",
+        "copyright",
+        "icon_multi",
+        "title_multi",
+        "version_multi",
+        "product_multi",
+        "company_multi",
+        "filename_multi",
+        "copyright_multi",
+    )
+
     def __init__(self, v):
         self.file = v.get("file")
         self.json = v.get("json")
@@ -390,54 +410,6 @@ class Rc(object):
         if isinstance(self.json, str) and len(self.json) > 0:
             return self._file(self.json)
         self._dict(v, False)
-
-    def generate(self, n):
-        if self.icon_multi.enabled:
-            i = self.icon_multi.pick()
-        else:
-            i = self.icon
-        if self.title_multi.enabled:
-            t = self.title_multi.pick()
-        else:
-            t = self.title
-        if self.version_multi.enabled:
-            v = self.version_multi.pick()
-        else:
-            v = self.version
-        if self.product_multi.enabled:
-            p = self.product_multi.pick()
-        else:
-            p = self.product
-        if self.company_multi.enabled:
-            c = self.company_multi.pick()
-        else:
-            c = self.company
-        if self.filename_multi.enabled:
-            f = self.filename_multi.pick()
-        else:
-            f = self.filename
-        if self.copyright_multi.enabled:
-            r = self.copyright_multi.pick()
-        else:
-            r = self.copyright
-        if len(f) == 0:
-            f = n
-        if len(v) == 0:
-            v = "0.0.0.0"
-        if len(i) > 0:
-            i = f'IDI_ICON_128 ICON "{i}"\n'
-        d = RC.format(
-            file=f,
-            icon=i,
-            title=t,
-            company=c,
-            product=p,
-            copyright=r,
-            version_string=v,
-            version=v.replace(".", ","),
-        )
-        del i, t, v, p, c, f, r
-        return d
 
     def _file(self, p):
         p = expanduser(expandvars(self.json))
@@ -475,8 +447,61 @@ class Rc(object):
         self.filename_multi = _Multi(d.get("filename_multi"), "filename", ex)
         self.copyright_multi = _Multi(d.get("copyright_multi"), "copyright", ex)
 
+    def generate(self, n, library):
+        if not library:
+            if self.icon_multi.enabled:
+                i = self.icon_multi.pick()
+            else:
+                i = self.icon
+        else:
+            i = ""
+        if self.title_multi.enabled:
+            t = self.title_multi.pick()
+        else:
+            t = self.title
+        if self.version_multi.enabled:
+            v = self.version_multi.pick()
+        else:
+            v = self.version
+        if self.product_multi.enabled:
+            p = self.product_multi.pick()
+        else:
+            p = self.product
+        if self.company_multi.enabled:
+            c = self.company_multi.pick()
+        else:
+            c = self.company
+        if self.filename_multi.enabled:
+            f = self.filename_multi.pick()
+        else:
+            f = self.filename
+        if self.copyright_multi.enabled:
+            r = self.copyright_multi.pick()
+        else:
+            r = self.copyright
+        if len(f) == 0:
+            f = n
+        if len(v) == 0:
+            v = "0.0.0.0"
+        if not library and len(i) > 0:
+            i = f'IDI_ICON_128 ICON "{i}"\n'
+        d = RC.format(
+            file=f,
+            icon=i,
+            title=t,
+            company=c,
+            product=p,
+            copyright=r,
+            version_string=v,
+            version=v.replace(".", ","),
+        )
+        del i, t, v, p, c, f, r
+        return d
+
 
 class _Multi(object):
+    __slots__ = ("_cache", "file", "chance", "default", "choices", "enabled")
+
     def __init__(self, v, n, ex=True):
         if v is None:
             return
@@ -521,6 +546,8 @@ class _Multi(object):
 
 
 class Logger(object):
+    __slots__ = ("_log", "_prefix")
+
     def __init__(self, name, level, file=None):
         if not isinstance(level, str) or len(level) == 0:
             raise ValueError('"level" must be a non-empty String!')
@@ -610,14 +637,13 @@ class Logger(object):
 
 
 class Options(object):
+    __slots__ = ("lock", "_gens", "_temps", "_config")
+
     def __init__(self):
-        self._rc = None
         self.lock = False
-        self._sign = None
         self._gens = None
         self._temps = None
         self._config = None
-        self._cache = dict()
 
     def vet(self):
         d = {
@@ -725,14 +751,14 @@ class Options(object):
         self._temps = dict()
         if isinstance(v, list) and len(v) > 0:
             for i in v:
-                k = i
-                n = i.find(".")
-                if n > 0:
-                    k = i[:n]
+                # k = i
+                # n = i.find(".")
+                # if n > 0:
+                #    k = i[:n]
                 with open(join(d, i)) as f:
-                    self._temps[k] = Template(f.read())
-                del k
-                del n
+                    self._temps[i] = Template(f.read())
+                # del k
+                # del n
         return self._temps
 
     def get(self, n, default=None):

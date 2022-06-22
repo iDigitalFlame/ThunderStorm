@@ -15,33 +15,30 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-from glob import glob
 from json import dumps
-from re import compile
-from requests import get
 from tempfile import mkdtemp
 from include.util import nes
+from sys import exit, stderr
 from include.options import Rc
 from include.args import Parser
-from sys import exit, stderr, argv
+from shutil import copy, which, rmtree
 from subprocess import run, CalledProcessError
-from shutil import copy, which, copytree, rmtree
 from include.crypt import generate_crypt, strip_binary
-from os import getcwd, makedirs, symlink, remove, environ
-from include.builder import OS, ARCH, MANIFEST, upx, sign, random_chars
+from os import getcwd, makedirs, symlink, remove, environ, readlink, chmod
+from include.builder import OS, ARCH, MANIFEST, upx, sign, random_chars, tiny_root
 from os.path import (
     join,
     isabs,
     isdir,
+    islink,
     isfile,
     relpath,
     dirname,
+    normpath,
     basename,
     expanduser,
     expandvars,
 )
-
-_REPO_URL = "https://raw.githubusercontent.com/iDigitalFlame/TinyPatchedGo/main"
 
 _DEFAULT_GO = "go"
 _DEFAULT_GCC = "gcc"
@@ -57,115 +54,11 @@ _DEFAULT_OSSLSIGNCODE = "osslsigncode"
 _CGO_MAIN_STD = "\nfunc main() {\n"
 _CGO_MAIN_REPLACE = "\nfunc main() {{}}\n\n//export {export}\nfunc {export}() {{\n"
 
+_CGO_SECONDARY_STD = "\nfunc secondary() {\n"
+_CGO_SECONDARY_REPLACE = "\n//export {export}\nfunc {export}() {{\n"
+
 _CGO_IMPORT_STD = "package main\n\n"
 _CGO_IMPORT_REPLACE = 'package main\n\nimport "C"\n\n'
-
-_HELP_TEXT = """ JetStream: ThunderStorm Builder
-Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
-(c) 2019 - 2022 iDigitalFlame
-
-{proc}
-
-Basic Arguments
-  -h
-  --help
-  -c
-  --config
-  -C
-  --clone
-  -g
-  --generator
-  -G
-  --generators
-  -o
-  --output
-  -s
-  --save
-  -k
-  --check
-  -r
-  --read-only
-  -t
-  --templates
-
-Output Arguments
-  -q
-  --quiet
-  -f
-  --log-file
-  -i
-  --log-level
-
-Build Arguments
-  -d
-  --dir
-  -l
-  --link
-  -z
-  --no-clean
-  -D
-  --library
-
-Options Overrides
- Binary Options
-   --bin-go
-   --bin-gcc
-   --bin-upx
-   --bin-garble
-   --bin-wgcc32
-   --bin-wgcc64
-   --bin-wres32
-   --bin-wres64
-   --bin-openssl
-   --bin-osslsigncode
-
- Build Settings Options
-   --tags
-   --goroot
-   --upx
-   --cgo
-   --crypt
-   --strip
-   --grable
-   --compact
-   --no-upx
-   --no-cgo
-   --no-crypt
-   --no-strip
-   --no-garble
-   --no-compact
-
- Support Options
-   -e
-   --entry
-   --manifest
-
-  Signing Arguments
-   --sign
-   --pfx
-   --pfx-pw
-   --cert
-   --pem
-   --spoof
-   --spoof-name
-   --date
-   --date-range
-
-  Resource Arguments
-   --rc
-   --rc-file
-   --rc-json
-   --rc-icon
-   --rc-title
-   --rc-version
-   --rc-company
-   --rc-product
-   --rc-filename
-   --rc-copyright
-"""
-
-_THROW = compile(r"throw\(")
-_PANIC = compile(r"panic\(")
 
 
 def _get_stdout(r):
@@ -197,16 +90,7 @@ def _sign_check(o):
     )
 
 
-def _wget(url, path):
-    r = get(url, timeout=5, allow_redirects=True)
-    r.raise_for_status()
-    with open(path, "wb") as f:
-        f.write(r.content)
-    r.close()
-    del r
-
-
-def _set_empty(o, v, d):
+def _which_empty(o, v, d):
     r = o.get(v)
     if nes(r):
         return
@@ -214,160 +98,6 @@ def _set_empty(o, v, d):
     if w is not None:
         o.set(v, w)
     del w, r
-
-
-def tiny_root(old, new):
-    try:
-        copytree(old, new)
-    except OSError as err:
-        raise OSError(f'Copytree from "{old}" to "{new}"') from err
-    for i in glob(join(new, "src", "fmt", "*.go"), recursive=False):
-        remove(i)
-    for i in glob(join(new, "src", "unicode", "*.go"), recursive=False):
-        remove(i)
-    _wget(f"{_REPO_URL}/fmt/scan.go", join(new, "src", "fmt", "scan.go"))
-    _wget(f"{_REPO_URL}/fmt/print.go", join(new, "src", "fmt", "print.go"))
-    _wget(f"{_REPO_URL}/fmt/quick.go", join(new, "src", "fmt", "quick.go"))
-    _wget(f"{_REPO_URL}/runtime/print.go", join(new, "src", "runtime", "print.go"))
-    _wget(f"{_REPO_URL}/unicode/unicode.go", join(new, "src", "unicode", "unicode.go"))
-    _sed(
-        join(new, "src", "net", "http", "transport.go"),
-        [
-            "return envProxyFunc()(req.URL)",
-            "envProxyFuncValue = httpproxy.FromEnvironment().ProxyFunc()",
-            '"golang.org/x/net/http/httpproxy"',
-        ],
-        [
-            "return req.URL, nil",
-            "envProxyFuncValue = nil",
-            "",
-        ],
-    )
-    _sed(
-        join(new, "src", "net", "http", "h2_bundle.go"),
-        [
-            "if a, err := idna.ToASCII(host); err == nil {",
-            '"golang.org/x/net/idna"',
-        ],
-        [
-            'if a := ""; len(a) > 0 {',
-            "",
-        ],
-    )
-    _sed(
-        join(new, "src", "net", "http", "request.go"),
-        [
-            "return idna.Lookup.ToASCII(v)",
-            '"golang.org/x/net/idna"',
-        ],
-        [
-            "return v, nil",
-            "",
-        ],
-    )
-    _sed(
-        join(
-            new,
-            "src",
-            "vendor",
-            "golang.org",
-            "x",
-            "net",
-            "http",
-            "httpguts",
-            "httplex.go",
-        ),
-        [
-            "host, err = idna.ToASCII(host)",
-            '"golang.org/x/net/idna"',
-        ],
-        [
-            "host, err = host, nil",
-            "",
-        ],
-    )
-    _sed(
-        join(new, "src", "runtime", "proc.go"),
-        ['if n, ok := atoi32(gogetenv("GOMAXPROCS")); ok && n > 0 {'],
-        ["if n, ok := int32(0), false; ok && n > 0 {"],
-    )
-    _sed(
-        join(new, "src", "runtime", "runtime1.go"),
-        [
-            'for p := gogetenv("GODEBUG"); p != ""; {',
-            'setTraceback(gogetenv("GOTRACEBACK"))',
-        ],
-        ['for p := gogetenv(""); p != ""; {', 'setTraceback("none")'],
-    )
-    _sed(
-        join(new, "src", "runtime", "mgcpacer.go"),
-        ['p := gogetenv("GOGC")'],
-        ['p := ""'],
-    )
-    _sed(
-        join(new, "src", "runtime", "extern.go"),
-        ['s := gogetenv("GOROOT")'],
-        ['s := "null"'],
-    )
-    _sed(
-        join(new, "src", "time", "zoneinfo_windows.go"),
-        [
-            "stdName := syscall.UTF16ToString(z.StandardName[:])",
-            "a, ok := abbrs[stdName]",
-            "a, ok = abbrs[englishName]",
-            "return a.std, a.dst",
-            "return extractCAPS(stdName), extractCAPS(dstName)",
-            "englishName, err := toEnglishName(stdName, dstName)",
-            "dstName := syscall.UTF16ToString(z.DaylightName[:])",
-        ],
-        [
-            'return "GMT", "GMT"',
-            "ok := true",
-            "ok = true",
-            'return "GMT", "GMT"',
-            'return "GMT", "GMT"',
-            "var err error",
-            "",
-        ],
-    )
-    remove(join(new, "src", "time", "zoneinfo_abbrs_windows.go"))
-    for i in glob(join(new, "src", "**", "**.go"), recursive=True):
-        if new not in i or not isfile(i):
-            continue
-        _remap_file(i, _PANIC, True, 'panic("")')
-        _remap_file(i, _THROW, False, 'throw("")')
-    for i in glob(join(new, "src", "time", "zoneinfo_*.go"), recursive=False):
-        if not isfile(i):
-            continue
-        _sed(i, ['runtime.GOROOT() + "/lib/time/zoneinfo.zip",'], ["runtime.GOROOT(),"])
-
-
-def _sed(path, old, new):
-    with open(path, "r") as f:
-        d = f.read()
-    with open(path, "w") as f:
-        for x in range(0, len(old)):
-            d = d.replace(old[x], new[x])
-        f.write(d)
-    del d
-
-
-def _find_next_token(s, i):
-    e, c = i, 0
-    while True:
-        if e >= len(s):
-            print(i, e, len(s), s[e:i])
-        if s[e] == ")":
-            if c == 0:
-                if e < 3 or s[e - 3 : e + 1] != "no )":
-                    break
-            else:
-                c -= 1
-        if s[e] == "(" and not s[i : i + 15].startswith('"panicwrap: no '):
-            c += 1
-        e += 1
-    del c
-    return e + 1
 
 
 def _print_rc_config(o, file):
@@ -459,38 +189,13 @@ def _print_cmd(v, trunc, ns=False):
     return " ".join(o)
 
 
-def _remap_file(p, regexp, no_concat, repl):
-    with open(p) as f:
-        b = f.read()
-    if len(b) == 0 or "package" not in b:
-        return
-    r = regexp.finditer(b)
-    if r is None:
-        return
-    c = b
-    for m in r:
-        if m.start() == 0 or not b[m.start() - 1].isspace():
-            continue
-        e = _find_next_token(b, m.end())
-        v = b[m.start() : e]
-        if v.endswith("string)"):
-            continue
-        if no_concat and (v[6] != '"' or "+" in v):
-            continue
-        if v not in c:
-            raise KeyError(v)
-        c = c.replace(v, repl, 1)
-        del e, v
-    with open(p, "w") as f:
-        f.write(c)
-    del r, c, b
-
-
 class JetStream(object):
-    def __init__(self, options, gen, logger=None):
+    __slots__ = ("log", "opts", "templates", "prefix")
+
+    def __init__(self, options, logger=None, prefix=True):
         self.log = logger
         self.opts = options
-        self.generator = gen
+        self.prefix = prefix
         self.templates = self.opts.templates()
         if self.log is not None:
             return
@@ -499,38 +204,29 @@ class JetStream(object):
     @staticmethod
     def cmdline():
         try:
-            o, g, r, h = Parser().parse_with_load()
+            o, g, r, h = Parser.with_load()
         except ValueError as err:
             print(f"Error: {err}!", file=stderr)
             exit(1)
         if h:
-            print(_HELP_TEXT.format(proc=argv[0]), file=stderr)
-            if g is not None:
-                print(f'Current Generator "{g.name()}":')
-                try:
-                    print(g.argparse_help(), file=stderr)
-                except Exception:
-                    pass
-            else:
-                print(file=stderr)
-            exit(2)
+            Parser.print_help(g)
         try:
-            v = JetStream(o, g)
-            osv, arch = v.check(r.target, r.config, r.save, r.library)
+            v = JetStream(o)
+            t, a = v.check(r.target, g, r.config, r.save, r.library)
         except Exception as err:
             print(f"Error: {err}!", file=stderr)
             exit(1)
-        del g, o
+        del o
         if not r.quiet:
-            v.print_options(osv, arch)
+            v.print_options(t, a, g)
         if r.check:
             return v
         try:
-            v.start(osv, arch, r.library, r.output, r.no_clean)
-        except Exception as err:
+            v.run(t, a, g, r.library, r.output, r.no_clean)
+        except KeyboardInterrupt as err:
             print(f"Error: {err}!", file=stderr)
             exit(1)
-        del r
+        del r, t, a, g
         return v
 
     def __enter__(self):
@@ -540,30 +236,35 @@ class JetStream(object):
     def __exit__(self, *_):
         # Syntax sugar to use the "with" statement, but does clear the logging
         # prefix.
+        if not self.prefix:
+            return
         self.log.prefix(None)
 
     def __call__(self, prefix):
         # Syntax sugar to use the "with" statement, but does set the logging
         # prefix.
+        if not self.prefix:
+            return self
         self.log.prefix(prefix)
         return self
 
     def _fill(self, config, save):
-        _set_empty(self.opts, "build.bins.go", _DEFAULT_GO)
-        _set_empty(self.opts, "build.bins.gcc", _DEFAULT_GCC)
-        _set_empty(self.opts, "build.bins.upx", _DEFAULT_UPX)
-        _set_empty(self.opts, "build.bins.wres32", _DEFAULT_WRES32)
-        _set_empty(self.opts, "build.bins.wres64", _DEFAULT_WRES64)
-        _set_empty(self.opts, "build.bins.wgcc32", _DEFAULT_WGCC32)
-        _set_empty(self.opts, "build.bins.wgcc64", _DEFAULT_WGCC64)
-        _set_empty(self.opts, "build.bins.garble", _DEFAULT_GARBLE)
-        _set_empty(self.opts, "build.bins.openssl", _DEFAULT_OPENSSL)
-        _set_empty(self.opts, "build.bins.osslsigncode", _DEFAULT_OSSLSIGNCODE)
-        if config and save:
-            self.debug(f'Saving configuration at "{config}".')
-            self.opts.save(config)
+        _which_empty(self.opts, "build.bins.go", _DEFAULT_GO)
+        _which_empty(self.opts, "build.bins.gcc", _DEFAULT_GCC)
+        _which_empty(self.opts, "build.bins.upx", _DEFAULT_UPX)
+        _which_empty(self.opts, "build.bins.wres32", _DEFAULT_WRES32)
+        _which_empty(self.opts, "build.bins.wres64", _DEFAULT_WRES64)
+        _which_empty(self.opts, "build.bins.wgcc32", _DEFAULT_WGCC32)
+        _which_empty(self.opts, "build.bins.wgcc64", _DEFAULT_WGCC64)
+        _which_empty(self.opts, "build.bins.garble", _DEFAULT_GARBLE)
+        _which_empty(self.opts, "build.bins.openssl", _DEFAULT_OPENSSL)
+        _which_empty(self.opts, "build.bins.osslsigncode", _DEFAULT_OSSLSIGNCODE)
+        if not config or not save:
+            return
+        self.log.debug(f'Saving configuration at "{config}".')
+        self.opts.save(config)
 
-    def _step_protect(self, base, file):
+    def protect(self, base, file):
         if self.opts.get_option("strip"):
             self.log.debug("Sanitizing and stripping binary..")
             strip_binary(file, self.log.debug)
@@ -579,22 +280,50 @@ class JetStream(object):
                 file,
             )
 
-    def _step_generate(self, base, workspace):
-        self.log.debug(f'Using Generator "{self.generator.name()}".')
-        o = self.generator.run(self.opts, base, workspace, self.templates)
+    def generate(self, gen, base, workspace):
+        self.log.debug(f'Using Generator "{gen.name}".')
+        o = gen.run(self.opts, base, workspace, self.templates)
         if not nes(o):
             raise ValueError('generator "run" result is invalid')
         if not isfile(o):
             raise ValueError(f'generator "run" result "{o}" is not a file')
         workspace["main"] = o
-        self.log.debug(f'Generator "{self.generator.name()}" "run" returned "{o}".')
+        self.log.debug(f'Generator "{gen.name}" "run" returned "{o}".')
         if not workspace["cgo"]:
             return o
         self.log.debug("Preparing CGO entry files..")
         if not workspace["export"]:
             workspace["export"] = random_chars(12)
         self.log.debug(f'CGO entry point is "{workspace["export"]}".')
-        c, i = self.generator.run_cgo(
+        v = workspace.get("secondary")
+        if not nes(v):
+            v = random_chars(12)
+        k = False
+        with open(o) as f:
+            d = f.read()
+        if _CGO_MAIN_STD not in d:
+            raise ValueError(f'file "{o}" does not have a valid "main"')
+        if _CGO_IMPORT_STD not in d:
+            raise ValueError(f'file "{o}" does not have a valid "package main"')
+        if _CGO_SECONDARY_STD in d:
+            self.log.debug("Secondary CGO entrypoint found!")
+            workspace["secondary"], k = v, True
+            self.log.debug(f'CGO secondary entry point is "{v}".')
+        else:
+            workspace["secondary"] = workspace["export"]
+        self.log.debug(f'Performing CGO entrypoint replacements on "{o}".')
+        with open(o, "w") as f:
+            g = d.replace(_CGO_IMPORT_STD, _CGO_IMPORT_REPLACE, 1).replace(
+                _CGO_MAIN_STD, _CGO_MAIN_REPLACE.format(export=workspace["export"])
+            )
+            if k:
+                g = g.replace(
+                    _CGO_SECONDARY_STD, _CGO_SECONDARY_REPLACE.format(export=v)
+                )
+            f.write(g)
+            del g
+        del d, v, k
+        c, i = gen.run_cgo(
             workspace["export"], self.opts, base, workspace, self.templates
         )
         if not nes(c) or not nes(i):
@@ -602,135 +331,11 @@ class JetStream(object):
         if not isfile(c):
             raise ValueError(f'generator "run_cgo" result "{c}" is not a file')
         workspace["cgo_main"], workspace["cgo_out"] = c, i
-        self.log.debug(
-            f'Generator "{self.generator.name()}" "run_cgo" returned "{c}" and "{i}".'
-        )
-        with open(o) as f:
-            d = f.read()
-        if _CGO_MAIN_STD not in d:
-            raise ValueError(f'file "{o}" does not have a valid "main"')
-        if _CGO_IMPORT_STD not in d:
-            raise ValueError(f'file "{o}" does not have a valid "package main"')
-        self.log.debug(f'Performing CGO entrypoint replacements on "{o}".')
-        with open(o, "w") as f:
-            f.write(
-                d.replace(_CGO_IMPORT_STD, _CGO_IMPORT_REPLACE, 1).replace(
-                    _CGO_MAIN_STD, _CGO_MAIN_REPLACE.format(export=workspace["export"])
-                )
-            )
-        del d, c
+        self.log.debug(f'Generator "{gen.name}" "run_cgo" returned "{c}" and "{i}".')
+        del c, i
         return o
 
-    def print_options(self, osv, arch, file=None):
-        print(f'JetSteam Load complete!\n- | Configured Options\n{"="*60}', file=file)
-        print(f'- | {"Target:":22}{osv}/{arch}', file=file)
-        print(f'- | {"Generator:":22}{self.generator.name()}\n- |', file=file)
-        print("- | Binary Configuration", file=file)
-        print(f'- | = {"go:":20}{self.opts.get_bin("go")}', file=file)
-        print(f'- | = {"gcc:":20}{self.opts.get_bin("gcc")}', file=file)
-        print(f'- | = {"upx:":20}{self.opts.get_bin("upx")}', file=file)
-        print(f'- | = {"garble:":20}{self.opts.get_bin("garble")}', file=file)
-        print(f'- | = {"wgcc32:":20}{self.opts.get_bin("wgcc32")}', file=file)
-        print(f'- | = {"wgcc64:":20}{self.opts.get_bin("wgcc64")}', file=file)
-        print(f'- | = {"wres32:":20}{self.opts.get_bin("wres32")}', file=file)
-        print(f'- | = {"wres64:":20}{self.opts.get_bin("wres64")}', file=file)
-        print(f'- | = {"openssl:":20}{self.opts.get_bin("openssl")}', file=file)
-        print(
-            f'- | = {"osslsigncode:":20}{self.opts.get_bin("osslsigncode")}', file=file
-        )
-        print("- | Build Configuration", file=file)
-        if self.opts.get_build("dir"):
-            print(f'- | = {"Working Dir:":20}{self.opts.get_build("dir")}', file=file)
-        else:
-            print(f'- | = {"Working Dir:":20}[temp directory]', file=file)
-        print(f'- | = {"Linked Dir:":20}{self.opts.get_build("dir_link")}', file=file)
-        print("- | Build Modifications", file=file)
-        print(f'- | = {"CGO:":20}{self.opts.get_option("cgo")}', file=file)
-        print(f'- | = {"UPX:":20}{self.opts.get_option("upx")}', file=file)
-        print(f'- | = {"Crypt:":20}{self.opts.get_option("crypt")}', file=file)
-        print(f'- | = {"Strip:":20}{self.opts.get_option("strip")}', file=file)
-        print(f'- | = {"Garble:":20}{self.opts.get_option("garble")}', file=file)
-        print(f'- | = {"Compact:":20}{self.opts.get_option("compact")}', file=file)
-        print(f'- | = {"GOROOT:":20}{self.opts.get_option("goroot")}', file=file)
-        print(
-            f'- | = {"Build Tags:":20}{",".join(self.opts.get_option("tags"))}',
-            file=file,
-        )
-        if osv != "windows":
-            return
-        print("- | Support Configuration", file=file)
-        print(f'- | = {"Minifest:":20}{self.opts.get_support("manifest")}', file=file)
-        if self.opts.get_option("cgo"):
-            if self.opts.get_support("cgo_export"):
-                print(
-                    f'- | = {"CGO Export:":20}{self.opts.get_support("cgo_export")}',
-                    file=file,
-                )
-            else:
-                print(f'- | = {"CGO Export:":20}[randomized]', file=file)
-        print("- | Signing Configuration", file=file)
-        print(f'- | = {"Enabled:":20}{self.opts.get_sign("enabled")}', file=file)
-        if self.opts.get_sign("enabled"):
-            _print_sign_config(self.opts, file)
-        print("- | Resource Configuration", file=file)
-        print(f'- | = {"Enabled:":20}{self.opts.get_rc("enabled")}', file=file)
-        if self.opts.get_rc("enabled"):
-            _print_rc_config(self.opts, file)
-        self.generator.print_options(self.opts, file)
-
-    def check(self, target, config, save, library):
-        if not nes(target) or "/" not in target:
-            raise ValueError(f'invalid target "{target}"')
-        n = target.find("/")
-        if n is None or n < 3:
-            raise ValueError(f'invalid target "{target}"')
-        o = target[:n].lower().strip()
-        if o not in OS:
-            raise ValueError(f'invalid os "{o}"')
-        a = target[n + 1 :].lower().strip()
-        del n
-        if a not in ARCH:
-            raise ValueError(f'invalid arch "{a}"')
-        if o not in ARCH[a]:
-            raise ValueError("invalid arch/os combo")
-        self._fill(config, save)
-        if not nes(self.opts.get_bin("go")):
-            raise ValueError('binary target "go" missing')
-        if o == "windows":
-            if a.endswith("64"):
-                r, g = self.opts.get_bin("wres64"), self.opts.get_bin("wgcc64")
-            else:
-                r, g = self.opts.get_bin("wres32"), self.opts.get_bin("wgcc32")
-            if not nes(r):
-                raise ValueError(f'binary target "wres" missing for "{target}"')
-            if not nes(g):
-                raise ValueError(f'binary target "wgcc" missing for "{target}"')
-        else:
-            if library:
-                raise ValueError(
-                    "cannot use '-D' / '--library' for a non-Windows target"
-                )
-            if self.opts.get_option("cgo"):
-                raise ValueError("can only use CGO with Windows")
-        if self.opts.get_option("upx") and not nes(self.opts.get_bin("upx")):
-            raise ValueError('"upx" is enabled but "upx" binary is missing')
-        if self.opts.get_option("garble") and not nes(self.opts.get_bin("garble")):
-            raise ValueError('"garble" is enabled but "garble" binary is missing')
-        if self.opts.get("build.support.sign.enabled"):
-            if not nes(self.opts.get_bin("openssl")):
-                raise ValueError('"sign" is enabled but "openssl" binary is missing')
-            if not nes(self.opts.get_bin("osslsigncode")):
-                raise ValueError(
-                    '"sign" is enabled but "osslsigncode" binary is missing'
-                )
-            if not _sign_check(self.opts):
-                raise ValueError(
-                    '"sign" is enabled but certificate configuration is invalid'
-                )
-        self.generator.check(self.opts)
-        return o, a
-
-    def _step_build(self, base, workspace, rc, file, out):
+    def build(self, base, workspace, rc, file, out):
         e = environ.copy()
         e["GOOS"] = workspace["os"]
         e["GOARCH"] = workspace["arch"]
@@ -785,7 +390,114 @@ class JetStream(object):
         del e
         return o
 
-    def start(self, osv, arch, library, output, no_clean):
+    def print_options(self, osv, arch, gen, file=None):
+        print(f'JetSteam Load complete!\n- | Configured Options\n{"="*60}', file=file)
+        print(f'- | {"Target:":22}{osv}/{arch}', file=file)
+        print(f'- | {"Generator:":22}{gen.name}\n- |', file=file)
+        print("- | Binary Configuration", file=file)
+        print(f'- | = {"go:":20}{self.opts.get_bin("go")}', file=file)
+        print(f'- | = {"gcc:":20}{self.opts.get_bin("gcc")}', file=file)
+        print(f'- | = {"upx:":20}{self.opts.get_bin("upx")}', file=file)
+        print(f'- | = {"garble:":20}{self.opts.get_bin("garble")}', file=file)
+        print(f'- | = {"wgcc32:":20}{self.opts.get_bin("wgcc32")}', file=file)
+        print(f'- | = {"wgcc64:":20}{self.opts.get_bin("wgcc64")}', file=file)
+        print(f'- | = {"wres32:":20}{self.opts.get_bin("wres32")}', file=file)
+        print(f'- | = {"wres64:":20}{self.opts.get_bin("wres64")}', file=file)
+        print(f'- | = {"openssl:":20}{self.opts.get_bin("openssl")}', file=file)
+        print(
+            f'- | = {"osslsigncode:":20}{self.opts.get_bin("osslsigncode")}', file=file
+        )
+        print("- | Build Configuration", file=file)
+        if self.opts.get_build("dir"):
+            print(f'- | = {"Working Dir:":20}{self.opts.get_build("dir")}', file=file)
+        else:
+            print(f'- | = {"Working Dir:":20}[temp directory]', file=file)
+        print(f'- | = {"Linked Dir:":20}{self.opts.get_build("dir_link")}', file=file)
+        print("- | Build Modifications", file=file)
+        print(f'- | = {"CGO:":20}{self.opts.get_option("cgo")}', file=file)
+        print(f'- | = {"UPX:":20}{self.opts.get_option("upx")}', file=file)
+        print(f'- | = {"Crypt:":20}{self.opts.get_option("crypt")}', file=file)
+        print(f'- | = {"Strip:":20}{self.opts.get_option("strip")}', file=file)
+        print(f'- | = {"Garble:":20}{self.opts.get_option("garble")}', file=file)
+        print(f'- | = {"Compact:":20}{self.opts.get_option("compact")}', file=file)
+        print(f'- | = {"GOROOT:":20}{self.opts.get_option("goroot")}', file=file)
+        print(
+            f'- | = {"Build Tags:":20}{",".join(self.opts.get_option("tags"))}',
+            file=file,
+        )
+        if osv != "windows":
+            return
+        print("- | Support Configuration", file=file)
+        print(f'- | = {"Minifest:":20}{self.opts.get_support("manifest")}', file=file)
+        if self.opts.get_option("cgo"):
+            if self.opts.get_support("cgo_export"):
+                print(
+                    f'- | = {"CGO Export:":20}{self.opts.get_support("cgo_export")}',
+                    file=file,
+                )
+            else:
+                print(f'- | = {"CGO Export:":20}[randomized]', file=file)
+        print("- | Signing Configuration", file=file)
+        print(f'- | = {"Enabled:":20}{self.opts.get_sign("enabled")}', file=file)
+        if self.opts.get_sign("enabled"):
+            _print_sign_config(self.opts, file)
+        print("- | Resource Configuration", file=file)
+        print(f'- | = {"Enabled:":20}{self.opts.get_rc("enabled")}', file=file)
+        if self.opts.get_rc("enabled"):
+            _print_rc_config(self.opts, file)
+        gen.print_options(self.opts, file)
+
+    def check(self, target, gen, config, save, library):
+        if not nes(target) or "/" not in target:
+            raise ValueError(f'invalid target "{target}"')
+        n = target.find("/")
+        if n is None or n < 3:
+            raise ValueError(f'invalid target "{target}"')
+        o = target[:n].lower().strip()
+        if o not in OS:
+            raise ValueError(f'invalid os "{o}"')
+        a = target[n + 1 :].lower().strip()
+        del n
+        if a not in ARCH:
+            raise ValueError(f'invalid arch "{a}"')
+        if o not in ARCH[a]:
+            raise ValueError("invalid arch/os combo")
+        self._fill(config, save)
+        if not nes(self.opts.get_bin("go")):
+            raise ValueError('binary target "go" missing')
+        if o == "windows":
+            if a.endswith("64"):
+                r, g = self.opts.get_bin("wres64"), self.opts.get_bin("wgcc64")
+            else:
+                r, g = self.opts.get_bin("wres32"), self.opts.get_bin("wgcc32")
+            if not nes(r):
+                raise ValueError(f'binary target "wres" missing for "{target}"')
+            if not nes(g):
+                raise ValueError(f'binary target "wgcc" missing for "{target}"')
+        else:
+            if library:
+                raise ValueError("cannot use -D/--library for a non-Windows target")
+            if self.opts.get_option("cgo"):
+                raise ValueError("can only use CGO with Windows")
+        if self.opts.get_option("upx") and not nes(self.opts.get_bin("upx")):
+            raise ValueError('"upx" is enabled but "upx" binary is missing')
+        if self.opts.get_option("garble") and not nes(self.opts.get_bin("garble")):
+            raise ValueError('"garble" is enabled but "garble" binary is missing')
+        if self.opts.get("build.support.sign.enabled"):
+            if not nes(self.opts.get_bin("openssl")):
+                raise ValueError('"sign" is enabled but "openssl" binary is missing')
+            if not nes(self.opts.get_bin("osslsigncode")):
+                raise ValueError(
+                    '"sign" is enabled but "osslsigncode" binary is missing'
+                )
+            if not _sign_check(self.opts):
+                raise ValueError(
+                    '"sign" is enabled but certificate configuration is invalid'
+                )
+        gen.check(self.opts)
+        return o, a
+
+    def run(self, osv, arch, gen, library, output, no_clean):
         if not nes(output):
             raise ValueError('"output" is not valid')
         if isabs(output):
@@ -814,6 +526,7 @@ class JetStream(object):
             "cgo": self.opts.get_option("cgo"),
             "dir": d,
             "out": output,
+            "tags": [],
             "main": "",
             "arch": arch,
             "link": v,
@@ -826,22 +539,24 @@ class JetStream(object):
         del v
         if nes(k):
             workspace["work_dir"] = k
-        rc = None
+        if library:
+            workspace["tags"].append("svcdll")
+        r = None
         if self.opts.get_rc("enabled"):
-            rc = Rc(self.opts.get_support("rc"))
+            r = Rc(self.opts.get_support("rc"))
         self.log.debug(f"Workspace built: {dumps(workspace)}")
         try:
             with self("SP1"):
                 self.log.info("Starting the Generate step..")
-                f = self._step_generate(d, workspace)
+                f = self.generate(gen, d, workspace)
                 self.log.debug("Completed the Generate step!")
             with self("SP2"):
                 self.log.info("Starting the Build step..")
-                o = self._step_build(d, workspace, rc, f, output)
+                o = self.build(d, workspace, r, f, output)
                 self.log.debug("Completed the Build step!")
             with self("SP3"):
                 self.log.info("Starting the Protect step..")
-                self._step_protect(d, o)
+                self.protect(d, o)
                 self.log.debug("Completed the Protect step!")
             copy(o, output)
             del o, f
@@ -849,27 +564,38 @@ class JetStream(object):
             self.log.error(f"Error during operation: {err}", err=err)
             raise err
         finally:
-            self.log.prefix(None)
-            del rc, workspace
+            if self.prefix:
+                self.log.prefix(None)
+            del r, workspace
             if nes(k):
                 self.log.debug(f'Removing link directory "{k}".')
                 remove(k)
             if not no_clean and m:
                 self.log.debug(f'Removing working directory "{d}".')
                 rmtree(d)
+        try:
+            chmod(output, 0o755, follow_symlinks=False)
+        except OSError:
+            pass
+        self.log.info(f'Output result file "{output}".')
+        return output
 
     def _step_build_go(self, workspace, env, ld, extra, file, out):
         b, x = self.opts.get_bin("go"), list()
         if self.opts.get_option("garble"):
             b = self.opts.get_bin("garble")
             x += ["-tiny", "-seed=random"]
-            x.append("-literals")  # I think this makes the file bigger
+            x.append("-literals")  # NOTE(dij) I think this makes the file bigger.
         x.insert(0, b)
         del b
         x += ["build", "-o", out, "-buildvcs=false", "-trimpath"]
         t = self.opts.get_option("tags")
         if not isinstance(t, list):
             t = list()
+        a = workspace.get("tags")
+        if isinstance(a, list) and len(a) > 0:
+            t.extend(a)
+        del a
         f = "-w -s"
         if nes(ld):
             v = ld.split(" ")
@@ -880,14 +606,28 @@ class JetStream(object):
                     v.remove("-s")
                 f += " " + " ".join(v)
             del v
+        if len(t) > 0:
+            t = list(set(t))
         g = self.opts.get_option("crypt")
         if g:
             e = [workspace["os"], workspace["arch"]]
             if len(t) > 0:
                 e += t
             self.log.debug("Starting crypt build..")
-            k, v = generate_crypt(e, join(dirname(__file__), "include", "strs.json"))
-            del e
+            if islink(__file__):
+                p = join(
+                    dirname(
+                        normpath(join(dirname(__file__), normpath(readlink(__file__))))
+                    ),
+                    "include",
+                    "strs.json",
+                )
+            else:
+                p = join(dirname(__file__), "include", "strs.json")
+            if not isfile(p):
+                raise ValueError(f'crypt: could not find "strs.json" at "{p}"')
+            k, v = generate_crypt(e, p)
+            del e, p
             if len(f) > 0:
                 f += " "
             f += (
@@ -975,7 +715,7 @@ class JetStream(object):
             self.log.debug("Adding Resource file..")
             r, o = join(base, "res.rc"), join(base, "res.o")
             with open(r, "w") as f:
-                f.write(rc.generate(m))
+                f.write(rc.generate(m, lib))
             self._exec([q, "-i", r, "-o", o])
             z.append(o)
             self.log.debug(f'Resource file "{o}" generated.')

@@ -415,7 +415,7 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		w.Write([]byte(`{"type":"spawn","pid"` + strconv.FormatUint(uint64(p), 10) + `}`))
+		w.Write([]byte(`{"type":"spawn","pid":` + strconv.FormatUint(uint64(p), 10) + `}`))
 	case task.MvScript:
 		if z {
 			return errInvalidScript

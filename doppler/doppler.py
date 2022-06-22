@@ -25,8 +25,8 @@ from argparse import ArgumentParser
 from include.config import Config, Utils
 from datetime import datetime, timedelta
 from sys import exit, stderr, stdin, argv
-from os.path import expanduser, expandvars
 from include.cirrus import Api, CirrusError
+from os.path import expanduser, expandvars, basename
 from include.cli import Shell, Exp, print_job_result, MENU_BOLT
 from include.util import nes, size_str, time_str, ip_str, is_true
 
@@ -112,6 +112,8 @@ def _print_session_info(s):
 
 
 class Doppler(Api):
+    __slots__ = ("watch", "events", "eventer", "last_job")
+
     def __init__(self, base_url, password=None):
         Api.__init__(self, base_url, password=password)
         self.watch = dict()
@@ -184,7 +186,7 @@ class Doppler(Api):
             return
         if not prefix:
             print(
-                f'{"ID":6}{"Type":5}{"Status":11}{"Start":10}{"Complete":10}Result Error\n{"="*55}'
+                f'{"ID":6}{"Type":5}{"Status":11}{"Start":10}{"Complete":10}{"Took":8}Result Error\n{"="*65}'
             )
         t = datetime.now()
         e = list(d.values())
@@ -200,9 +202,13 @@ class Doppler(Api):
                 end="",
             )
             if "complete" in j:
-                print(f'{time_str(t, j["complete"]):10}', end="")
+                print(
+                    f'{time_str(t, j["complete"]):10}'
+                    f'{time_str(datetime.fromisoformat(j["complete"]).replace(tzinfo=None), j["start"]):8}',
+                    end="",
+                )
             else:
-                print(f'{"":10}', end="")
+                print(f'{"":10}{"":10}', end="")
             if "result" in j and isinstance(j["result"], int) and j["result"] > 0:
                 print(size_str(j["result"], True), end="")
             if "error" in j and len("error") > 0:
@@ -446,7 +452,7 @@ class Doppler(Api):
         if not isinstance(r, list) or len(r) == 0:
             return
         print(
-            f'{"Host":9}{"ID":6}{"Type":5}{"Status":11}{"Start":10}{"Complete":10}Result Error\n{"="*65}'
+            f'{"Host":9}{"ID":6}{"Type":5}{"Status":11}{"Start":10}{"Complete":10}{"Took":8}Result Error\n{"="*75}'
         )
         for s in r:
             self._show_jobs(s["id"], True)
@@ -769,6 +775,8 @@ class Doppler(Api):
 
 
 class _Event(object):
+    __slots__ = ("id", "msg", "job", "action")
+
     def __init__(self, action, msg=None, id=None, job=None):
         self.id = id
         self.msg = msg
@@ -777,6 +785,8 @@ class _Event(object):
 
 
 class _Thread(Thread):
+    __slots__ = ("_api", "_events", "_running")
+
     def __init__(self, api, event):
         Thread.__init__(self)
         self._api = api
@@ -831,9 +841,6 @@ class _Parser(ArgumentParser):
             a.extra = " ".join(a.extra)
         if nes(a.timeout):
             a.timeout = Utils.str_to_dur(a.timeout) / 1000000000
-        if not a.no_empty:
-            if is_true(getenv("DOPPLER_NO_EMPTY")):
-                a.no_empty = True
         if nes(a.input):
             p = a.input.strip()
             if p == "-" and not stdin.isatty():
@@ -851,25 +858,32 @@ class _Parser(ArgumentParser):
         self.add("-a", "--api", type=str, dest="cirrus", default=getenv("DOPPLER_HOST"))
         self.add("-p", "--password", type=str, dest="pw", default=getenv("DOPPLER_PW"))
         # List Arguments
-        self.add("-j", "--jobs", action="store_true", dest="list_jobs")
-        self.add("-s", "--scripts", action="store_true", dest="list_scripts")
-        self.add("-n", "--profiles", action="store_true", dest="list_profiles")
-        self.add("-l", "--listeners", action="store_true", dest="list_listeners")
-        self.add("-b", "--bolts", action="store_true", dest="list_bolts")
-        self.add("-B", "--bolts-adv", action="store_true", dest="list_bolts_adv")
+        self.add("-j", "--jobs", dest="jobs", action="store_true")
+        self.add("-s", "--scripts", dest="scripts", action="store_true")
+        self.add("-n", "--profiles", dest="profiles", action="store_true")
+        self.add("-l", "--listeners", dest="listeners", action="store_true")
+        self.add("-b", "--bolts", dest="bolts", action="store_true")
+        self.add("-B", "--bolts-adv", dest="bolts_adv", action="store_true")
         # Execution Arguments
         self.add("-c", "--cmd", type=str, dest="cmd")
         self.add("-w", "--timeout", type=str, dest="timeout")
         # CLI Modification Arguments
         self.add("-z", "--input", type=str, dest="input")
         self.add("-k", "--oneline", type=str, dest="oneline")
-        self.add("-i", "--interact", action="store_true", dest="shell")
-        self.add("-N", "--no-empty", action="store_true", dest="no_empty")
-
+        self.add("-i", "--interact", dest="shell", action="store_true")
+        self.add("-P", "--pipe", type=str, dest="pipe", default=getenv("DOPPLER_PIPE"))
+        self.add(
+            "-N",
+            "--no-empty",
+            dest="no_empty",
+            action="store_true",
+            default=is_true(getenv("DOPPLER_NO_EMPTY")),
+        )
+        # Extra
         self.add(nargs="*", type=str, dest="extra")
 
     def print_help(self, file=stderr):
-        print(_HELP_TEXT.format(proc=argv[0]), file=file)
+        print(_HELP_TEXT.format(proc=basename(argv[0])), file=file)
 
     def parse_args(self, args=None, namespace=None):
         r = super(__class__, self).parse_args(args, namespace)
@@ -891,18 +905,19 @@ def _main():
         print(f"Error: {str(err)}!", file=stderr)
         exit(1)
     try:
-        if r.list_jobs:
+        if r.jobs:
             return d.show_jobs(all=True, exp=Exp.parse(r.extra))
-        if r.list_scripts:
+        if r.scripts:
             return d.show_scripts(r.extra)
-        if r.list_profiles:
+        if r.profiles:
             return d.show_profiles(r.extra)
-        if r.list_listeners:
+        if r.listeners:
             return d.show_listeners(r.extra)
-        if r.list_bolts or r.list_bolts_adv:
-            return d.show_sessions(advanced=r.list_bolts_adv, exp=Exp.parse(r.extra))
-        s = Shell(d, r.no_empty)
+        if r.bolts or r.bolts_adv:
+            return d.show_sessions(advanced=r.bolts_adv, exp=Exp.parse(r.extra))
+        s = Shell(d, r.no_empty, r.pipe)
         if nes(r.cmd):
+            d.session(r.extra)
             s.set_menu(MENU_BOLT, r.extra)
             s.init(True)
             s.onecmd(r.cmd)
@@ -922,6 +937,7 @@ def _main():
                 return
             return s.run_cmd(r.oneline, True, True, False, False)
         if r.shell and nes(r.extra):
+            d.session(r.extra)
             s.set_menu(MENU_BOLT, r.extra)
         s.enter()
     except (OSError, ValueError, CirrusError) as err:

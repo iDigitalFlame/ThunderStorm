@@ -1,6 +1,6 @@
 # The ThunderStorm Project
 
-|||||
+||||||
 
 Golang Full C2 Solution using [XMT](https://github.com/iDigitalFlame/xmt)
 

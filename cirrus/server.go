@@ -38,37 +38,37 @@ Usage: cirrus -b <bind_address:port> [-p password] [-no-auth] [-f data_file] [-l
 
 Required Arguments:
   -b <bind_address:port>        Specify a "address:port" that the ReST API will
-                                 be bound to.
+                                  be bound to.
 
 Optional Arguments:
   -p <password>                 Specify a password to be used in the "X-CirrusAuth"
-                                 HTTP header for connections. If this is empty, and
-                                 the "-no-auth" argument is not specified, a random
-                                 password will be generated for you and printed to
-                                 stdout during startup.
+                                  HTTP header for connections. If this is empty, and
+                                  the "-no-auth" argument is not specified, a random
+                                  password will be generated for you and printed to
+                                  stdout during startup.
   -no-auth                      Argument that can be used to force Cirrus to NOT
-                                 validate connections with a password. If a password
-                                 is specified with "-p", this argument is ignored.
+                                  validate connections with a password. If a password
+                                  is specified with "-p", this argument is ignored.
   -f <data_file>                Path to a file to be used as the backing store for
-                                 Cirrus. This can be used to save/load the contents
-                                 and state during startup/shutdown for Scripts, Profiles
-                                 and Listeners. This defaults to "${pwd}/cirrus.json" if
-                                 omitted.
+                                  Cirrus. This can be used to save/load the contents
+                                  and state during startup/shutdown for Scripts,
+                                  Profiles and Listeners. This defaults to "${pwd}/cirrus.json"
+                                  if omitted.
   -l <log_file>                 Path to a log file to write to. If no path is
-                                 specified or this argument is ignored, stdout will
-                                 be used instead.
+                                  specified or this argument is ignored, stdout will
+                                  be used instead.
   -n <log_level [0-5]>          Specify the log level to be used when logging. By
-                                 default, or if unspecified, this will default to
-                                 Informational (2). Values 0-5 are valid, anything
-                                 else will default to Informational (2). Values are
-                                 0: Trace, 1:Debug, 2:Informational, 3:Warning,
-                                 4: Error, 5:Fatal.
+                                  default, or if unspecified, this will default to
+                                  Informational (2). Values 0-5 are valid, anything
+                                  else will default to Informational (2). Values are
+                                  0: Trace, 1:Debug, 2:Informational, 3:Warning,
+                                  4: Error, 5:Fatal.
   -c <csv_output>               Specify a file path for a CSV file to capture/log
-                                 all C2 events. If the file already exists, it will
-                                 be appended to.
+                                  all C2 events. If the file already exists, it will
+                                  be appended to.
   -t <tracker>                  Specify a file path to be used for tracking updates.
-                                 This file will be cleared and rewritten with
-                                 statistics every minute.
+                                  This file will be cleared and rewritten with
+                                  statistics every minute.
 `
 
 // Cmdline will attempt to build and run a Cirrus instance. This function

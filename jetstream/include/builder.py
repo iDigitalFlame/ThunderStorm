@@ -15,9 +15,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+from glob import glob
+from re import compile
 from io import StringIO
+from requests import get
 from random import choice
 from random import randint
+from shutil import copytree
 from base64 import b64decode
 from include.util import nes
 from os import remove, rename
@@ -227,6 +231,11 @@ func generate(p string) error {
 }
 """
 
+_THROW = compile(r"throw\(")
+_PANIC = compile(r"panic\(")
+
+_REPO_URL = "https://raw.githubusercontent.com/iDigitalFlame/TinyPatchedGo/main"
+
 
 def upx(js, file):
     js.log.debug(f'UPX Packing file "{file}"..')
@@ -265,21 +274,221 @@ def _sign_range(d, exp):
     return str((t - timedelta(days=randint(0, exp))).timestamp())
 
 
+def _sed(path, old, new):
+    with open(path, "r") as f:
+        d = f.read()
+    with open(path, "w") as f:
+        for x in range(0, len(old)):
+            d = d.replace(old[x], new[x])
+        f.write(d)
+    del d
+
+
 def go_bytes(v, limit=20):
     if len(v) == 0:
         return ""
     b = StringIO()
     c = 0
     for x in v:
-        if c > 0 and c % limit == 0:
+        if limit > 0 and c > 0 and c % limit == 0:
             b.write("\n\t")
         b.write(f"0x{hex(x)[2:].upper().zfill(2)}, ")
         c += 1
     r = b.getvalue()
     b.close()
+    if limit == 0 and len(r) > 2:
+        r = r[:-2]
     del b
     del c
     return r
+
+
+def _find_next_token(s, i):
+    e, c = i, 0
+    while True:
+        if e >= len(s):
+            print(i, e, len(s), s[e:i])
+        if s[e] == ")":
+            if c == 0:
+                if e < 3 or s[e - 3 : e + 1] != "no )":
+                    break
+            else:
+                c -= 1
+        if s[e] == "(" and not s[i : i + 15].startswith('"panicwrap: no '):
+            c += 1
+        e += 1
+    del c
+    return e + 1
+
+
+def _wget(url, path, timeout=5):
+    r = get(url, timeout=timeout, allow_redirects=True)
+    r.raise_for_status()
+    with open(path, "wb") as f:
+        f.write(r.content)
+    r.close()
+    del r
+
+
+def tiny_root(old, new, timeout=5):
+    try:
+        copytree(old, new)
+    except OSError as err:
+        raise OSError(f'Copytree from "{old}" to "{new}"') from err
+    for i in glob(join(new, "src", "fmt", "*.go"), recursive=False):
+        remove(i)
+    for i in glob(join(new, "src", "unicode", "*.go"), recursive=False):
+        remove(i)
+    _wget(f"{_REPO_URL}/fmt/scan.go", join(new, "src", "fmt", "scan.go"), timeout)
+    _wget(f"{_REPO_URL}/fmt/print.go", join(new, "src", "fmt", "print.go"), timeout)
+    _wget(f"{_REPO_URL}/fmt/quick.go", join(new, "src", "fmt", "quick.go"), timeout)
+    _wget(
+        f"{_REPO_URL}/runtime/print.go",
+        join(new, "src", "runtime", "print.go"),
+        timeout,
+    )
+    _wget(
+        f"{_REPO_URL}/unicode/unicode.go",
+        join(new, "src", "unicode", "unicode.go"),
+        timeout,
+    )
+    _sed(
+        join(new, "src", "net", "http", "transport.go"),
+        [
+            "return envProxyFunc()(req.URL)",
+            "envProxyFuncValue = httpproxy.FromEnvironment().ProxyFunc()",
+            '"golang.org/x/net/http/httpproxy"',
+        ],
+        [
+            "return req.URL, nil",
+            "envProxyFuncValue = nil",
+            "",
+        ],
+    )
+    _sed(
+        join(new, "src", "net", "http", "h2_bundle.go"),
+        [
+            "if a, err := idna.ToASCII(host); err == nil {",
+            '"golang.org/x/net/idna"',
+        ],
+        [
+            'if a := ""; len(a) > 0 {',
+            "",
+        ],
+    )
+    _sed(
+        join(new, "src", "net", "http", "request.go"),
+        [
+            "return idna.Lookup.ToASCII(v)",
+            '"golang.org/x/net/idna"',
+        ],
+        [
+            "return v, nil",
+            "",
+        ],
+    )
+    _sed(
+        join(
+            new,
+            "src",
+            "vendor",
+            "golang.org",
+            "x",
+            "net",
+            "http",
+            "httpguts",
+            "httplex.go",
+        ),
+        [
+            "host, err = idna.ToASCII(host)",
+            '"golang.org/x/net/idna"',
+        ],
+        [
+            "host, err = host, nil",
+            "",
+        ],
+    )
+    _sed(
+        join(new, "src", "runtime", "proc.go"),
+        ['if n, ok := atoi32(gogetenv("GOMAXPROCS")); ok && n > 0 {'],
+        ["if n, ok := int32(0), false; ok && n > 0 {"],
+    )
+    _sed(
+        join(new, "src", "runtime", "runtime1.go"),
+        [
+            'for p := gogetenv("GODEBUG"); p != ""; {',
+            'setTraceback(gogetenv("GOTRACEBACK"))',
+        ],
+        ['for p := gogetenv(""); p != ""; {', 'setTraceback("none")'],
+    )
+    _sed(
+        join(new, "src", "runtime", "mgcpacer.go"),
+        ['p := gogetenv("GOGC")'],
+        ['p := ""'],
+    )
+    _sed(
+        join(new, "src", "runtime", "extern.go"),
+        ['s := gogetenv("GOROOT")'],
+        ['s := "null"'],
+    )
+    _sed(
+        join(new, "src", "time", "zoneinfo_windows.go"),
+        [
+            "stdName := syscall.UTF16ToString(z.StandardName[:])",
+            "a, ok := abbrs[stdName]",
+            "a, ok = abbrs[englishName]",
+            "return a.std, a.dst",
+            "return extractCAPS(stdName), extractCAPS(dstName)",
+            "englishName, err := toEnglishName(stdName, dstName)",
+            "dstName := syscall.UTF16ToString(z.DaylightName[:])",
+        ],
+        [
+            'return "GMT", "GMT"',
+            "ok := true",
+            "ok = true",
+            'return "GMT", "GMT"',
+            'return "GMT", "GMT"',
+            "var err error",
+            "",
+        ],
+    )
+    remove(join(new, "src", "time", "zoneinfo_abbrs_windows.go"))
+    for i in glob(join(new, "src", "**", "**.go"), recursive=True):
+        if new not in i or not isfile(i):
+            continue
+        _remap_file(i, _PANIC, True, 'panic("")')
+        _remap_file(i, _THROW, False, 'throw("")')
+    for i in glob(join(new, "src", "time", "zoneinfo_*.go"), recursive=False):
+        if not isfile(i):
+            continue
+        _sed(i, ['runtime.GOROOT() + "/lib/time/zoneinfo.zip",'], ["runtime.GOROOT(),"])
+
+
+def _remap_file(p, regexp, no_concat, repl):
+    with open(p) as f:
+        b = f.read()
+    if len(b) == 0 or "package" not in b:
+        return
+    r = regexp.finditer(b)
+    if r is None:
+        return
+    c = b
+    for m in r:
+        if m.start() == 0 or not b[m.start() - 1].isspace():
+            continue
+        e = _find_next_token(b, m.end())
+        v = b[m.start() : e]
+        if v.endswith("string)"):
+            continue
+        if no_concat and (v[6] != '"' or "+" in v):
+            continue
+        if v not in c:
+            raise KeyError(v)
+        c = c.replace(v, repl, 1)
+        del e, v
+    with open(p, "w") as f:
+        f.write(c)
+    del r, c, b
 
 
 def sign(js, o, date, date_range, base, file):
@@ -399,9 +608,18 @@ def sign_with_target(js, when, file, base, target, name):
     n = f'"{name}"'
     if not nes(name):
         n = "c.Issuer.CommonName"
+    v = target
+    if v.startswith("http://"):
+        v = v[7:]
+    elif v.startswith("https://"):
+        v = v[8:]
+    if "/" in v:
+        v = v[: v.find("/")]
+    if len(v) == 0:
+        raise ValueError(f'spoof target "{v}" (initial "{target}") is invalid')
     with open(r, "w") as f:
-        f.write(Template(CERT_GEN).substitute(target=target, rename=n))
-    del n
+        f.write(Template(CERT_GEN).substitute(target=v, rename=n))
+    del n, v
     js.log.debug(f'Wrote cert grabbing script to "{r}".')
     t = join(base, "gens")
     js._exec([js.opts.get_bin("go"), "run", r, t])

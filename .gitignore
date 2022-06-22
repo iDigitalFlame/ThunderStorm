@@ -5,6 +5,7 @@ bolt/sources
 bolt/sources/xsupport
 src
 cirrus.json
+js.json
 
 .bolt-cfg
 .bolt-cfg.bak

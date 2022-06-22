@@ -16,10 +16,195 @@
 #
 
 from os import getcwd
-from os.path import join
 from include.util import nes
+from sys import argv, stderr
+from os.path import join, basename
 from include.options import Options, try_find_bin, LEVELS
 from argparse import ArgumentParser, BooleanOptionalAction
+
+_HELP_TEXT = """ JetStream: ThunderStorm Builder
+Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
+(c) 2019 - 2022 iDigitalFlame
+
+{proc} [-c config] [-C clone] [-g generator] [-o output] [various options] target
+
+Required Arguments
+  target                               The Operating System and Architecture to
+                                         build for. This value matches the "GOOS/GOARCH"
+                                         string connatation. (ex: windows/amd64, linux/ppc).
+
+Basic Arguments
+  -h                                   Show this help text and exit.
+  --help
+  -c                  <config_file>    Path to the configuration file to use.
+  --config                               Defaults to "jetstream.conf".
+  -C                  <template_file>  Load the initial configuration from this
+  --clone                                file and save the modified results to
+                                         the config file path (if supplied). This
+                                         file is not modified.
+  -r                                   Do not re-lint/format the configuration
+  --read-only                            file supplied. This will also overrite
+                                         the "save" argument. If a "_" exists in
+                                         the JSON as a top-level key, this argument
+                                         is inferred.
+  -s                                   Save the changes made by arguments to the
+  --save                                 supplied configuration file (if it exists).
+  -g                  <generator_name> Specify the Generator to load and use. This
+  --generator                            defaults to "bolt" (The Bolt Generator)
+                                         if omitted.
+  -G                  <generator_dir>  Specify/Overrite the directory to load
+  --generators                           Generator files from.
+  -o                  <output_file>    Specify the path to output the built binary
+  --output                               to. This will default to "result.<ext>"
+                                         when omitted (<ext> being dependent on
+                                         the target type).
+  -k                                   Do not run and only check/print the configuration
+  --check                                then exit.
+  -t                  <templates_dir>  Specify/Overrite the directory to load
+  --templates                            Template files from.
+
+Output Arguments
+  -q                                   Do not print out the configuration. Can be
+  --quiet                                used with '-k' to do a silent check based
+                                         on the exit code.
+  -f                  <log_file>       Specify/Overrite an output file to log messages
+  --log-file                             to. If empty/omitted and not set, standard out
+                                         is used.
+  -i                  <log_level>      Specify/Overrite the logging level used. Takes
+  --log-level                            a string name of the level. If omitted and not
+                                         set, the "INFO" level is used.
+
+Build Arguments
+  -d                  <work_dir>       Specify/Overrite the build directory to use.
+  --dir                                  If empty/omitted and not set, a temporary
+                                         directory is used.
+  -l                  <link_dir>       Specify/Overrite the link dirrectory to use.
+  --link                                 The linked dir will have a symlink of the
+                                         build directory (above) placed in it. This
+                                         is used during Go build operations and will
+                                         be changed into when building. Useful for
+                                         building packages in a specific workspace.
+  -z                                   Do not remove the build directory or it's
+  --no-clean                             contents when finished.
+  -D                                   Build in library (DLL on Windows .so on nix)
+  --library                              mode. Currently only supports CGO builds.
+
+Options Override Arguments
+ These options can change the way the build occurs. This will NOT be saved to the
+ configuration file unless the "-s/--save" argument is supplied.
+
+ Binary Options
+   --bin-go           <binary_path>    Specify/Override the Golang binary path.
+   --bin-gcc          <binary_path>    Specify/Override the *nix GCC binary path.
+   --bin-upx          <binary_path>    Specify/Override the UPX binary path.
+   --bin-garble       <binary_path>    Specify/Override the Golang Garble binary path.
+   --bin-wgcc32       <binary_path>    Specify/Override the Windows GCC x86 (MinGW)
+                                         binary path.
+   --bin-wgcc64       <binary_path>    Specify/Override the Windows GCC x64 (MinGW)
+                                         binary path.
+   --bin-wres32       <binary_path>    Specify/Override the Windows Resource x86
+                                         (MinGW) binary path.
+   --bin-wres64       <binary_path>    Specify/Override the Windows Resource x64
+                                         (MinGW) binary path.
+   --bin-openssl      <binary_path>    Specify/Override the Openssl binary path.
+   --bin-osslsigncode <binary_path>    Specify/Override the OsslSignCode (Code Sign)
+                                         binary path.
+
+ Build Settings Options
+   --tags             <build_tags>     Specify/Override the Go build tags used.
+                                         These values may be changed by the Generator
+                                         used.
+   --goroot           <goroot_dir>     Specify/Override the GOROOT directory. The
+                                         default or empty value will be taken from
+                                         the current environment. This directory will
+                                         be the one copied if "compact" is enabled.
+   --upx                               Enable the UPX packer.
+   --no-upx                            Disable the UPX packer.
+   --cgo                               Enable CGO for building.
+   --no-cgo                            Disable CGO for building.
+   --crypt                             Enable the Crypt generator to obscure strings
+                                         inside the resulting binary.
+   --no-crypt                          Disable the Crypt generator.
+   --strip                             Enable the Strip packer/generator.
+   --no-strip                          Disable the Strip packer/generator.
+   --grable                            Enable using Garble for building.
+   --no-garble                         Disable using Garble for building.
+   --compact                           Enable the "compact" GOROOT. This will
+                                         strip and remove un-needed functions
+                                         and packages in the runtime and disables
+                                         some functionality. See dij.sh/tinyroot
+                                         for more information.
+   --no-compact                        Disable the "compact" GOROOT.
+
+ Support Options
+   -e                 <entry_name>     Specify/Override the function name for the
+   --entry                               CGO entry point function. If empty/omitted,
+                                         the function name is randomized.
+   --manifest                          Enable generating a Windows version manifest
+                                         for Windows binaries. This has NO effect
+                                         if CGO is disabled.
+   --no-manifest                       Disable generating a Windows version manifest.
+
+  Signing Arguments
+   --sign                              Enable signing binaries. Requires a PFX,
+                                         certificate pair (CERT+PEM) or a Spoof target.
+   --no-sign                           Disable signing binaries.
+   --pfx              <pfx_file>       Specify/Override the PFX file to be used for
+                                         signing. PFX certificates take precedence
+                                         over any other signing methods.
+   --pfx-pw           <pfx_password>   Specify/Override the PFX password to be used for
+                                         the supplied PFX file or encoded data. Ignored
+                                         if no PFX file/data is supplied.
+   --cert             <cert_file>      Specify/Override the Certificate file to be used
+                                         for signing. This will only work if a paired
+                                         PEM file/data is also supplied. CERT+PEM takes
+                                         precedence over Spoofing.
+   --pem              <pem_file>       Specify/Override the Private Key file to be used
+                                         for signing. This will only work if a paired
+                                         Certificate file/data is also specified. CERT+PEM
+                                         takes precedence over Spoofing.
+   --spoof            <spoof_url>      Specify/Override an Internet hostname to be used
+                                         for Certificate grabbing and spoofing. The
+                                         name of the Certificate will not be changed unless
+                                         the "spoof-name" is specified or in the config.
+                                         Will not be used if another valid signing
+                                         mechanism exists.
+   --spoof-name       <spoof_name>     Specify/Override the name of the spoofed Certificate.
+                                         defaults to leaving the name unchanged if
+                                         empty/omitted. Only takes effect if spoofing is
+                                         enabled and used.
+   --date             <iso_datetime>   Specify/Override a signing date to be used in an ISO
+                                         string format. This will change the signing date
+                                         used. If empty/omitted, the current date will be
+                                         used. Only takes effect if spoofing is enabled and
+                                         used.
+   --date-range       <days>           Specify/Override a signing date that will be random
+                                         (+ [only if date < current + days]/-) days from the
+                                         supplied date. If empty/omitted, the current date
+                                         will be used. Only takes effect if spoofing is
+                                         enabled and used.
+
+  Resource Arguments
+   --rc                                Enable generating binary resource manifests.
+                                         Only takes effect if CGO is enabled.
+   --no-rc                             Disable generating binary resource manifests.
+   --rc-file          <raw rc_file>    Specify a path to a raw resource (.rc) file to
+                                         be used. This will take precedence over any
+                                         other resource arguments and will not be parsed.
+   --rc-json          <json rc_file>   Specify a path to a JSON-formatted file that contains
+                                         the resource configuration. (Similar to the JetStream
+                                         config file).  This will take precedence over any
+                                          non-raw resource arguments and will fail if the syntax
+                                          or values are invalid.
+   --rc-icon          <icon_file>      Specify/Override the path to the icon file to be used.
+                                         If empty/omitted, it will default to no icon.
+   --rc-title         <title>
+   --rc-version       <version>
+   --rc-company       <company>
+   --rc-product       <product>
+   --rc-filename      <filename>
+   --rc-copyright     <copyright>
+"""
 
 
 def _split_tags(v):
@@ -28,11 +213,12 @@ def _split_tags(v):
         if isinstance(i, str) and i:
             _split_tags_str(r, i)
             continue
-        if isinstance(i, list) and len(i) > 0:
-            for x in i:
-                if not isinstance(x, str) or not x:
-                    continue
-                _split_tags_str(r, x)
+        if not isinstance(i, list) or len(i) == 0:
+            continue
+        for x in i:
+            if not isinstance(x, str) or not x:
+                continue
+            _split_tags_str(r, x)
     return r
 
 
@@ -148,13 +334,18 @@ class Parser(ArgumentParser):
         self._err = None
         self.add = self.add_argument
 
+    @staticmethod
+    def with_load():
+        return Parser().parse_with_load()
+
     def _pre_setup(self):
         self.add("-C", "--clone", dest="clone", type=str)
         self.add("-c", "--config", dest="config", type=str)
         self.add("-o", "--output", dest="output", type=str)
+        self.add("-h", "--help", dest="help", action="store_true")
+        self.add("-q", "--quiet", dest="quiet", action="store_true")
         self.add("-G", "--generators", dest="dir_generators", type=str)
         self.add("-g", "--generator", dest="generator", type=str, default="bolt")
-        self.add("-q", "--quiet", dest="quiet", action="store_true")
         # Logging Arguments
         self.add("-f", "--log-file", dest="log_file", type=str)
         self.add("-i", "--log-level", dest="log_level", type=str, choices=LEVELS.keys())
@@ -203,29 +394,30 @@ class Parser(ArgumentParser):
             raise ValueError(self._err)
         if not r.read_only and r.config and not o.lock:
             o.save(r.config)
+        elif not r.config and not r.clone:
+            o.save(join(getcwd(), "jetstream.conf"))
         _insert_args_opts(r, o)
         o.vet()
         if not nes(r.output):
             r.output = join(getcwd(), "result")
-        g.argparse_post(o, r)
+        g.args_post(o, r)
         if r.save and r.config:
             o.save(r.config)
         r.target = r.target[0].lower()
         return o, g, r, False
 
     def _post_setup(self, name, gen):
-        self.add("-h", "--help", dest="help", action="store_true")
         # Config [build.bin] Arguments
-        self.add("--bin-garble", dest="bin_garble", type=str)
-        self.add("--bin-gcc", dest="bin_gcc", type=str)
         self.add("--bin-go", dest="bin_go", type=str)
-        self.add("--bin-openssl", dest="bin_openssl", type=str)
-        self.add("--bin-osslsigncode", dest="bin_osslsigncode", type=str)
+        self.add("--bin-gcc", dest="bin_gcc", type=str)
         self.add("--bin-upx", dest="bin_upx", type=str)
         self.add("--bin-wgcc32", dest="bin_wgcc32", type=str)
         self.add("--bin-wgcc64", dest="bin_wgcc64", type=str)
         self.add("--bin-wres32", dest="bin_wres32", type=str)
         self.add("--bin-wres64", dest="bin_wres64", type=str)
+        self.add("--bin-garble", dest="bin_garble", type=str)
+        self.add("--bin-openssl", dest="bin_openssl", type=str)
+        self.add("--bin-osslsigncode", dest="bin_osslsigncode", type=str)
         # Config [build.options] Arguments
         self.add("--goroot", dest="opt_goroot", type=str)
         self.add("--upx", dest="opt_upx", action=BooleanOptionalAction)
@@ -261,11 +453,19 @@ class Parser(ArgumentParser):
         self.add("--rc-copright", dest="rc_copyright", type=str)
         g = self.add_argument_group(name)
         g.add = g.add_argument
-        gen.argparse_pre(g)
+        gen.args_pre(g)
         del g
         self.add(nargs=1, dest="target", type=str)
 
-    def print_help(self, file=None, gen=None):
+    @staticmethod
+    def print_help(gen=None, file=stderr):
+        print(_HELP_TEXT.format(proc=basename(argv[0])), file=file)
         if gen is not None:
-            gen.argparse_help()
-        print("helptext")
+            print(f'Current Generator "{gen.name}":')
+            try:
+                print(gen.args_help(), file=stderr)
+            except Exception:
+                pass
+        else:
+            print(file=stderr)
+        exit(2)

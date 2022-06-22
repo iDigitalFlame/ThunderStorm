@@ -31,6 +31,8 @@ from include.errors import find_error
 from sys import stdin, stdout, stderr
 from base64 import b64decode, b64encode
 from subprocess import run, SubprocessError
+from argparse import BooleanOptionalAction as Boolean
+from os.path import expanduser, expandvars, join, isfile, devnull
 from include.cirrus import (
     Filter,
     split_path,
@@ -38,8 +40,6 @@ from include.cirrus import (
     ACTIONS_TROLL,
     ACTIONS_WINDOW,
 )
-from argparse import BooleanOptionalAction as Boolean
-from os.path import expanduser, expandvars, join, isfile, devnull
 from include.util import (
     nes,
     do_ask,
@@ -246,6 +246,7 @@ def __parsers():
     p[0x6].add("-t", "--target", type=str, dest="target")
     p[0x6].add("-m", "--method", type=str, dest="method")
     p[0x6].add("-n", "--profile", type=str, dest="profile")
+    p[0x6].add("-z", "--no-auto", dest="no_auto", action="store_true")
     p[0x6].add("-R", "--no-reflect", dest="reflect", action="store_false")
     p[0x6].add(nargs=1, type=str, dest="pipe")
     p[0x6].add(nargs=1, type=str, dest="file")
@@ -488,13 +489,13 @@ def _get_callable(type, show, r):
     if m == "self":
         return "", None
     if not nes(r.file):
-        raise ValueError(f"[!] {type}: missing file/command!")
+        raise ValueError(f"{type}: missing file/command!")
     if m == "url":
         if nes(r.agent):
             return "pexec", {"url": r.file, "agent": r.agent}
         return "pexec", r.file
     if m == "zombie" and not nes(r.args):
-        raise ValueError(f"[!] {type}: missing fake arguments for Zombie process!")
+        raise ValueError(f"{type}: missing fake arguments for Zombie process!")
     if m == "exec" or m == "exe":
         p = {"cmd": r.file, "show": show}
         if nes(r.user):
@@ -518,7 +519,7 @@ def _get_callable(type, show, r):
         if m == "zombie":
             p["fake"] = r.args
         return m, p
-    raise ValueError(f"[!] {type}: invalid/unguessable method!")
+    raise ValueError(f"{type}: invalid/unguessable method!")
 
 
 def _valid_name(s, size=0, extra=False):
@@ -739,6 +740,8 @@ _PARSERS = __parsers()
 
 
 class Exp(object):
+    __slots__ = ("ip", "os", "user", "host", "elevated")
+
     def __init__(self, host, ip, os, user, elevated):
         self.elevated = elevated
         self.ip = Exp._compile(ip)
@@ -834,7 +837,7 @@ class Exp(object):
         if self.user is not None:
             b.append(f"user:{self.user}")
         if self.host is not None:
-            b.write(f"host:{self.host}")
+            b.append(f"host:{self.host}")
         if len(b) == 0:
             return ""
         v = ",".join(b)
@@ -880,6 +883,8 @@ class Exp(object):
 
 
 class _Cache(object):
+    __slots__ = ("_jobs", "_bolts", "_scripts", "cirrus", "_profiles", "_listeners")
+
     def __init__(self, cirrus):
         self._jobs = None
         self._bolts = None
@@ -954,6 +959,8 @@ class _Cache(object):
 
 
 class _MenuMain(object):
+    __slots__ = ("shell",)
+
     _MENU = [
         "bolt",
         "bolts",
@@ -989,6 +996,8 @@ class _MenuMain(object):
         self.shell.set_menu(MENU_BOLTS)
 
     def do_script(self, n):
+        if len(n) == 0:
+            return self.shell.set_menu(MENU_SCRIPTS)
         if not _valid_name(n, True):
             return print("script <name>")
         try:
@@ -1001,6 +1010,8 @@ class _MenuMain(object):
         self.shell.set_menu(MENU_SCRIPTS)
 
     def do_profile(self, n):
+        if len(n) == 0:
+            return self.shell.set_menu(MENU_PROFILES)
         if not _valid_name(n, True):
             return print("profile <name>")
         try:
@@ -1013,8 +1024,10 @@ class _MenuMain(object):
         self.shell.set_menu(MENU_PROFILES)
 
     def do_bolt(self, id, f):
-        if len(id) != 3 and len(id) < 8:
-            return
+        if not nes(id) and not nes(f):
+            return self.shell.set_menu(MENU_BOLTS)
+        if not nes(id) or (len(id) != 3 and len(id) < 8):
+            return print("bolt <id|all>")
         if id == "all":
             return self.shell.set_menu(MENU_BOLT_ALL, f)
         if not _valid_name(id, 7):
@@ -1026,6 +1039,8 @@ class _MenuMain(object):
         self.shell.set_menu(MENU_BOLT, id.upper())
 
     def do_listener(self, n):
+        if len(n) == 0:
+            return self.shell.set_menu(MENU_LISTENERS)
         if not _valid_name(n, True):
             return print("listener <name>")
         try:
@@ -1082,6 +1097,18 @@ class _MenuMain(object):
 
 
 class _MenuBolt(object):
+    __slots__ = (
+        "id",
+        "jobs",
+        "show",
+        "shell",
+        "_user",
+        "filter",
+        "_domain",
+        "__dict__",  # Added as we dynamically overrite functions for Script
+        "_password",
+    )
+
     _MENU = [
         "asm",
         "back",
@@ -1151,6 +1178,7 @@ class _MenuBolt(object):
         "zerotrace",
         "zombie",
     ]
+    _AUTO_PIPE = '[+] Using runtime Pipe value "{pipe}". Use the "-z/--no-auto" argument to disable this action.'
 
     def __init__(self, shell):
         self.id = None
@@ -2099,15 +2127,21 @@ class _MenuBolt(object):
         |       [-u|--user]       <[domain\\]user[@domain]>
         |       [-d|--domain]     <domain>
         |       [-p|--password]   <password>
+        |       [-z|--no-auto]
 
         OS:    Any
         OPsec: Not Safe! (If a local file without reflect is used), Disk Write
         Admin: Maybe (depends on method/target)
 
         Spawn a similar instance of this client using a type of method. The method
-        can be specified by the "-m" argument. The "pipe" argument is required and
-        specifies what pipe name to use to connect to the new instance. The pipe
-        value is most likely compiled into the client.
+        can be specified by the "-m" argument.
+
+        The "pipe" argument is required and specifies what pipe name to use to
+        connect to the new instance. (However if the "-P/--pipe" argument was
+        specified at runtime or through the "DOPPLER_PIPE" environment variable
+        the pipe value will be inferred from there and it may be omitted. This
+        action can be disable using thr "-z/--no-auto" argument.) The pipe value
+        is most likely compiled into the client.
 
         By default, the current profile will be used, but can be changed by
         specifying the name with the "-n" argument.
@@ -2185,6 +2219,14 @@ class _MenuBolt(object):
         if len(a) < 1:
             return print('Use "spawn -h" for helptext')
         r = _PARSERS[0x6].parse_args(a)
+        if nes(self.shell.pipe) and not r.no_auto:
+            if not nes(r.file) and nes(r.pipe):
+                r.file = r.pipe
+                r.pipe = self.shell.pipe
+                print(_MenuBolt._AUTO_PIPE.format(pipe=self.shell.pipe))
+            elif not nes(r.pipe):
+                r.pipe = self.shell.pipe
+                print(_MenuBolt._AUTO_PIPE.format(pipe=self.shell.pipe))
         if not nes(r.pipe):
             return print("[!] spawn: invalid/missing pipe name")
         f = self.filter
@@ -2314,7 +2356,7 @@ class _MenuBolt(object):
                 if c:
                     print(f"[+] Parent Filter:\n   {self.filter}")
                 return c
-        if r.pid is not None:
+        if isinstance(r.pid, int):
             if r.pid <= 0:
                 c = c or (self.filter.pid is not None or self.filter.pid > 0)
                 self.filter.pid = None
@@ -2597,7 +2639,6 @@ class _MenuBolt(object):
             regedit set "HKCU:\\Control Panel\\Desktop" "Wallpaper" string "C:\\lol.jpg"
             regedit ls "HKCU:\\System\\CurrentControlSet\\Services"
         """
-        print(a)
         if _is_help(a):
             return self.do_help("regedit")
         if len(a) < 2:
@@ -2694,15 +2735,21 @@ class _MenuBolt(object):
         |       [-u|--user]       <[domain\\]user[@domain]>
         |       [-d|--domain]     <domain>
         |       [-p|--password]   <password>
+        |       [-z|--no-auto]
 
         OS:    Any
         OPsec: Not Safe! (If a local file without reflect is used), Disk Write
         Admin: Maybe (depends on method/target)
 
         Migrate control to another process using a type of method. The method can
-        be specified by the "-m" argument. The "pipe" argument is required and
-        specifies what pipe name to use to connect to the new instance. The pipe
-        value is most likely compiled into the client.
+        be specified by the "-m" argument.
+
+        The "pipe" argument is required and specifies what pipe name to use to
+        connect to the new instance. (However if the "-P/--pipe" argument was
+        specified at runtime or through the "DOPPLER_PIPE" environment variable
+        the pipe value will be inferred from there and it may be omitted. This
+        action can be disable using thr "-z/--no-auto" argument.) The pipe value
+        is most likely compiled into the client.
 
         By default, the current profile will be used, but can be changed by
         specifying the name with the "-p" argument.
@@ -2780,6 +2827,14 @@ class _MenuBolt(object):
         if len(a) < 1:
             return print('Use "migrate -h" for helptext')
         r = _PARSERS[0x6].parse_args(a)
+        if nes(self.shell.pipe) and not r.no_auto:
+            if not nes(r.file) and nes(r.pipe):
+                r.file = r.pipe
+                r.pipe = self.shell.pipe
+                print(_MenuBolt._AUTO_PIPE.format(pipe=self.shell.pipe))
+            elif not nes(r.pipe):
+                r.pipe = self.shell.pipe
+                print(_MenuBolt._AUTO_PIPE.format(pipe=self.shell.pipe))
         if not nes(r.pipe):
             return print("[!] migrate: invalid/missing pipe name")
         f = self.filter
@@ -3607,12 +3662,16 @@ class _MenuBolt(object):
 
 
 class _MenuBolts(object):
+    __slots__ = ("shell", "quick_back")
+
     _MENU = [
         "all",
         "back",
         "delete",
         "help",
         "info",
+        "job",
+        "jobs",
         "listeners",
         "ls",
         "main",
@@ -3653,6 +3712,16 @@ class _MenuBolts(object):
         except ValueError:
             return print(f'[!] Bolt "{n}" does not exist!')
         self.shell.set_menu(MENU_BOLT, n.upper())
+
+    def do_jobs(self, id):
+        try:
+            if _valid_name(id, 7):
+                return self.shell.cirrus.show_jobs(id, all=False)
+            if len(id) > 0:
+                return
+            return self.shell.cirrus.show_jobs(all=True)
+        except ValueError as err:
+            print(f"[!] {err}!")
 
     def do_prune(self, d):
         if len(d) == 0:
@@ -3707,6 +3776,20 @@ class _MenuBolts(object):
     def do_listeners(self, _):
         self.shell.set_menu(MENU_LISTENERS)
 
+    def do_job(self, id, job):
+        if not _valid_name(id, 7):
+            return print("job <id> [job]")
+        try:
+            if _valid_name(job):
+                if self.shell.cirrus.show_result(id, int(job)):
+                    return
+                return print(f"[+] Job {job} returned no content.")
+            return self.shell.cirrus.show_jobs(id, all=False)
+        except ValueError:
+            if not _valid_name(job):
+                return print(f'[!] Bolt "{id}" does not exist!')
+            print(f'[!] Job "{id}:{job}" does not exist!')
+
     def prompt(self, args=None):
         return " > Bolts > "
 
@@ -3722,8 +3805,21 @@ class _MenuBolts(object):
     def complete_shutdown(self, n, *_):
         return _complete_with_all(self.shell.cache.bolts(n), n)
 
+    def complete_job(self, n, c, x, *_):
+        if len(c) == 0:
+            return _EMPTY
+        if c.count(" ") == 1:
+            return self.shell.cache.bolts(n)
+        if c.count(" ") == 2:
+            if len(c) < 5 or x <= 4:
+                return _EMPTY
+            return self.shell.cache.jobs(c[4 : x - 1], n)
+        return _EMPTY
+
 
 class _MenuScripts(object):
+    __slots__ = ("shell", "quick_back")
+
     _MENU = [
         "back",
         "bolts",
@@ -3960,6 +4056,8 @@ class _MenuScripts(object):
 
 
 class _MenuProfile(object):
+    __slots__ = ("name", "shell", "quick_back")
+
     _MENU = [
         "back",
         "base64",
@@ -4060,6 +4158,8 @@ class _MenuProfile(object):
 
 
 class _MenuProfiles(object):
+    __slots__ = ("shell", "quick_back")
+
     _MENU = [
         "back",
         "base64",
@@ -4270,6 +4370,8 @@ class _MenuProfiles(object):
 
 
 class _MenuListener(object):
+    __slots__ = ("name", "shell", "quick_back")
+
     _MENU = [
         "back",
         "delete",
@@ -4388,6 +4490,8 @@ class _MenuListener(object):
 
 
 class _MenuListeners(object):
+    __slots__ = ("shell", "quick_back")
+
     _MENU = [
         "back",
         "bolts",
@@ -4565,6 +4669,8 @@ class _MenuListeners(object):
 
 
 class _MenuScript(_MenuBolt):
+    __slots__ = ("line", "name", "args", "lock", "show_line")
+
     _MENU = [
         "history",
         "return_output",
@@ -4955,6 +5061,8 @@ or undo any entries."""
 
 
 class _MenuBoltAll(_MenuBolt):
+    __slots__ = ("results", "matcher")
+
     _MENU = ["display", "nodisplay"] + _MenuBolt._MENU
     _PROMPT = """This is the ALL Bolts shell.
 Each command will be ran on each Bolt (or every bolt in the supplied filter).
@@ -4963,7 +5071,8 @@ Use the "display" and "nodisplay" commands to change output control of commands
 completed.
 
 Note that commands that specify an output file (download, screenshot, procdump)
-will ignore the output file argument and will use a generated one instead."""
+will ignore the output file argument and will use a generated one instead.
+"""
 
     def __init__(self, shell):
         _MenuBolt.__init__(self, shell)
@@ -4971,16 +5080,16 @@ will ignore the output file argument and will use a generated one instead."""
         self.matcher = None
 
     def do_chan(self, _):
-        pass
+        print("Not available inside ALL Bolts.")
 
     def do_info(self, _):
-        pass
+        print("Not available inside ALL Bolts.")
 
     def do_jobs(self, _):
-        print("Not available inside a Script.")
+        print("Not available inside ALL Bolts.")
 
     def do_last(self, _):
-        print("Not available inside a Script.")
+        print("Not available inside ALL Bolts")
 
     def do_display(self, n):
         if len(n) == 0:
@@ -5017,6 +5126,11 @@ will ignore the output file argument and will use a generated one instead."""
 
     def prompt(self, args=None):
         print(_MenuBoltAll._PROMPT)
+        print("Default execution is ", end="")
+        if self.shell.no_default_run:
+            print('disabled. Execution can only occur with "run", "shell" or "pwsh".')
+        else:
+            print("enabled.")
         self.filter = None
         self.results = True
         if not nes(args):
@@ -5055,9 +5169,21 @@ will ignore the output file argument and will use a generated one instead."""
 
 
 class Shell(Cmd):
-    def __init__(self, cirrus, no_default_run=False):
+    __slots__ = (
+        "pipe",
+        "cache",
+        "_init",
+        "_state",
+        "cirrus",
+        "_module",
+        "_old_delims",
+        "no_default_run",
+    )
+
+    def __init__(self, cirrus, no_default_run=False, pipe=None):
         Cmd.__init__(self, stdin=stdin, stdout=stdout, completekey="tab")
         self._state = 0
+        self.pipe = pipe
         self._init = False
         self.cirrus = cirrus
         self._old_delims = None

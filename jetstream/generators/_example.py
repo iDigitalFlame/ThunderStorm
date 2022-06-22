@@ -20,16 +20,16 @@ class _Example(object):
     def check(self, cfg):
         pass
 
-    def argparse_help(self):
+    def args_help(self):
         return "helptext"
 
     def config_load(self, cfg):
         pass
 
-    def argparse_pre(self, parser):
+    def args_pre(self, parser):
         pass
 
-    def argparse_post(self, cfg, args):
+    def args_post(self, cfg, args):
         pass
 
     def print_options(self, cfg, root, file):

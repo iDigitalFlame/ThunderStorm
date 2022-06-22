@@ -738,6 +738,8 @@ def _pkg_registry(
 
 
 class Api(object):
+    __slots__ = ("_s", "_host", "_base", "_ws", "_events", "_trigger")
+
     def __init__(self, base_url, password=None):
         if not nes(base_url):
             raise ValueError('"base_url" must be a non-empty string')
@@ -1966,6 +1968,8 @@ class Api(object):
 
 
 class Filter(object):
+    __slots__ = ("pid", "session", "fallback", "elevated", "exclude", "include")
+
     def __init__(self):
         self.pid = None
         self.session = None
@@ -1985,7 +1989,7 @@ class Filter(object):
         if isinstance(self.pid, int) and self.pid > 0:
             r["pid"] = self.pid
         if isinstance(self.exclude, list) and len(self.exclude) > 0:
-            r["exclude"] = self.include
+            r["exclude"] = self.exclude
         if isinstance(self.include, list) and len(self.include) > 0:
             r["include"] = self.include
         return r
@@ -2021,8 +2025,6 @@ class Filter(object):
             return False
         if isinstance(self.elevated, bool):
             return False
-        if isinstance(self.fallback, bool):
-            return False
         if isinstance(self.pid, int) and self.pid > 0:
             return False
         if isinstance(self.exclude, list) and len(self.exclude) > 0:
@@ -2033,6 +2035,8 @@ class Filter(object):
 
 
 class _Events(Thread):
+    __slots__ = ("_sock", "_handle", "_running", "_select")
+
     def __init__(self, sock):
         Thread.__init__(self)
         self._sock = sock

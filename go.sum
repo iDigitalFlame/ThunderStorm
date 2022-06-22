@@ -6,7 +6,7 @@ github.com/PurpleSec/routex v1.2.0 h1:NqRz4tzWX/Sdp75PIQ8B79ww6Njuwj/P1lQApyrr/+
 github.com/PurpleSec/routex v1.2.0/go.mod h1:YeeIVHnkAVY5iuyQfPh1HPczAs/tB1tC94ktzq66b9Y=
 github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWmnc=
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/iDigitalFlame/xmt v0.3.3 h1:MwsWMMmTeNrow8ZbusEZwE3z2kkspggpb0hqzSItGJA=
-github.com/iDigitalFlame/xmt v0.3.3/go.mod h1:4rw6UFN756ohIXAKRAu1wKvWjQ2c78Kc6rxruqKJELU=
-golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a h1:dGzPydgVsqGcTRVwiLJ1jVbufYwmzD3LfVPLKsKg+0k=
-golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+github.com/iDigitalFlame/xmt v0.3.4 h1:ol5XpfPdALbAOcVzbrgaMEizqSoMMSsEBA95bdXD/XM=
+github.com/iDigitalFlame/xmt v0.3.4/go.mod h1:/paklLfp11UNrIuUmFJ++ij56kWq5/ba3Mgei3maXdg=
+golang.org/x/sys v0.0.0-20220622161953-175b2fd9d664 h1:wEZYwx+kK+KlZ0hpvP2Ls1Xr4+RWnlzGFwPP0aiDjIU=
+golang.org/x/sys v0.0.0-20220622161953-175b2fd9d664/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=

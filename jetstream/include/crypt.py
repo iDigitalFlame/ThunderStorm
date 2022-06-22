@@ -139,6 +139,8 @@ def _map_swap(b, start, end, vars, names):
 
 
 class _CryptBuilder(BytesIO):
+    __slots__ = ("_key",)
+
     def __init__(self, tags, file):
         BytesIO.__init__(self)
         self._key = token_bytes(64)

