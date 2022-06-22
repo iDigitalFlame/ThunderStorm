@@ -751,14 +751,8 @@ class Options(object):
         self._temps = dict()
         if isinstance(v, list) and len(v) > 0:
             for i in v:
-                # k = i
-                # n = i.find(".")
-                # if n > 0:
-                #    k = i[:n]
                 with open(join(d, i)) as f:
                     self._temps[i] = Template(f.read())
-                # del k
-                # del n
         return self._temps
 
     def get(self, n, default=None):

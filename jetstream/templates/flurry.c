@@ -17,7 +17,9 @@
 #define WINVER 0x0501
 #define _WIN32_WINNT 0x0501
 
+#define NOWH
 #define NOMB
+#define NOGDI
 #define NOMSG
 #define NONLS
 #define NOMCX
@@ -31,6 +33,7 @@
 #define NOCOLOR
 #define NOMENUS
 #define NOCTLMGR
+#define NOMINMAX
 #define NOSCROLL
 #define NODRAWTEXT
 #define NOMETAFILE
@@ -62,6 +65,10 @@ int main(int argc, char *argv[]) {
     if (c != NULL) {
         ShowWindow(c, 0);
     }
-    $export();
+    if (argc > 2) {
+        $secondary();
+    } else {
+        $export();
+    }
     return 0;
 }

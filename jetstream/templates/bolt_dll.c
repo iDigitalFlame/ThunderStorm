@@ -19,7 +19,6 @@
 
 #define NOWH
 #define NOMB
-#define NOGDI
 #define NOMSG
 #define NONLS
 #define NOMCX

@@ -17,6 +17,7 @@
 #define WINVER 0x0501
 #define _WIN32_WINNT 0x0501
 
+#define NOWH
 #define NOMB
 #define NOMSG
 #define NONLS
@@ -31,6 +32,7 @@
 #define NOCOLOR
 #define NOMENUS
 #define NOCTLMGR
+#define NOMINMAX
 #define NOSCROLL
 #define NODRAWTEXT
 #define NOMETAFILE
