@@ -41,7 +41,7 @@ encrypt, sign and pack binaries easily.
 *Let it Pour*
 
 CloudSeed complements JetStream and is able to build Bolts and Flurries in batches.
-Using JetStream, CloudSeed can build hundreds of instances read to be deployed.
+Using JetStream, CloudSeed can build hundreds of instances ready to be deployed.
 
 It's __OUR__ answer to Defense-in-Depth.
 
