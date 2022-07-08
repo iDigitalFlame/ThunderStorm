@@ -8,6 +8,9 @@ cirrus.json
 js.json
 *.json
 
+jetstream.conf
+cloudseed.conf
+
 cloudseed/templates/_*
 cloudseed/templates/_**
 cloudseed/generators/_*
