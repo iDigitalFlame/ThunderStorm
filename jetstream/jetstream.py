@@ -36,6 +36,7 @@ from os.path import (
     dirname,
     normpath,
     basename,
+    splitext,
     expanduser,
     expandvars,
 )
@@ -88,6 +89,19 @@ def _sign_check(o):
     return (nes(o.get_sign("cert")) or nes(o.get_sign("cert_raw"))) and (
         nes(o.get_sign("pem")) or nes(o.get_sign("pem_raw"))
     )
+
+
+def which_empty(opts):
+    _which_empty(opts, "build.bins.go", _DEFAULT_GO)
+    _which_empty(opts, "build.bins.gcc", _DEFAULT_GCC)
+    _which_empty(opts, "build.bins.upx", _DEFAULT_UPX)
+    _which_empty(opts, "build.bins.wres32", _DEFAULT_WRES32)
+    _which_empty(opts, "build.bins.wres64", _DEFAULT_WRES64)
+    _which_empty(opts, "build.bins.wgcc32", _DEFAULT_WGCC32)
+    _which_empty(opts, "build.bins.wgcc64", _DEFAULT_WGCC64)
+    _which_empty(opts, "build.bins.garble", _DEFAULT_GARBLE)
+    _which_empty(opts, "build.bins.openssl", _DEFAULT_OPENSSL)
+    _which_empty(opts, "build.bins.osslsigncode", _DEFAULT_OSSLSIGNCODE)
 
 
 def _which_empty(o, v, d):
@@ -249,16 +263,7 @@ class JetStream(object):
         return self
 
     def _fill(self, config, save):
-        _which_empty(self.opts, "build.bins.go", _DEFAULT_GO)
-        _which_empty(self.opts, "build.bins.gcc", _DEFAULT_GCC)
-        _which_empty(self.opts, "build.bins.upx", _DEFAULT_UPX)
-        _which_empty(self.opts, "build.bins.wres32", _DEFAULT_WRES32)
-        _which_empty(self.opts, "build.bins.wres64", _DEFAULT_WRES64)
-        _which_empty(self.opts, "build.bins.wgcc32", _DEFAULT_WGCC32)
-        _which_empty(self.opts, "build.bins.wgcc64", _DEFAULT_WGCC64)
-        _which_empty(self.opts, "build.bins.garble", _DEFAULT_GARBLE)
-        _which_empty(self.opts, "build.bins.openssl", _DEFAULT_OPENSSL)
-        _which_empty(self.opts, "build.bins.osslsigncode", _DEFAULT_OSSLSIGNCODE)
+        which_empty(self.opts)
         if not config or not save:
             return
         self.log.debug(f'Saving configuration at "{config}".')
@@ -284,9 +289,9 @@ class JetStream(object):
         self.log.debug(f'Using Generator "{gen.name}".')
         o = gen.run(self.opts, base, workspace, self.templates)
         if not nes(o):
-            raise ValueError('generator "run" result is invalid')
+            raise ValueError('generate: generator "run" result is invalid')
         if not isfile(o):
-            raise ValueError(f'generator "run" result "{o}" is not a file')
+            raise ValueError(f'generate: generator "run" result "{o}" is not a file')
         workspace["main"] = o
         self.log.debug(f'Generator "{gen.name}" "run" returned "{o}".')
         if not workspace["cgo"]:
@@ -302,9 +307,11 @@ class JetStream(object):
         with open(o) as f:
             d = f.read()
         if _CGO_MAIN_STD not in d:
-            raise ValueError(f'file "{o}" does not have a valid "main"')
+            raise ValueError(f'generate: file "{o}" does not have a valid "main"')
         if _CGO_IMPORT_STD not in d:
-            raise ValueError(f'file "{o}" does not have a valid "package main"')
+            raise ValueError(
+                f'generate: file "{o}" does not have a valid "package main"'
+            )
         if _CGO_SECONDARY_STD in d:
             self.log.debug("Secondary CGO entrypoint found!")
             workspace["secondary"], k = v, True
@@ -327,9 +334,11 @@ class JetStream(object):
             workspace["export"], self.opts, base, workspace, self.templates
         )
         if not nes(c) or not nes(i):
-            raise ValueError('generator "run_cgo" result is invalid')
+            raise ValueError('generate: generator "run_cgo" result is invalid')
         if not isfile(c):
-            raise ValueError(f'generator "run_cgo" result "{c}" is not a file')
+            raise ValueError(
+                f'generate: generator "run_cgo" result "{c}" is not a file'
+            )
         workspace["cgo_main"], workspace["cgo_out"] = c, i
         self.log.debug(f'Generator "{gen.name}" "run_cgo" returned "{c}" and "{i}".')
         del c, i
@@ -341,14 +350,14 @@ class JetStream(object):
         e["GOARCH"] = workspace["arch"]
         r = self.opts.get_option("goroot")
         if "GOROOT" not in e and not nes(r):
-            raise ValueError("GOROOT is not in current ENV and not in build")
+            raise ValueError("build: GOROOT is not in current ENV and not in build")
         if nes(r):
             r = expandvars(expanduser(r))
             e["GOROOT"] = r
         else:
             r = e["GOROOT"]
         if not isdir(r):
-            raise ValueError(f'GOROOT path "{r}" is not a directory')
+            raise ValueError(f'build: GOROOT path "{r}" is not a directory')
         self.log.debug(f'Using GOROOT path "{r}".')
         if self.opts.get_option("compact"):
             c = join(base, "root")
@@ -382,9 +391,9 @@ class JetStream(object):
             o = self._step_build_go(workspace, e, None, None, file, join(base, n))
         del n
         if not nes(o):
-            raise ValueError("build result is invalid")
+            raise ValueError("build: result is invalid")
         if not isfile(o):
-            raise ValueError(f'built result "{o}" is not a file')
+            raise ValueError(f'built: result "{o}" is not a file')
         self.log.info(f'Build step returned "{o}".')
         workspace["bin"] = o
         del e
@@ -449,136 +458,60 @@ class JetStream(object):
 
     def check(self, target, gen, config, save, library):
         if not nes(target) or "/" not in target:
-            raise ValueError(f'invalid target "{target}"')
+            raise ValueError(f'check: invalid target "{target}"')
         n = target.find("/")
         if n is None or n < 3:
-            raise ValueError(f'invalid target "{target}"')
+            raise ValueError(f'check: invalid target "{target}"')
         o = target[:n].lower().strip()
         if o not in OS:
-            raise ValueError(f'invalid os "{o}"')
+            raise ValueError(f'check: invalid os "{o}"')
         a = target[n + 1 :].lower().strip()
         del n
         if a not in ARCH:
-            raise ValueError(f'invalid arch "{a}"')
+            raise ValueError(f'check: invalid arch "{a}"')
         if o not in ARCH[a]:
-            raise ValueError("invalid arch/os combo")
+            raise ValueError("check: invalid arch/os combo")
         self._fill(config, save)
         if not nes(self.opts.get_bin("go")):
-            raise ValueError('binary target "go" missing')
+            raise ValueError('check: binary target "go" missing')
         if o == "windows":
             if a.endswith("64"):
                 r, g = self.opts.get_bin("wres64"), self.opts.get_bin("wgcc64")
             else:
                 r, g = self.opts.get_bin("wres32"), self.opts.get_bin("wgcc32")
             if not nes(r):
-                raise ValueError(f'binary target "wres" missing for "{target}"')
+                raise ValueError(f'check: binary target "wres" missing for "{target}"')
             if not nes(g):
-                raise ValueError(f'binary target "wgcc" missing for "{target}"')
+                raise ValueError(f'check: binary target "wgcc" missing for "{target}"')
         else:
             if library:
-                raise ValueError("cannot use -D/--library for a non-Windows target")
+                raise ValueError(
+                    "check: cannot use -D/--library for a non-Windows target"
+                )
             if self.opts.get_option("cgo"):
-                raise ValueError("can only use CGO with Windows")
+                raise ValueError("check: can only use CGO with Windows")
         if self.opts.get_option("upx") and not nes(self.opts.get_bin("upx")):
-            raise ValueError('"upx" is enabled but "upx" binary is missing')
+            raise ValueError('check: "upx" is enabled but "upx" binary is missing')
         if self.opts.get_option("garble") and not nes(self.opts.get_bin("garble")):
-            raise ValueError('"garble" is enabled but "garble" binary is missing')
+            raise ValueError(
+                'check: "garble" is enabled but "garble" binary is missing'
+            )
         if self.opts.get("build.support.sign.enabled"):
             if not nes(self.opts.get_bin("openssl")):
-                raise ValueError('"sign" is enabled but "openssl" binary is missing')
+                raise ValueError(
+                    'check: "sign" is enabled but "openssl" binary is missing'
+                )
             if not nes(self.opts.get_bin("osslsigncode")):
                 raise ValueError(
-                    '"sign" is enabled but "osslsigncode" binary is missing'
+                    'check: "sign" is enabled but "osslsigncode" binary is missing'
                 )
             if not _sign_check(self.opts):
                 raise ValueError(
-                    '"sign" is enabled but certificate configuration is invalid'
+                    'check: "sign" is enabled but certificate configuration is invalid'
                 )
-        gen.check(self.opts)
+        if gen is not None:
+            gen.check(self.opts)
         return o, a
-
-    def run(self, osv, arch, gen, library, output, no_clean):
-        if not nes(output):
-            raise ValueError('"output" is not valid')
-        if isabs(output):
-            output = join(getcwd(), output)
-        self.log.prefix("PRE")
-        d, m = self.opts.get_build("dir"), False
-        if not nes(d):
-            d, m = mkdtemp(prefix="jetstream-build-"), True
-            self.opts.set("build.dir", d)
-            self.log.debug(f'Made temp working directory "{d}".')
-        else:
-            d = expanduser(expandvars(d))
-            if not isdir(d):
-                makedirs(d, exist_ok=True)
-            self.log.info(f'Using the non-temp working diretory "{d}".')
-        v, k = self.opts.get_build("dir_link"), None
-        if nes(v):
-            v, n = expanduser(expandvars(v)), basename(d)
-            k = join(v, n)
-            symlink(d, k)
-            self.log.info(
-                f'Linking the working directory "{d}" into the target directory "{v}" as "{n}".'
-            )
-        workspace = {
-            "os": osv,
-            "cgo": self.opts.get_option("cgo"),
-            "dir": d,
-            "out": output,
-            "tags": [],
-            "main": "",
-            "arch": arch,
-            "link": v,
-            "flags": "",
-            "export": self.opts.get_support("cgo_export"),
-            "library": library,
-            "main_cgo": "",
-            "work_dir": d,
-        }
-        del v
-        if nes(k):
-            workspace["work_dir"] = k
-        if library:
-            workspace["tags"].append("svcdll")
-        r = None
-        if self.opts.get_rc("enabled"):
-            r = Rc(self.opts.get_support("rc"))
-        self.log.debug(f"Workspace built: {dumps(workspace)}")
-        try:
-            with self("SP1"):
-                self.log.info("Starting the Generate step..")
-                f = self.generate(gen, d, workspace)
-                self.log.debug("Completed the Generate step!")
-            with self("SP2"):
-                self.log.info("Starting the Build step..")
-                o = self.build(d, workspace, r, f, output)
-                self.log.debug("Completed the Build step!")
-            with self("SP3"):
-                self.log.info("Starting the Protect step..")
-                self.protect(d, o)
-                self.log.debug("Completed the Protect step!")
-            copy(o, output)
-            del o, f
-        except Exception as err:
-            self.log.error(f"Error during operation: {err}", err=err)
-            raise err
-        finally:
-            if self.prefix:
-                self.log.prefix(None)
-            del r, workspace
-            if nes(k):
-                self.log.debug(f'Removing link directory "{k}".')
-                remove(k)
-            if not no_clean and m:
-                self.log.debug(f'Removing working directory "{d}".')
-                rmtree(d)
-        try:
-            chmod(output, 0o755, follow_symlinks=False)
-        except OSError:
-            pass
-        self.log.info(f'Output result file "{output}".')
-        return output
 
     def _step_build_go(self, workspace, env, ld, extra, file, out):
         b, x = self.opts.get_bin("go"), list()
@@ -687,9 +620,102 @@ class JetStream(object):
             del o
         del r
 
+    def run(self, osv, arch, gen, library, output, no_clean, dest=None):
+        if not nes(output):
+            raise ValueError('run: "output" is not valid')
+        if isabs(output):
+            output = join(getcwd(), output)
+        if self.prefix:
+            self.log.prefix("PRE")
+        d, m = self.opts.get_build("dir"), False
+        if not nes(d):
+            d, m = mkdtemp(prefix="jetstream-build-"), True
+            self.opts.set("build.dir", d)
+            self.log.debug(f'Made temp working directory "{d}".')
+        else:
+            d = expanduser(expandvars(d))
+            if not isdir(d):
+                makedirs(d, exist_ok=True)
+            self.log.info(f'Using the non-temp working diretory "{d}".')
+        v, k = self.opts.get_build("dir_link"), None
+        if nes(v):
+            v, n = expanduser(expandvars(v)), basename(d)
+            k = join(v, n)
+            symlink(d, k)
+            self.log.info(
+                f'Linking the working directory "{d}" into the target directory "{v}" as "{n}".'
+            )
+        workspace = {
+            "os": osv,
+            "cgo": self.opts.get_option("cgo"),
+            "dir": d,
+            "out": output,
+            "tags": [],
+            "main": "",
+            "arch": arch,
+            "link": v,
+            "flags": "",
+            "export": self.opts.get_support("cgo_export"),
+            "no_clean": no_clean,
+            "library": library,
+            "main_cgo": "",
+            "work_dir": d,
+        }
+        del v
+        if nes(k):
+            workspace["work_dir"] = k
+        if library:
+            workspace["tags"].append("svcdll")
+        r = None
+        if self.opts.get_rc("enabled"):
+            r = Rc(self.opts.get_support("rc"))
+        self.log.debug(f"Workspace built: {dumps(workspace)}")
+        try:
+            with self("SP1"):
+                self.log.info("Starting the Generate step..")
+                f = self.generate(gen, d, workspace)
+                self.log.debug("Completed the Generate step!")
+            with self("SP2"):
+                self.log.info("Starting the Build step..")
+                o = self.build(d, workspace, r, f, output)
+                self.log.debug("Completed the Build step!")
+            with self("SP3"):
+                self.log.info("Starting the Protect step..")
+                self.protect(d, o)
+                self.log.debug("Completed the Protect step!")
+            if nes(dest):
+                makedirs(dirname(dest), exist_ok=True)
+                copy(o, dest)
+            else:
+                makedirs(dirname(output), exist_ok=True)
+                copy(o, output)
+            del o, f
+        except KeyboardInterrupt as err:
+            self.log.error("Interrupted!")
+            raise err
+        except Exception as err:
+            self.log.error(f"Error during operation: {err}", err=err)
+            raise err
+        finally:
+            if self.prefix:
+                self.log.prefix(None)
+            del r, workspace
+            if nes(k):
+                self.log.debug(f'Removing link directory "{k}".')
+                remove(k)
+            if not no_clean and m:
+                self.log.debug(f'Removing working directory "{d}".')
+                rmtree(d)
+        try:
+            chmod(output, 0o755, follow_symlinks=False)
+        except OSError:
+            pass
+        self.log.info(f'Output result file "{output}".')
+        return output
+
     def _step_build_cgo(self, base, workspace, env, rc, x64, lib, src, file, out):
         if workspace["os"] != "windows":
-            raise ValueError("can only use CGO with Windows")
+            raise ValueError("build: can only use CGO with Windows")
         c = self.opts.get_bin("wgcc" + "64" if x64 else "32")
         env["CC"] = c
         env["CGO_ENABLED"] = "1"
@@ -702,11 +728,13 @@ class JetStream(object):
             file,
             i,
         )
-        n, m = out.lower(), out
-        if lib and not n.endswith(".dll"):
-            m += ".dll"
-        elif not lib and not n.endswith(".exe"):
-            m += ".exe"
+        _, n = splitext(out)
+        m = out
+        if len(n) == 0 and workspace["os"] == "windows":
+            if lib:
+                m += ".dll"
+            else:
+                m += ".exe"
         del n
         self.log.debug(f'File target name is "{m}".')
         z = list()
@@ -716,24 +744,52 @@ class JetStream(object):
             r, o = join(base, "res.rc"), join(base, "res.o")
             with open(r, "w") as f:
                 f.write(rc.generate(m, lib))
-            self._exec([q, "-i", r, "-o", o])
+            self._exec(
+                [
+                    q,
+                    "--codepage=0xFDE9",  # UTF-8
+                    "--language=0x409",  # EN-US
+                    "--output-format=coff",
+                    "-i",
+                    r,
+                    "-o",
+                    o,
+                ]
+            )
             z.append(o)
             self.log.debug(f'Resource file "{o}" generated.')
-            remove(r)
+            if not workspace.get("no_clean", False):
+                remove(r)
             del r, o
         if self.opts.get_support("manifest"):
             self.log.debug("Adding Manifest file..")
-            with open(join(base, f"{m}.manifest"), "w") as f:
+            # with open(join(base, f"{m}.manifest"), "w") as f:
+            with open(join(base, "file.manifest"), "w") as f:
                 f.write(MANIFEST)
             r, o = join(base, "manifest.rc"), join(base, "manifest.o")
             with open(r, "w") as f:
+                # f.write(
+                #    f'#include "winuser.h"\n{"2" if lib else "1"} RT_MANIFEST {m}.manifest\n'
+                # )
                 f.write(
-                    f'#include "winuser.h"\n{"2" if lib else "1"} RT_MANIFEST {m}.manifest\n'
+                    f'#include "winuser.h"\n{"2" if lib else "1"} RT_MANIFEST file.manifest\n'
                 )
-            self._exec([q, "--output-format=coff", "-i", r, "-o", o])
+            self._exec(
+                [
+                    q,
+                    "--codepage=0xFDE9",
+                    "--language=0x409",
+                    "--output-format=coff",
+                    "-i",
+                    r,
+                    "-o",
+                    o,
+                ]
+            )
             z.append(o)
             self.log.debug(f'Manifest file "{o}" generated.')
-            remove(r)
+            if not workspace.get("no_clean", False):
+                remove(r)
             del r, o
         del q
         o = join(base, m)
@@ -807,4 +863,31 @@ class JetStream(object):
 
 
 if __name__ == "__main__":
-    JetStream.cmdline()
+    try:
+        o, g, r, h = Parser.with_load()
+    except ValueError as err:
+        print(f"Error: {err}!", file=stderr)
+        exit(1)
+    if h:
+        Parser.print_help(g)
+    del h
+    try:
+        v = JetStream(o)
+        t, a = v.check(r.target, g, r.config, r.save, r.library)
+    except Exception as err:
+        print(f"Error: {err}!", file=stderr)
+        exit(1)
+    del o
+    if not r.quiet:
+        v.print_options(t, a, g)
+    if r.check:
+        exit(0)
+    try:
+        v.run(t, a, g, r.library, r.output, r.no_clean)
+    except KeyboardInterrupt:
+        print("Interrupted!", file=stderr)
+        exit(1)
+    except Exception as err:
+        print(f"Error: {err}!", file=stderr)
+        exit(1)
+    del r, t, a, g

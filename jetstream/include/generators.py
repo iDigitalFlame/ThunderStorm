@@ -49,14 +49,14 @@ def load_generators(base_dir):
     else:
         d = expanduser(expandvars(base_dir))
     if not isdir(d):
-        raise ValueError(f'generator path "{d}" is not a directory')
+        raise ValueError(f'load_generators: generator path "{d}" is not a directory')
     g = dict()
     for i in glob(join(d, "*.py"), recursive=False):
         if not i.endswith(".py"):
             continue
         n = basename(i)[:-3].lower()
         if n in g:
-            raise ValueError(f'duplicate generator entry "{n}" found')
+            raise ValueError(f'load_generators: duplicate generator entry "{n}" found')
         try:
             k = spec_from_file_location(n, i)
             m = module_from_spec(k)

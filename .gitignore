@@ -6,6 +6,17 @@ bolt/sources/xsupport
 src
 cirrus.json
 js.json
+*.json
+
+cloudseed/templates/_*
+cloudseed/templates/_**
+cloudseed/generators/_*
+cloudseed/generators/_**
+
+jetstream/templates/_*
+jetstream/templates/_**
+jetstream/generators/_*
+jetstream/generators/_**
 
 .bolt-cfg
 .bolt-cfg.bak

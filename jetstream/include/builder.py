@@ -275,6 +275,7 @@ def _sign_range(d, exp):
 
 
 def _sed(path, old, new):
+    print("sed", path)
     with open(path, "r") as f:
         d = f.read()
     with open(path, "w") as f:
@@ -334,7 +335,7 @@ def tiny_root(old, new, timeout=5):
     try:
         copytree(old, new)
     except OSError as err:
-        raise OSError(f'Copytree from "{old}" to "{new}"') from err
+        raise OSError(f'tiny_root: copytree from "{old}" to "{new}"') from err
     for i in glob(join(new, "src", "fmt", "*.go"), recursive=False):
         remove(i)
     for i in glob(join(new, "src", "unicode", "*.go"), recursive=False):
@@ -370,10 +371,54 @@ def tiny_root(old, new, timeout=5):
         [
             "if a, err := idna.ToASCII(host); err == nil {",
             '"golang.org/x/net/idna"',
+            'var http2errReadEmpty = errors.New("read from empty dataBuffer")',
+            'var http2DebugGoroutines = os.Getenv("DEBUG_HTTP2_GOROUTINES") == "1"',
+            'panic(fmt.Sprintf("unexpected buffer len=%v", len(p)))',
+            'return fmt.Sprintf("unknown error code 0x%x", uint32(e))',
+            'return fmt.Sprintf("ERR_UNKNOWN_%d", uint32(e))',
+            'return fmt.Sprintf("connection error: %s", http2ErrCode(e))',
+            'return fmt.Sprintf("stream error: stream ID %d; %v; %v", e.StreamID, e.Code, e.Cause)',
+            'return fmt.Sprintf("stream error: stream ID %d; %v", e.StreamID, e.Code)',
+            'return "connection exceeded flow control window size"',
+            'return fmt.Sprintf("http2: connection error: %v: %v", e.Code, e.Reason)',
+            'return fmt.Sprintf("invalid pseudo-header %q", string(e))',
+            'return fmt.Sprintf("duplicate pseudo-header %q", string(e))',
+            'return fmt.Sprintf("invalid header field name %q", string(e))',
+            'return fmt.Sprintf("invalid header field value %q", string(e))',
+            'http2errMixPseudoHeaderTypes = errors.New("mix of request and response pseudo headers")',
+            'http2errPseudoAfterRegular   = errors.New("pseudo header field after regular")',
+            'return fmt.Sprintf("UNKNOWN_FRAME_TYPE_%d", uint8(t))',
+            'var http2ErrFrameTooLarge = errors.New("http2: frame too large")',
+            "\nfunc init() {\n",
+            "\n\t\thttp2logFrameReads = true\n\t}\n}",
+            "\nvar (\n\thttp2VerboseLogs    bool\n\thttp2logFrameWrites bool\n\t"
+            "http2logFrameReads  bool\n\thttp2inTests        bool\n)\n",
         ],
         [
             'if a := ""; len(a) > 0 {',
             "",
+            'var http2errReadEmpty = errors.New("empty")',
+            "const http2DebugGoroutines = false",
+            'panic("")',
+            'return "unknown error code"',
+            'return "ERR_UNKNOWN"',
+            'return "connection error"',
+            'return "stream error"',
+            'return "stream error"',
+            'return "window size"',
+            'return "connection error"',
+            'return "invalid"',
+            'return "duplicate"',
+            'return "invalid"',
+            'return "invalid"',
+            'http2errMixPseudoHeaderTypes = errors.New("headers")',
+            'http2errPseudoAfterRegular   = errors.New("after regular")',
+            'return "UNKNOWN_FRAME_TYPE"',
+            'var http2ErrFrameTooLarge = errors.New("too large")',
+            "/*\nfunc init() {\n",
+            "\n\t\thttp2logFrameReads = true\n\t}\n}\n*/",
+            "\nconst (\n\thttp2VerboseLogs    = false\n\thttp2logFrameWrites = false\n\t"
+            "http2logFrameReads  = false\n\thttp2inTests        = false\n)\n",
         ],
     )
     _sed(
@@ -452,6 +497,128 @@ def tiny_root(old, new, timeout=5):
             "",
         ],
     )
+    _sed(
+        join(new, "src", "runtime", "os_plan9.go"),
+        [
+            'var _badsignal = []byte("runtime: signal received on thread not created by Go.\\n")'
+        ],
+        ['var _badsignal = []byte("bad\\n")'],
+    )
+    _sed(
+        join(new, "src", "runtime", "signal_windows.go"),
+        [
+            'print("signal arrived during external code execution\\n")',
+            'const msg = "runtime: signal received on thread not created by Go.\\n"',
+        ],
+        ["", 'const msg = "bad\\n"'],
+    )
+    _sed(
+        join(new, "src", "cmd", "link", "internal", "ld", "data.go"),
+        ['const prefix = "\\xff Go buildinf:"'],
+        ['const prefix = "\\xff __ _________"'],
+    )
+    _sed(
+        join(new, "src", "debug", "buildinfo", "buildinfo.go"),
+        ['buildInfoMagic = []byte("\\xff Go buildinf:")'],
+        ['buildInfoMagic = []byte("\\xff __ _________")'],
+    )
+    _sed(
+        join(new, "src", "runtime", "cgo", "libcgo_windows.h"),
+        ["__declspec(dllexport) int _cgo_dummy_export;"],
+        [f"__declspec(dllexport) int _{random_chars(12)};"],
+    )
+    _sed(
+        join(new, "src", "runtime", "proc.go"),
+        [
+            'var earlycgocallback = []byte("fatal error: cgo callback before cgo call\\n")'
+        ],
+        ['var earlycgocallback = []byte("bad\\n")'],
+    )
+    _sed(
+        join(new, "src", "runtime", "cgo", "gcc_util.c"),
+        ['fprintf(stderr, "runtime/cgo: out of memory in thread_start\\n");'],
+        ['fprintf(stderr, "bad\\n");'],
+    )
+    _sed(
+        join(new, "src", "vendor", "golang.org", "x", "sys", "cpu", "cpu.go"),
+        ["\tprocessOptions()\n"],
+        ["\t// processOptions()\n"],
+    )
+    _sed(
+        join(new, "src", "internal", "cpu", "cpu.go"),
+        ["\tprocessOptions(env)\n"],
+        ["\t// processOptions(env)\n"],
+    )
+    _sed(
+        join(new, "src", "internal", "godebug", "godebug.go"),
+        ['return get(os.Getenv("GODEBUG"), key)'],
+        ['return get(os.Getenv(""), key)'],
+    )
+    _sed(
+        join(new, "src", "crypto", "x509", "x509.go"),
+        ['override = " (temporarily override with GODEBUG=x509sha1=1)"'],
+        ['override = ""'],
+    )
+    _sed(
+        join(new, "src", "runtime", "stubs.go"),
+        [
+            'var badsystemstackMsg = "fatal: systemstack called from unexpected goroutine"'
+        ],
+        ['var badsystemstackMsg = "bad"'],
+    )
+    _sed(
+        join(new, "src", "encoding", "asn1", "asn1.go"),
+        [
+            'err = StructuralError{"unknown Go type for slice"}',
+            'err = StructuralError{fmt.Sprintf("unknown Go type: %v", fieldType)}',
+        ],
+        [
+            'err = StructuralError{"unknown type"}',
+            'err = StructuralError{"unknown type"}',
+        ],
+    )
+    _sed(
+        join(new, "src", "encoding", "asn1", "marshal.go"),
+        [
+            'return nil, StructuralError{fmt.Sprintf("unknown Go type: %v", v.Type())}',
+            'return nil, StructuralError{"unknown Go type"}',
+        ],
+        [
+            'return nil, StructuralError{"unknown type"}',
+            'return nil, StructuralError{"unknown type"}',
+        ],
+    )
+    _sed(
+        join(new, "src", "runtime", "runtime2.go"),
+        [
+            "\nvar waitReasonStrings = [...]string{\n",
+            "\nfunc (w waitReason) String() string {\n",
+            "\n\treturn waitReasonStrings[w]\n}",
+        ],
+        [
+            "/*var waitReasonStrings = [...]string{\n",
+            '\n*/\nfunc (waitReason) String() string {\n\treturn "wait"\n}\n/*\n',
+            "\n\treturn waitReasonStrings[w]\n}*/",
+        ],
+    )
+    _sed(
+        join(new, "src", "runtime", "debug.go"),
+        ['stopTheWorldGC("GOMAXPROCS")'],
+        ['stopTheWorldGC("GMP")'],
+    )
+    # NOTE(dij): I have this commented out since I don't necessarily want to break
+    #            support for long paths and cause os.fixPath to allocate.
+    #            Basically the "runtime.initLongPathSupport" function causes the
+    #            Process to attempt to access a super-long ~500 char string path
+    #            which is SUPER fingerprintable. I'm debating if I'm gonna turn
+    #            this off rn. I have it here just in case.
+    # _sed(
+    #    join(new, "src", "runtime", "os_windows.go"),
+    #    ["getRandomData(longFileName[len(longFileName)-33 : len(longFileName)-1])"],
+    #    [
+    #        "_ = originalBitField\n\treturn // getRandomData(longFileName[len(longFileName)-33 : len(longFileName)-1])"
+    #    ],
+    # )
     remove(join(new, "src", "time", "zoneinfo_abbrs_windows.go"))
     for i in glob(join(new, "src", "**", "**.go"), recursive=True):
         if new not in i or not isfile(i):
@@ -489,6 +656,35 @@ def _remap_file(p, regexp, no_concat, repl):
     with open(p, "w") as f:
         f.write(c)
     del r, c, b
+
+
+def make_cert_target(js, base, target, name):
+    r = join(base, "grab.go")
+    n = f'"{name}"'
+    if not nes(name):
+        n = "c.Issuer.CommonName"
+    v = target
+    if v.startswith("http://"):
+        v = v[7:]
+    elif v.startswith("https://"):
+        v = v[8:]
+    if "/" in v:
+        v = v[: v.find("/")]
+    if len(v) == 0:
+        raise ValueError(f'sign: spoof target "{v}" (initial "{target}") is invalid')
+    with open(r, "w") as f:
+        f.write(Template(CERT_GEN).substitute(target=v, rename=n))
+    del n, v
+    js.log.debug(f'Wrote cert grabbing script to "{r}".')
+    t = join(base, "gens")
+    js._exec([js.opts.get_bin("go"), "run", r, t])
+    remove(r)
+    del r
+    c, p = t + ".crt", t + ".pem"
+    del t
+    if not isfile(p) or not isfile(c):
+        raise ValueError("sign: certificate script did not result in any valid output")
+    return c, p
 
 
 def sign(js, o, date, date_range, base, file):
@@ -604,31 +800,8 @@ def sign_with_certs(js, when, file, cert, pem):
 
 
 def sign_with_target(js, when, file, base, target, name):
-    r = join(base, "grab.go")
-    n = f'"{name}"'
-    if not nes(name):
-        n = "c.Issuer.CommonName"
-    v = target
-    if v.startswith("http://"):
-        v = v[7:]
-    elif v.startswith("https://"):
-        v = v[8:]
-    if "/" in v:
-        v = v[: v.find("/")]
-    if len(v) == 0:
-        raise ValueError(f'spoof target "{v}" (initial "{target}") is invalid')
-    with open(r, "w") as f:
-        f.write(Template(CERT_GEN).substitute(target=v, rename=n))
-    del n, v
-    js.log.debug(f'Wrote cert grabbing script to "{r}".')
-    t = join(base, "gens")
-    js._exec([js.opts.get_bin("go"), "run", r, t])
-    remove(r)
-    del r
-    c, p = t + ".crt", t + ".pem"
-    if not isfile(p) or not isfile(c):
-        raise ValueError("certificate script did not result in any valid output")
+    c, p = make_cert_target(js, base, target, name)
     sign_with_certs(js, when, file, c, p)
     remove(c)
     remove(p)
-    del c, p, t
+    del c, p

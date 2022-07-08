@@ -229,7 +229,7 @@ def _split_tags_str(r, v):
         r.append(i.strip())
 
 
-def _insert_args_opts(a, o):
+def insert_args_opts(a, o):
     if a.log_file:
         o.set("config.log.file", a.log_file)
     if a.log_level:
@@ -344,7 +344,6 @@ class Parser(ArgumentParser):
         self.add("-o", "--output", dest="output", type=str)
         self.add("-h", "--help", dest="help", action="store_true")
         self.add("-q", "--quiet", dest="quiet", action="store_true")
-        self.add("-G", "--generators", dest="dir_generators", type=str)
         self.add("-g", "--generator", dest="generator", type=str, default="bolt")
         # Logging Arguments
         self.add("-f", "--log-file", dest="log_file", type=str)
@@ -353,6 +352,7 @@ class Parser(ArgumentParser):
         self.add("-d", "--dir", dest="dir_work", type=str)
         self.add("-l", "--link", dest="dir_link", type=str)
         self.add("-t", "--templates", dest="dir_templates", type=str)
+        self.add("-G", "--generators", dest="dir_generators", type=str)
         # Build Args Arguments
         self.add("-s", "--save", dest="save", action="store_true")
         self.add("-k", "--check", dest="check", action="store_true")
@@ -396,7 +396,7 @@ class Parser(ArgumentParser):
             o.save(r.config)
         elif not r.config and not r.clone:
             o.save(join(getcwd(), "jetstream.conf"))
-        _insert_args_opts(r, o)
+        insert_args_opts(r, o)
         o.vet()
         if not nes(r.output):
             r.output = join(getcwd(), "result")
@@ -450,7 +450,7 @@ class Parser(ArgumentParser):
         self.add("--rc-company", dest="rc_company", type=str)
         self.add("--rc-product", dest="rc_product", type=str)
         self.add("--rc-filename", dest="rc_filename", type=str)
-        self.add("--rc-copright", dest="rc_copyright", type=str)
+        self.add("--rc-copyright", dest="rc_copyright", type=str)
         g = self.add_argument_group(name)
         g.add = g.add_argument
         gen.args_pre(g)

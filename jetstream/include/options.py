@@ -92,16 +92,16 @@ def _cfg_rc(cfg, b):
     cfg["company"] = b.get("company", "")
     cfg["filename"] = b.get("filename", "")
     cfg["copyright"] = b.get("copyright", "")
-    _vet_bool("build.support.rc.enabled", cfg["enabled"])
-    _vet_str_exists("build.support.rc.file", cfg["file"])
-    _vet_str_exists("build.support.rc.json", cfg["json"])
-    _vet_str_exists("build.support.rc.icon", cfg["icon"])
-    _vet_str("build.support.rc.title", cfg["title"])
-    _vet_str("build.support.rc.version", cfg["version"])
-    _vet_str("build.support.rc.product", cfg["product"])
-    _vet_str("build.support.rc.company", cfg["company"])
-    _vet_str("build.support.rc.filename", cfg["filename"])
-    _vet_str("build.support.rc.copyright", cfg["copyright"])
+    vet_bool("build.support.rc.enabled", cfg["enabled"])
+    vet_str_exists("build.support.rc.file", cfg["file"])
+    vet_str_exists("build.support.rc.json", cfg["json"])
+    vet_str_exists("build.support.rc.icon", cfg["icon"])
+    vet_str("build.support.rc.title", cfg["title"])
+    vet_str("build.support.rc.version", cfg["version"])
+    vet_str("build.support.rc.product", cfg["product"])
+    vet_str("build.support.rc.company", cfg["company"])
+    vet_str("build.support.rc.filename", cfg["filename"])
+    vet_str("build.support.rc.copyright", cfg["copyright"])
     _cfg_multi("icon", cfg["icon_multi"], b.get("icon_multi"))
     _cfg_multi("title", cfg["title_multi"], b.get("title_multi"))
     _cfg_multi("version", cfg["version_multi"], b.get("version_multi"))
@@ -118,8 +118,8 @@ def _cfg_log(cfg, b):
         return
     cfg["file"] = b.get("file", "")
     cfg["level"] = b.get("level", "INFO")
-    _vet_str("config.log.file", cfg["file"], null=True)
-    _vet_str("config.log.level", cfg["level"])
+    vet_str("config.log.file", cfg["file"], null=True)
+    vet_str("config.log.level", cfg["level"])
     if cfg["level"].lower() in LEVELS:
         return
     raise ValueError(f'"config.log.level" value "{cfg["level"]}" is invalid')
@@ -134,8 +134,8 @@ def _cfg_base(cfg, b):
     _cfg_log(cfg["log"], b.get("log"))
     cfg["template_dir"] = b.get("template_dir", "")
     cfg["generator_dir"] = b.get("generator_dir", "")
-    _vet_str_exists("config.template_dir", cfg["template_dir"], f=isdir)
-    _vet_str_exists("config.generator_dir", cfg["generator_dir"], f=isdir)
+    vet_str_exists("config.template_dir", cfg["template_dir"], f=isdir)
+    vet_str_exists("config.generator_dir", cfg["generator_dir"], f=isdir)
 
 
 def _cfg_sign(cfg, b):
@@ -165,20 +165,20 @@ def _cfg_sign(cfg, b):
     cfg["cert_raw"] = b.get("cert_raw", "")
     cfg["pem"] = b.get("pem", "")
     cfg["pem_raw"] = b.get("pem_raw", "")
-    _vet_bool("build.support.sign.enabled", cfg["enabled"])
-    _vet_str("build.support.sign.generate_name", cfg["generate_name"])
-    _vet_str("build.support.sign.generate_target", cfg["generate_target"])
-    _vet_str("build.support.sign.date", cfg["date"])
-    _vet_int("build.support.sign.date_range", cfg["date_range"], min=0)
+    vet_bool("build.support.sign.enabled", cfg["enabled"])
+    vet_str("build.support.sign.generate_name", cfg["generate_name"])
+    vet_str("build.support.sign.generate_target", cfg["generate_target"])
+    vet_str("build.support.sign.date", cfg["date"])
+    vet_int("build.support.sign.date_range", cfg["date_range"], min=0)
     if nes(cfg["date"]):
         datetime.fromisoformat(cfg["date"])
-    _vet_str_exists("build.support.sign.pfx", cfg["pfx"])
-    _vet_str("build.support.sign.pfx_raw", cfg["pfx_raw"], b64=True)
-    _vet_str("build.support.sign.pfx_password", cfg["pfx_password"])
-    _vet_str_exists("build.support.sign.cert", cfg["cert"])
-    _vet_str("build.support.sign.cert_raw", cfg["cert_raw"], b64=True)
-    _vet_str_exists("build.support.sign.pem", cfg["pem"])
-    _vet_str("build.support.sign.pem_raw", cfg["pem_raw"], b64=True)
+    vet_str_exists("build.support.sign.pfx", cfg["pfx"])
+    vet_str("build.support.sign.pfx_raw", cfg["pfx_raw"], b64=True)
+    vet_str("build.support.sign.pfx_password", cfg["pfx_password"])
+    vet_str_exists("build.support.sign.cert", cfg["cert"])
+    vet_str("build.support.sign.cert_raw", cfg["cert_raw"], b64=True)
+    vet_str_exists("build.support.sign.pem", cfg["pem"])
+    vet_str("build.support.sign.pem_raw", cfg["pem_raw"], b64=True)
 
 
 def _cfg_bins(cfg, b):
@@ -204,16 +204,16 @@ def _cfg_bins(cfg, b):
     cfg["garble"] = try_find_bin(b.get("garble", ""))
     cfg["openssl"] = try_find_bin(b.get("openssl", ""))
     cfg["osslsigncode"] = try_find_bin(b.get("osslsigncode", ""))
-    _vet_str_exists("build.bins.go", cfg["go"])
-    _vet_str_exists("build.bins.gcc", cfg["gcc"])
-    _vet_str_exists("build.bins.upx", cfg["upx"])
-    _vet_str_exists("build.bins.wgcc32", cfg["wgcc32"])
-    _vet_str_exists("build.bins.wgcc64", cfg["wgcc64"])
-    _vet_str_exists("build.bins.wres32", cfg["wres32"])
-    _vet_str_exists("build.bins.wres64", cfg["wres64"])
-    _vet_str_exists("build.bins.garble", cfg["garble"])
-    _vet_str_exists("build.bins.openssl", cfg["openssl"])
-    _vet_str_exists("build.bins.osslsigncode", cfg["osslsigncode"])
+    vet_str_exists("build.bins.go", cfg["go"])
+    vet_str_exists("build.bins.gcc", cfg["gcc"])
+    vet_str_exists("build.bins.upx", cfg["upx"])
+    vet_str_exists("build.bins.wgcc32", cfg["wgcc32"])
+    vet_str_exists("build.bins.wgcc64", cfg["wgcc64"])
+    vet_str_exists("build.bins.wres32", cfg["wres32"])
+    vet_str_exists("build.bins.wres64", cfg["wres64"])
+    vet_str_exists("build.bins.garble", cfg["garble"])
+    vet_str_exists("build.bins.openssl", cfg["openssl"])
+    vet_str_exists("build.bins.osslsigncode", cfg["osslsigncode"])
 
 
 def _cfg_build(cfg, b):
@@ -229,8 +229,8 @@ def _cfg_build(cfg, b):
     _cfg_bins(cfg["bins"], b.get("bins"))
     _cfg_options(cfg["options"], b.get("options"))
     _cfg_support(cfg["support"], b.get("support"))
-    _vet_str("build.dir", cfg["dir"], null=True)
-    _vet_str("build.dir_link", cfg["dir_link"], null=True)
+    vet_str("build.dir", cfg["dir"], null=True)
+    vet_str("build.dir_link", cfg["dir_link"], null=True)
     if "generators" not in b or not isinstance(b["generators"], dict):
         return
     for k, v in b["generators"].items():
@@ -262,14 +262,14 @@ def _cfg_options(cfg, b):
     cfg["garble"] = b.get("garble", True)
     cfg["compact"] = b.get("compact", True)
     cfg["tags"] = b.get("tags", _DEFAULT_TAGS)
-    _vet_bool("build.options.upx", cfg["upx"])
-    _vet_bool("build.options.cgo", cfg["cgo"])
-    _vet_bool("build.options.crypt", cfg["crypt"])
-    _vet_bool("build.options.strip", cfg["strip"])
-    _vet_bool("build.options.garble", cfg["garble"])
-    _vet_bool("build.options.compact", cfg["compact"])
-    _vet_list_strs("build.options.tags", cfg["tags"], null=True)
-    _vet_str_exists("build.options.goroot", cfg["goroot"], f=isdir)
+    vet_bool("build.options.upx", cfg["upx"])
+    vet_bool("build.options.cgo", cfg["cgo"])
+    vet_bool("build.options.crypt", cfg["crypt"])
+    vet_bool("build.options.strip", cfg["strip"])
+    vet_bool("build.options.garble", cfg["garble"])
+    vet_bool("build.options.compact", cfg["compact"])
+    vet_list_strs("build.options.tags", cfg["tags"], null=True)
+    vet_str_exists("build.options.goroot", cfg["goroot"], f=isdir)
 
 
 def _cfg_support(cfg, b):
@@ -281,8 +281,8 @@ def _cfg_support(cfg, b):
         return
     cfg["manifest"] = b.get("manifest", True)
     cfg["cgo_export"] = b.get("cgo_export", "")
-    _vet_bool("build.support.manifest", cfg["manifest"])
-    _vet_str("build.support.cgo_export", cfg["cgo_export"])
+    vet_bool("build.support.manifest", cfg["manifest"])
+    vet_str("build.support.cgo_export", cfg["cgo_export"])
     _cfg_rc(cfg["rc"], b.get("rc"))
     _cfg_sign(cfg["sign"], b.get("sign"))
 
@@ -300,14 +300,14 @@ def _cfg_multi(n, cfg, b):
     cfg["default"] = b.get("default", "")
     cfg["enabled"] = b.get("enabled", False)
     cfg["choices"] = b.get("choices", list())
-    _vet_str(f"build.support.rc.{n}_multi.default", cfg["default"])
-    _vet_bool(f"build.support.rc.{n}_multi.enabled", cfg["enabled"])
-    _vet_str_exists(f"build.support.rc.{n}_multi.file", cfg["file"])
-    _vet_int(f"build.support.rc.{n}_multi.chance", cfg["chance"], min=0)
-    _vet_list_strs(f"build.support.rc.{n}_multi.choices", cfg["choices"])
+    vet_str(f"build.support.rc.{n}_multi.default", cfg["default"])
+    vet_bool(f"build.support.rc.{n}_multi.enabled", cfg["enabled"])
+    vet_str_exists(f"build.support.rc.{n}_multi.file", cfg["file"])
+    vet_int(f"build.support.rc.{n}_multi.chance", cfg["chance"], min=0)
+    vet_list_strs(f"build.support.rc.{n}_multi.choices", cfg["choices"])
 
 
-def _vet_bool(name, v, null=False):
+def vet_bool(name, v, null=False):
     if v is None and null:
         return
     if isinstance(v, bool):
@@ -317,7 +317,7 @@ def _vet_bool(name, v, null=False):
     raise ValueError(f'"{name}" must be a boolean')
 
 
-def _vet_str(name, v, null=False, b64=False):
+def vet_str(name, v, null=False, b64=False):
     if v is None and null:
         return
     if not isinstance(v, str):
@@ -334,7 +334,7 @@ def _vet_str(name, v, null=False, b64=False):
     raise ValueError(f'"{name}" must be a valid base64 string')
 
 
-def _vet_int(name, v, min=0, max=0, null=False):
+def vet_int(name, v, min=0, max=0, null=False):
     if v is None and null:
         return
     if not isinstance(v, (int, float)):
@@ -344,13 +344,13 @@ def _vet_int(name, v, min=0, max=0, null=False):
     if min == 0 and max == 0:
         return
     if min > 0 and v < min:
-        raise ValueError(f'"{name}" value must be greater than "{min}"')
+        raise ValueError(f'"{name}" value must be greater than or equal to "{min}"')
     if max == 0 or v < max:
         return
     raise ValueError(f'"{name}" value must be less than "{max}"')
 
 
-def _vet_str_exists(name, v, f=isfile, null=False):
+def vet_str_exists(name, v, f=isfile, null=False):
     if v is None and null:
         return
     if not isinstance(v, str):
@@ -365,7 +365,7 @@ def _vet_str_exists(name, v, f=isfile, null=False):
     del p
 
 
-def _vet_list_strs(name, v, null=False, empty=True):
+def vet_list_strs(name, v, null=False, empty=True):
     if v is None and null:
         return
     if not isinstance(v, list):
@@ -422,13 +422,13 @@ class Rc(object):
                 f'"build.support.rc.json" path "{p}" did not parse to a dict'
             )
         self._dict(d, True)
-        _vet_str_exists("build.support.rc.json|icon", self.icon)
-        _vet_str("build.support.rc.json|title", self.title)
-        _vet_str("build.support.rc.json|version", self.version)
-        _vet_str("build.support.rc.json|product", self.product)
-        _vet_str("build.support.rc.json|company", self.company)
-        _vet_str("build.support.rc.json|filename", self.filename)
-        _vet_str("build.support.rc.json|copyright", self.copyright)
+        vet_str_exists("build.support.rc.json|icon", self.icon)
+        vet_str("build.support.rc.json|title", self.title)
+        vet_str("build.support.rc.json|version", self.version)
+        vet_str("build.support.rc.json|product", self.product)
+        vet_str("build.support.rc.json|company", self.company)
+        vet_str("build.support.rc.json|filename", self.filename)
+        vet_str("build.support.rc.json|copyright", self.copyright)
         del p, d
 
     def _dict(self, d, ex):
@@ -453,6 +453,8 @@ class Rc(object):
                 i = self.icon_multi.pick()
             else:
                 i = self.icon
+            if nes(i) and not isfile(i):
+                raise ValueError(f'icon path "{i}" is not a file')
         else:
             i = ""
         if self.title_multi.enabled:
@@ -514,14 +516,14 @@ class _Multi(object):
         self.choices = v.get("choices", list())
         self.enabled = v.get("enabled", False)
         if n == "icon":
-            _vet_str_exists(f"build.support.rc.{n}_multi.default", self.default)
+            vet_str_exists(f"build.support.rc.{n}_multi.default", self.default)
         if not ex:
             return
-        _vet_str(f"build.support.rc.{n}_multi.default", self.default)
-        _vet_bool(f"build.support.rc.{n}_multi.enabled", self.enabled)
-        _vet_str_exists(f"build.support.rc.{n}_multi.file", self.file)
-        _vet_int(f"build.support.rc.{n}_multi.chance", self.chance, min=0)
-        _vet_list_strs(f"build.support.rc.{n}_multi.choices", self.choices)
+        vet_str(f"build.support.rc.{n}_multi.default", self.default)
+        vet_bool(f"build.support.rc.{n}_multi.enabled", self.enabled)
+        vet_str_exists(f"build.support.rc.{n}_multi.file", self.file)
+        vet_int(f"build.support.rc.{n}_multi.chance", self.chance, min=0)
+        vet_list_strs(f"build.support.rc.{n}_multi.choices", self.choices)
 
     def pick(self):
         if self._cache is None:
@@ -564,7 +566,7 @@ class Logger(object):
                 try:
                     makedirs(d, exist_ok=True)
                 except OSError as err:
-                    raise OSError(f'Error creating log directory "{d}": {err}')
+                    raise OSError(f'error creating log directory "{d}": {err}')
             del d
             try:
                 h = FileHandler(file)
@@ -573,7 +575,7 @@ class Logger(object):
                 self._log.addHandler(h)
                 chmod(file, 0o644, follow_symlinks=True)
             except OSError as err:
-                raise OSError(f'Error creating log file "{file}": {err}')
+                raise OSError(f'error creating log file "{file}": {err}')
             del h
         else:
             s = StreamHandler()
@@ -639,11 +641,13 @@ class Logger(object):
 class Options(object):
     __slots__ = ("lock", "_gens", "_temps", "_config")
 
-    def __init__(self):
+    def __init__(self, d=None):
         self.lock = False
         self._gens = None
         self._temps = None
         self._config = None
+        if isinstance(d, dict):
+            self.load_from(d)
 
     def vet(self):
         d = {
@@ -661,7 +665,7 @@ class Options(object):
 
     def logger(self):
         if self._config is None:
-            raise ValueError("options was not loaded")
+            raise ValueError("save: options was not loaded")
         return Logger(
             "JetStream",
             self._config["config"]["log"]["level"],
@@ -670,7 +674,7 @@ class Options(object):
 
     def save(self, p):
         if self._config is None:
-            raise ValueError("options was not loaded")
+            raise ValueError("save: options was not loaded")
         if isinstance(p, str) and len(p) > 0:
             v = expanduser(expandvars(p))
         else:
@@ -683,39 +687,27 @@ class Options(object):
         if nes(p):
             v = expanduser(expandvars(p))
             if not isfile(v):
-                raise ValueError(f'options file "{v}" was not found')
+                raise ValueError(f'load: options file "{v}" was not found')
         else:
             v = "jetstream.conf"
         if isfile(v):
             with open(v) as f:
                 d = loads(f.read())
             if not isinstance(d, dict):
-                raise ValueError(f'options file "{v}" is invalid')
-            if "_" in d:
-                self.lock = True
+                raise ValueError(f'load: options file "{v}" is invalid')
         else:
             d = dict()
         del v
-        self._config = {
-            "build": {
-                "bins": dict(),
-                "options": dict(),
-                "generators": dict(),
-                "support": {"rc": dict(), "sign": dict()},
-            },
-            "config": {"log": dict()},
-        }
-        _cfg_build(self._config["build"], d.get("build"))
-        _cfg_base(self._config["config"], d.get("config"))
+        self.load_from(d)
         del d
 
     def set(self, n, d):
         if self._config is None:
-            raise ValueError("options was not loaded")
+            raise ValueError("set: options was not loaded")
         if not nes(n):
-            raise KeyError("key was not a string or empty")
+            raise KeyError("set: key was not a non-empty string")
         if "." not in n:
-            self._config.get[n.lower()] = d
+            self._config[n.lower()] = d
             return d
         v = n.lower().split(".")
         if len(v) == 0 or v[0] not in self._config:
@@ -755,11 +747,28 @@ class Options(object):
                     self._temps[i] = Template(f.read())
         return self._temps
 
+    def load_from(self, d):
+        if not isinstance(d, dict):
+            raise ValueError("load_from: parameter must be a dict")
+        if "_" in d:
+            self.lock = True
+        self._config = {
+            "build": {
+                "bins": dict(),
+                "options": dict(),
+                "generators": dict(),
+                "support": {"rc": dict(), "sign": dict()},
+            },
+            "config": {"log": dict()},
+        }
+        _cfg_build(self._config["build"], d.get("build"))
+        _cfg_base(self._config["config"], d.get("config"))
+
     def get(self, n, default=None):
         if self._config is None:
-            raise ValueError("options was not loaded")
+            raise ValueError("get: options was not loaded")
         if not nes(n):
-            raise KeyError("key was not a string or empty")
+            raise KeyError("get: key was not a non-empty string")
         if "." not in n:
             return self._config.get(n.lower(), default)
         v = n.lower().split(".")
@@ -785,13 +794,13 @@ class Options(object):
         if self._gens is not None:
             return self._gens
         if self._config is None:
-            raise ValueError("options was not loaded")
+            raise ValueError("generators: options was not loaded")
         if isinstance(d, str) and d:
             self._gens = load_generators(d)
         else:
             self._gens = load_generators(self._config["config"]["generator_dir"])
         for k, v in self._gens.items():
-            if self is None or k == sel:
+            if sel is None or k == sel:
                 if k not in self._config["build"]["generators"]:
                     self._config["build"]["generators"][k] = dict()
                 v.config_load(self._config["build"]["generators"][k])
@@ -805,7 +814,7 @@ class Options(object):
 
     def _get(self, m, c, e, n, default):
         if self._config is None:
-            raise ValueError("options was not loaded")
+            raise ValueError("get: options was not loaded")
         if c is None:
             return self._config.get(m, default)
         if m not in self._config or not isinstance(self._config[m], dict):

@@ -36,6 +36,7 @@ CRUMBS = [
     b"\x2E\x08\x00'github",
     b"\x0D\x00internal/",
 ]
+CRUMB_INF = b"\xFF Go buildinf:"
 
 
 def _is_abc(c):
@@ -76,6 +77,11 @@ def strip_binary(file, log=None):
     for _ in range(0, 5):
         for i in CRUMBS:
             _find_next_push(b, x, i, v, n, log)
+    del v, n, x
+    x = b.find(CRUMB_INF)
+    if x > 0:
+        for i in range(x + 2, x + 14):
+            b[i] = ord("_")
     with open(file, "wb") as f:
         f.write(b)
 
@@ -102,7 +108,7 @@ def _next_block(b, start, v, n, log):
 def _find_next_push(b, x, c, v, n, log):
     i = b.find(c, x)
     if i > 0 and i < x:
-        raise IOError(f"invalid next offset {x:X} => {i:X}")
+        raise IOError(f"strip: invalid next offset {x:X} => {i:X}")
     if i == -1:
         return
     _next_block(b, i + 2, v, n, log)
