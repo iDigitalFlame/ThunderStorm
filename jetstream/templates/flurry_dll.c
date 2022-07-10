@@ -61,6 +61,8 @@
 
 #include "flurry.h"
 
+const TimeProvHandle prov = (TimeProvHandle)1;
+
 DWORD $thread() {
     Sleep(1000);
     $export();
