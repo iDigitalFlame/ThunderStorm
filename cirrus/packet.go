@@ -114,7 +114,7 @@ func (p *packetManager) httpPacketGetDelete(_ context.Context, w http.ResponseWr
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(
 		`{"id":` + strconv.FormatUint(uint64(v.ID), 10) + `,"flags":"` + v.Flags.String() + `","device":"` + v.Device.String() +
-			`","sig":"` + v.Device.Full() + `"hardware":"` + v.Device.Signature() + `","time":"` + v.Time.Format(time.RFC3339) + `","data":"`,
+			`","sig":"` + v.Device.Full() + `","hardware":"` + v.Device.Signature() + `","time":"` + v.Time.Format(time.RFC3339) + `","data":"`,
 	))
 	writeBase64(w, v.Payload())
 	if w.Write([]byte{'"', '}'}); !r.IsDelete() {

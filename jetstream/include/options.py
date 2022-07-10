@@ -801,9 +801,10 @@ class Options(object):
             self._gens = load_generators(self._config["config"]["generator_dir"])
         for k, v in self._gens.items():
             if sel is None or k == sel:
-                if k not in self._config["build"]["generators"]:
-                    self._config["build"]["generators"][k] = dict()
-                v.config_load(self._config["build"]["generators"][k])
+                v.config_load(self)
+                # if k not in self._config["build"]["generators"]:
+                #    self._config["build"]["generators"][k] = dict()
+                # v.config_load(self._config["build"]["generators"][k])
         return self._gens
 
     def get_bin(self, n, default=None):

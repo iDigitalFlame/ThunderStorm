@@ -19,8 +19,9 @@ from secrets import token_bytes
 from include.config import Config
 from include.util import nes, xor
 from argparse import BooleanOptionalAction
+from os.path import expanduser, expandvars, join
 from include.builder import go_bytes, random_chars
-from os.path import expanduser, expandvars, isfile, join
+from include.manager import Manager, is_str, is_file, str_lower
 
 _LINKERS = {
     "tcp": "t",
@@ -33,32 +34,32 @@ _LINKERS = {
 _HELP_TEXT = """ Generates a Bolt build based on the supplied profile and behavior arguments.
 
  Arguments
-  Build Arguments
+  CGO Build Arguments
    -T                 <thread_name>   |
    --thread
    -F                 <function_name> |
    --func
 
-  General Arguments
+  Bolt Specific Arguments
    -n                 <profile_file>  |
    --profile
-   -P                 <pipe_name>     |
-   --pipe
    -L                                 |
    --load
+   -P                 <pipe_name>     |
+   --pipe
+   -I
+   --ignore
    -W                 <guardian_name> |
    --guardian
    -E                 <linker_type>   |
    --linker
-   -I
-   --ignore
-   -U
-   --service
-   -Y                 <service_name>  |
-   --service-name
 
   Behavior Arguments
-   -V                 <checks>        |
+   -S
+   --service
+   -A                 <service_name>  |
+   --service-name
+   -R                 <checks>        |
    --checks
    -K
    --critical
@@ -66,120 +67,65 @@ _HELP_TEXT = """ Generates a Bolt build based on the supplied profile and beh
 
 
 class Bolt(object):
+    __slots__ = ("_m",)
+
+    def __init__(self):
+        self._m = Manager("bolt")
+
     def args_help(self):
         return _HELP_TEXT
 
     def check(self, cfg):
-        if not isinstance(cfg["load"], bool):
-            raise ValueError('"load" must be a boolean')
-        if not isinstance(cfg["ignore"], bool):
-            raise ValueError('"ignore" must be a boolean')
-        if not isinstance(cfg["service"], bool):
-            raise ValueError('"service" must be a boolean')
-        if not isinstance(cfg["critical"], bool):
-            raise ValueError('"critical" must be a boolean')
-        if not isinstance(cfg["func"], str):
-            raise ValueError('"func" must be a string')
-        if not isinstance(cfg["checks"], str):
-            raise ValueError('"checks" must be a string')
-        if not isinstance(cfg["thread"], str):
-            raise ValueError('"thread" must be a string')
-        if not nes(cfg["profile"]):
-            raise ValueError('"profile" must be a non-empty string')
-        if cfg["load"] and not nes(cfg["pipe"]):
-            raise ValueError('"pipe" must be a non-empty string')
-        if not cfg["ignore"]:
-            if not nes(cfg["guardian"]):
-                raise ValueError('"guardian" must be a non-empty string')
-            if not nes(cfg["linker"]) or cfg["linker"] not in _LINKERS:
-                raise ValueError('"linker" is invalid')
-        if cfg["service"] and not nes(cfg["service_name"]):
-            raise ValueError('"service_name" must be a non-empty string')
+        self._m.verify(cfg)
         try:
-            Config.from_file(cfg["profile"]).json()
+            Config.from_file(expanduser(expandvars(cfg["profile"]))).json()
         except ValueError as err:
             raise ValueError(f'"profile" "{cfg["profile"]}" is invalid: {err}') from err
+        if cfg["load"] and not nes(cfg["pipe"]):
+            raise ValueError('"pipe" must be a non-empty string')
+        if not cfg["ignore"] and not nes(cfg["guardian"]):
+            raise ValueError('"guardian" must be a non-empty string')
+        if cfg["service"] and not nes(cfg["service_name"]):
+            raise ValueError('"service_name" must be a non-empty string')
 
     def config_load(self, cfg):
-        if "load" not in cfg:
-            cfg["load"] = True
-        if "ignore" not in cfg:
-            cfg["ignore"] = False
-        if "service" not in cfg:
-            cfg["service"] = False
-        if "critical" not in cfg:
-            cfg["critical"] = True
-        if "func" not in cfg:
-            cfg["func"] = ""
-        if "checks" not in cfg:
-            cfg["checks"] = ""
-        if "thread" not in cfg:
-            cfg["thread"] = ""
-        if "profile" not in cfg:
-            cfg["profile"] = ""
-        if "pipe" not in cfg:
-            cfg["pipe"] = ""
-        if "guardian" not in cfg:
-            cfg["guardian"] = ""
-        if "linker" not in cfg:
-            cfg["linker"] = "event"
-        if "service_name" not in cfg:
-            cfg["service_name"] = ""
+        # Bolt Specific Options
+        self._m.add("pipe", ("-P", "--pipe"), "", is_str(True), str)
+        self._m.add("load", ("-L", "--load"), False, action=BooleanOptionalAction)
+        self._m.add("ignore", ("-I", "--ignore"), False, action=BooleanOptionalAction)
+        self._m.add(
+            "linker",
+            ("-E", "--linker"),
+            "event",
+            is_str(False, min=1, choices=_LINKERS),
+            str_lower,
+        )
+        self._m.add("guardian", ("-W", "--guardian"), "", is_str(min=1), str)
+        self._m.add("profile", ("-n", "--profile"), "", is_file(), str)
+        # Behavior/Type Options
+        self._m.add("service_name", ("-A", "--service-name"), "", is_str(True), str)
+        self._m.add("service", ("-S", "--service"), False, action=BooleanOptionalAction)
+        self._m.add("checks", ("-R", "--checks"), "", is_str(True), str)
+        self._m.add(
+            "critical", ("-K", "--critical"), False, action=BooleanOptionalAction
+        )
+        # Build Options
+        self._m.add("func", ("-F", "--func"), "", is_str(True, ft=True), str)
+        self._m.add("thread", ("-T", "--thread"), "", is_str(True, ft=True), str)
+        self._m.init(cfg)
 
     def args_pre(self, parser):
-        parser.add("-P", "--pipe", dest="bolt_pipe", type=str)
-        parser.add("-F", "--func", dest="bolt_func", type=str)
-        parser.add("-V", "--checks", dest="bolt_checks", type=str)
-        parser.add("-T", "--thread", dest="bolt_thread", type=str)
-        parser.add("-n", "--profile", dest="bolt_profile", type=str)
-        parser.add("-W", "--guardian", dest="bolt_guardian", type=str)
-        parser.add("-Y", "--service-name", dest="bolt_service_name", type=str)
-        parser.add("-L", "--load", dest="bolt_load", action=BooleanOptionalAction)
-        parser.add("-E", "--linker", dest="bolt_linker", type=str, choices=_LINKERS)
-        parser.add("-I", "--ignore", dest="bolt_ignore", action=BooleanOptionalAction)
-        parser.add("-U", "--service", dest="bolt_service", action=BooleanOptionalAction)
-        parser.add(
-            "-K", "--critical", dest="bolt_critical", action=BooleanOptionalAction
-        )
+        self._m.prep(parser)
 
     def args_post(self, cfg, args):
-        if nes(args.bolt_pipe):
-            cfg["pipe"] = args.bolt_pipe
-        if nes(args.bolt_func):
-            cfg["func"] = args.bolt_func
-        if nes(args.bolt_checks):
-            cfg["checks"] = args.bolt_checks
-        if nes(args.bolt_thread):
-            cfg["thread"] = args.bolt_thread
-        if nes(args.bolt_linker):
-            if args.bolt_linker.lower() not in _LINKERS:
-                raise ValueError('bolt "linker" is not valid')
-            cfg["linker"] = args.bolt_linker.lower()
-        if nes(args.bolt_profile):
-            v = expandvars(expanduser(args.bolt_profile))
-            if not isfile(v):
-                raise ValueError(f'"bolt_profile" value "{v}" is not a file')
-            cfg["profile"] = args.bolt_profile
-            del v
-        if nes(args.bolt_guardian):
-            cfg["guardian"] = args.bolt_guardian
-        if nes(args.bolt_service_name):
-            cfg["service_name"] = args.bolt_service_name
-        if isinstance(args.bolt_load, bool):
-            cfg["load"] = args.bolt_load
-        if isinstance(args.bolt_ignore, bool):
-            cfg["ignore"] = args.bolt_ignore
-        if isinstance(args.bolt_service, bool):
-            cfg["service"] = args.bolt_service
-        if isinstance(args.bolt_critical, bool):
-            cfg["critical"] = args.bolt_critical
+        self._m.parse(cfg, args)
 
     def run(self, cfg, base, _, templates):
         k = token_bytes(64)
         e = _LINKERS[cfg["linker"]]
         p = xor(k, cfg["pipe"].encode("UTF-8"))
         g = xor(k, cfg["guardian"].encode("UTF-8"))
-        n = xor(k, Config.from_file(cfg["profile"]))
+        n = xor(k, Config.from_file(expandvars(expanduser(cfg["profile"]))))
         t = "bolt.go"
         if cfg["service"] and nes(cfg["service_name"]):
             t = "bolt_service.go"

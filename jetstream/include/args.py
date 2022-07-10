@@ -461,7 +461,7 @@ class Parser(ArgumentParser):
     def print_help(gen=None, file=stderr):
         print(_HELP_TEXT.format(proc=basename(argv[0])), file=file)
         if gen is not None:
-            print(f'Current Generator "{gen.name}":')
+            print(f'Current Generator "{gen.name()}":')
             try:
                 print(gen.args_help(), file=stderr)
             except Exception:

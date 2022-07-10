@@ -37,6 +37,7 @@
             "noproxy",
             "noscript",
             "nostdlib",
+            "NTAPI",
             "onecmd",
             "osslsigncode",
             "pexec",

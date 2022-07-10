@@ -27,7 +27,7 @@ from include.util import nes
 from os import remove, rename
 from os.path import isfile, join
 from datetime import datetime, timedelta
-from string import ascii_letters, Template
+from string import ascii_letters, Template, ascii_lowercase
 
 OS = [
     "aix",
@@ -257,10 +257,6 @@ def upx(js, file):
     )
 
 
-def random_chars(size):
-    return "".join(choice(ascii_letters) for _ in range(size))
-
-
 def _sign_range(d, exp):
     if nes(d):
         t = datetime.fromisoformat(d)
@@ -275,7 +271,6 @@ def _sign_range(d, exp):
 
 
 def _sed(path, old, new):
-    print("sed", path)
     with open(path, "r") as f:
         d = f.read()
     with open(path, "w") as f:
@@ -525,7 +520,7 @@ def tiny_root(old, new, timeout=5):
     _sed(
         join(new, "src", "runtime", "cgo", "libcgo_windows.h"),
         ["__declspec(dllexport) int _cgo_dummy_export;"],
-        [f"__declspec(dllexport) int _{random_chars(12)};"],
+        [f"__declspec(dllexport) int _{random_chars(12, True)};"],
     )
     _sed(
         join(new, "src", "runtime", "proc.go"),
@@ -629,6 +624,12 @@ def tiny_root(old, new, timeout=5):
         if not isfile(i):
             continue
         _sed(i, ['runtime.GOROOT() + "/lib/time/zoneinfo.zip",'], ["runtime.GOROOT(),"])
+
+
+def random_chars(size, lower=False):
+    if lower:
+        return "".join(choice(ascii_lowercase) for _ in range(size))
+    return "".join(choice(ascii_letters) for _ in range(size))
 
 
 def _remap_file(p, regexp, no_concat, repl):

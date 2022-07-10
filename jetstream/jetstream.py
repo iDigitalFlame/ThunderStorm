@@ -16,6 +16,7 @@
 #
 
 from json import dumps
+from string import digits
 from tempfile import mkdtemp
 from include.util import nes
 from sys import exit, stderr
@@ -215,34 +216,6 @@ class JetStream(object):
             return
         self.log = self.opts.logger()
 
-    @staticmethod
-    def cmdline():
-        try:
-            o, g, r, h = Parser.with_load()
-        except ValueError as err:
-            print(f"Error: {err}!", file=stderr)
-            exit(1)
-        if h:
-            Parser.print_help(g)
-        try:
-            v = JetStream(o)
-            t, a = v.check(r.target, g, r.config, r.save, r.library)
-        except Exception as err:
-            print(f"Error: {err}!", file=stderr)
-            exit(1)
-        del o
-        if not r.quiet:
-            v.print_options(t, a, g)
-        if r.check:
-            return v
-        try:
-            v.run(t, a, g, r.library, r.output, r.no_clean)
-        except KeyboardInterrupt as err:
-            print(f"Error: {err}!", file=stderr)
-            exit(1)
-        del r, t, a, g
-        return v
-
     def __enter__(self):
         # Syntax sugar to use the "with" statement.
         pass
@@ -286,23 +259,29 @@ class JetStream(object):
             )
 
     def generate(self, gen, base, workspace):
-        self.log.debug(f'Using Generator "{gen.name}".')
+        self.log.debug(f'Using Generator "{gen.name()}".')
         o = gen.run(self.opts, base, workspace, self.templates)
         if not nes(o):
             raise ValueError('generate: generator "run" result is invalid')
         if not isfile(o):
             raise ValueError(f'generate: generator "run" result "{o}" is not a file')
         workspace["main"] = o
-        self.log.debug(f'Generator "{gen.name}" "run" returned "{o}".')
+        self.log.debug(f'Generator "{gen.name()}" "run" returned "{o}".')
         if not workspace["cgo"]:
             return o
         self.log.debug("Preparing CGO entry files..")
-        if not workspace["export"]:
+        if not nes(workspace["export"]):
             workspace["export"] = random_chars(12)
+        elif workspace["export"][0] in digits:
+            raise ValueError(
+                f'export name "{workspace["export"]}" cannot start with a number'
+            )
         self.log.debug(f'CGO entry point is "{workspace["export"]}".')
         v = workspace.get("secondary")
         if not nes(v):
             v = random_chars(12)
+        elif v[0] in digits:
+            raise ValueError(f'export secondary name "{v}" cannot start with a number')
         k = False
         with open(o) as f:
             d = f.read()
@@ -340,7 +319,7 @@ class JetStream(object):
                 f'generate: generator "run_cgo" result "{c}" is not a file'
             )
         workspace["cgo_main"], workspace["cgo_out"] = c, i
-        self.log.debug(f'Generator "{gen.name}" "run_cgo" returned "{c}" and "{i}".')
+        self.log.debug(f'Generator "{gen.name()}" "run_cgo" returned "{c}" and "{i}".')
         del c, i
         return o
 
@@ -402,7 +381,7 @@ class JetStream(object):
     def print_options(self, osv, arch, gen, file=None):
         print(f'JetSteam Load complete!\n- | Configured Options\n{"="*60}', file=file)
         print(f'- | {"Target:":22}{osv}/{arch}', file=file)
-        print(f'- | {"Generator:":22}{gen.name}\n- |', file=file)
+        print(f'- | {"Generator:":22}{gen.name()}\n- |', file=file)
         print("- | Binary Configuration", file=file)
         print(f'- | = {"go:":20}{self.opts.get_bin("go")}', file=file)
         print(f'- | = {"gcc:":20}{self.opts.get_bin("gcc")}', file=file)
@@ -437,7 +416,7 @@ class JetStream(object):
         if osv != "windows":
             return
         print("- | Support Configuration", file=file)
-        print(f'- | = {"Minifest:":20}{self.opts.get_support("manifest")}', file=file)
+        print(f'- | = {"Manifest:":20}{self.opts.get_support("manifest")}', file=file)
         if self.opts.get_option("cgo"):
             if self.opts.get_support("cgo_export"):
                 print(
@@ -670,6 +649,7 @@ class JetStream(object):
         if self.opts.get_rc("enabled"):
             r = Rc(self.opts.get_support("rc"))
         self.log.debug(f"Workspace built: {dumps(workspace)}")
+        workspace["log"] = self.log
         try:
             with self("SP1"):
                 self.log.info("Starting the Generate step..")

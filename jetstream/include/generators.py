@@ -40,6 +40,13 @@ def _callable(m, n):
             return f
     except AttributeError:
         pass
+    if "_" in n:
+        try:
+            f = getattr(m, n.title().replace("_", ""))
+            if callable(f):
+                return f
+        except AttributeError:
+            pass
     return None
 
 
@@ -55,6 +62,8 @@ def load_generators(base_dir):
         if not i.endswith(".py"):
             continue
         n = basename(i)[:-3].lower()
+        if n[0] == "_":
+            n = n[1:]
         if n in g:
             raise ValueError(f'load_generators: duplicate generator entry "{n}" found')
         try:
@@ -71,7 +80,16 @@ def load_generators(base_dir):
             except TypeError:
                 continue
             del f
-            g[n] = Generator(n, c)
+            try:
+                v = getattr(c, "config_name")
+                if callable(v):
+                    v = v()
+                if not isinstance(v, str) or len(v) == 0:
+                    v = None
+            except (TypeError, AttributeError):
+                v = None
+            g[n] = Generator(n, c, v)
+            del v
         except (SyntaxError, ImportError) as err:
             print(f'Loading Generator "{i}" failed: {err}!', file=stderr)
     del d
@@ -79,22 +97,29 @@ def load_generators(base_dir):
 
 
 class Generator(object):
-    __slots__ = ("_obj", "name")
+    __slots__ = ("_obj", "_name", "_base")
 
-    def __init__(self, name, obj):
+    def __init__(self, name, obj, base):
         self._obj = obj
-        self.name = name.lower()
+        self._base = base
+        self._name = name.lower()
+
+    def name(self):
+        if self._base is not None:
+            return f"{self._name} [{self._base}]"
+        return self._name
 
     def check(self, cfg):
         f = self._try_callable("check")
         if not callable(f):
             return
         try:
-            f(cfg.get(f"build.generators.{self.name}"))
+            f(self._get_config(cfg))
         except Exception as err:
             raise ValueError(
-                f'generator "{self.name}" function "check": {err}'
+                f'generator "{self.name()}" function "check": {err}'
             ) from err
+        del f
 
     def args_help(self):
         f = self._try_callable("args_help")
@@ -104,7 +129,7 @@ class Generator(object):
             return f()
         except Exception as err:
             raise ValueError(
-                f'generator "{self.name}" function "args_help": {err}'
+                f'generator "{self.name()}" function "args_help": {err}'
             ) from err
 
     def config_load(self, cfg):
@@ -112,11 +137,12 @@ class Generator(object):
         if not callable(f):
             return
         try:
-            f(cfg)
+            f(self._get_config(cfg, True))
         except Exception as err:
             raise ValueError(
-                f'generator "{self.name}" function "config_load": {err}'
+                f'generator "{self.name()}" function "config_load": {err}'
             ) from err
+        del f
 
     def _try_callable(self, n):
         try:
@@ -136,53 +162,59 @@ class Generator(object):
             f(parser)
         except Exception as err:
             raise ValueError(
-                f'generator "{self.name}" function "args_pre": {err}'
+                f'generator "{self.name()}" function "args_pre": {err}'
             ) from err
+        del f
 
     def args_post(self, cfg, args):
         f = self._try_callable("args_post")
         if not callable(f):
             return
         try:
-            f(cfg.get(f"build.generators.{self.name}"), args)
+            f(self._get_config(cfg), args)
         except Exception as err:
             raise ValueError(
-                f'generator "{self.name}" function "args_post": {err}'
+                f'generator "{self.name()}" function "args_post": {err}'
             ) from err
+        del f
 
     def print_options(self, cfg, file):
         f = self._try_callable("print_options")
         if not callable(f):
             return
         try:
-            f(cfg.get(f"build.generators.{self.name}"), cfg, file)
+            f(self._get_config(cfg), cfg, file)
         except TypeError:
             pass
+        del f
+
+    def _get_config(self, cfg, make=False):
+        if self._base is not None:
+            if make and self._base not in cfg.get("build.generators"):
+                cfg.set(f"build.generators.{self._base}", dict())
+            return cfg.get(f"build.generators.{self._base}")
+        if make and self._name not in cfg.get("build.generators"):
+            cfg.set(f"build.generators.{self._name}", dict())
+        return cfg.get(f"build.generators.{self._name}")
 
     def run(self, cfg, base, workspace, templates):
         f = self._try_callable("run")
         if not callable(f):
             return None
         try:
-            return f(
-                cfg.get(f"build.generators.{self.name}"), base, workspace, templates
-            )
+            return f(self._get_config(cfg), base, workspace, templates)
         except Exception as err:
-            raise ValueError(f'generator "{self.name}" function "run": {err}') from err
+            raise ValueError(
+                f'generator "{self.name()}" function "run": {err}'
+            ) from err
 
     def run_cgo(self, export, cfg, base, workspace, templates):
         f = self._try_callable("run_cgo")
         if not callable(f):
-            raise ValueError(f'generator "{self.name}" does not support CGO')
+            raise ValueError(f'generator "{self.name()}" does not support CGO')
         try:
-            return f(
-                export,
-                cfg.get(f"build.generators.{self.name}"),
-                base,
-                workspace,
-                templates,
-            )
+            return f(export, self._get_config(cfg), base, workspace, templates)
         except Exception as err:
             raise ValueError(
-                f'generator "{self.name}" function "run_cgo": {err}'
+                f'generator "{self.name()}" function "run_cgo": {err}'
             ) from err

