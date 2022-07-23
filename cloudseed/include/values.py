@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2021 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2022 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -67,6 +67,7 @@ class Build(object):
         "name",
         "count",
         "zombies",
+        "name_size",
         "sentinels",
         "generator",
         "overrides",
@@ -86,6 +87,7 @@ class Build(object):
         self.lib = d.get("library", False)
         self.sentinels = d.get("sentinels")
         self.generator = d.get("generator")
+        self.name_size = d.get("name_size", None)
         vet_bool(f"builds.{name}.library", self.lib)
         vet_str(f"builds.{name}.dir", self.dir, True)
         vet_str(f"builds.{name}.extension", self.ext)
@@ -95,6 +97,7 @@ class Build(object):
         vet_list_strs(f"builds.{name}.raw_paths", self.raw, True, True)
         vet_list_strs(f"builds.{name}.zombies", self.zombies, True, True)
         vet_int(f"builds.{name}.sentinels", self.count, min=1, null=True)
+        vet_int(f"builds.{name}.name_size", self.name_size, null=True, min=0)
         if not self.lib and isinstance(self.zombies, list) and len(self.zombies) > 0:
             raise ValueError(
                 f'"builds.{name}.zombies" incompatible when "library" is false'
@@ -127,13 +130,8 @@ class Override(object):
         if isinstance(self.output, bool) and self.output:
             self.output = name
         vet_str(f"overrides.{name}.output", self.output, True)
-        vet_str(f"overrides.{name}.value", self.value, self.select is not None)
-        vet_list_strs(
-            f"overrides.{name}.select",
-            self.select,
-            self.value is not None,
-            self.value is not None,
-        )
+        if self.value is None and not isinstance(self.select, list):
+            raise ValueError(f'"overrides.{name}.select" must be a list')
 
     def get(self):
         if self.value is not None:

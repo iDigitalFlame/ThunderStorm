@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2021 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2022 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -471,7 +471,7 @@ class Doppler(Api):
             print(f'{"ID":9}', end="")
         if advanced:
             print(
-                f'{"Hostname":20}{"IP":17}{"OS":22}{"User":32}{"From":20}{"PID":9}{" Last":8}\n{"="*(140+m)}'
+                f'{"Hostname":20}{"IP":17}{"OS":27}{"User":32}{"From":20}{"PID":9}{" Last":8}\n{"="*(140+m)}'
             )
         else:
             print(
@@ -494,8 +494,8 @@ class Doppler(Api):
                         o = s["device"]["version"]
                 else:
                     o = s["device"]["version"]
-                if len(o) > 20:
-                    o = o[:20] + "~"
+                if len(o) > 25:
+                    o = o[:25] + "~"
                 if hw:
                     print(f'{s["device"]["id"][:16]+ s["id"]:25}', end="")
                 else:
@@ -509,7 +509,7 @@ class Doppler(Api):
                 if s["device"]["domain"]:
                     u = u + "@"
                 print(
-                    f'{s["device"]["hostname"]:20}{ip_str(s):17}{o:22}{u:32}{v:20}'
+                    f'{s["device"]["hostname"]:20}{ip_str(s):17}{o:27}{u:32}{v:20}'
                     f'{s["device"]["pid"]:<9}{"C" if s["channel"] else " "}{time_str(t, s["last"])}'
                 )
                 del v, o, u

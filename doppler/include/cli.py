@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2021 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2022 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -332,6 +332,18 @@ def _strip_rn(v):
     if v[-1] == "\n":
         return v[:-1]
     return v
+
+
+def _should_nl():
+    # NOTE(dij): This is kinda borked atm?
+    # TODO(dij): Fix this.
+    return "\n"
+    # try:
+    #    if len(get_line_buffer()) == 0:
+    #        return ""
+    # except Exception:
+    #    pass
+    # return "\n"
 
 
 def _split_list(v):
@@ -1166,6 +1178,7 @@ class _MenuBolt(object):
         "script",
         "set_hide",
         "shell",
+        "shutdown",
         "sleep",
         "spawn",
         "touch",
@@ -2525,6 +2538,30 @@ class _MenuBolt(object):
         """
         self._system("refresh")
 
+    def do_shutdown(self, f):
+        """
+        shutdown [-f|--force]
+
+        OS:    Any
+        OPsec: n/a
+        Admin: n/a
+
+        Indicates to the current client that it should shutdown and release it's
+        resources.
+
+        Pass the "-f" or "--force" to force shutdown and do not ask for confirmation.
+        """
+        try:
+            if (not nes(f) or "-f" not in f) and not do_ask(
+                "Confirm shutdown of this Bolt"
+            ):
+                return print("[-] Aborting shutdown!")
+            self.shell.cirrus.session_remove(self.id, True)
+            print("[+] Triggered Bolt shutdown.")
+        except ValueError as err:
+            return print(f"[!] {err}!")
+        self.shell.cache._bolts = None
+
     def do_cp(self, p, dest):
         """
         cp <remote_source> <remote_dest>
@@ -3674,6 +3711,7 @@ class _MenuBolts(object):
         "jobs",
         "listeners",
         "ls",
+        "lsa",
         "main",
         "profiles",
         "prune",
@@ -3688,6 +3726,12 @@ class _MenuBolts(object):
     def do_ls(self, n):
         try:
             self.shell.cirrus.show_sessions(exp=Exp.parse(n))
+        except ValueError as err:
+            print(f"[!] {err}")
+
+    def do_lsa(self, n):
+        try:
+            self.shell.cirrus.show_sessions(advanced=True, exp=Exp.parse(n))
         except ValueError as err:
             print(f"[!] {err}")
 
@@ -5202,7 +5246,10 @@ class Shell(Cmd):
         except KeyboardInterrupt:
             print()
         except Exception as err:
-            print(f"\n[!] {err.__class__.__name__} {err}\n{format_exc(4)}", file=stderr)
+            print(
+                f"{_should_nl()}[!] {err.__class__.__name__} {err}\n{format_exc(4)}",
+                file=stderr,
+            )
         self.close()
 
     def close(self):
@@ -5256,7 +5303,8 @@ class Shell(Cmd):
         except Exception as err:
             self.cirrus.close()
             return print(
-                f"\n[!] {err.__class__.__name__} {err}\n{format_exc(4)}", file=stderr
+                f"{_should_nl()}[!] {err.__class__.__name__} {err}\n{format_exc(4)}",
+                file=stderr,
             )
         if single:
             self._init = True
@@ -5419,36 +5467,37 @@ class Shell(Cmd):
                 try:
                     s = self.cirrus.session(id)
                     print(
-                        f'\nNew Bolt Registered: {id} {("*" if s["device"]["elevated"] else "") + s["device"]["user"]}'
+                        f"{_should_nl()}New Bolt Registered: {id} "
+                        f'{("*" if s["device"]["elevated"] else "") + s["device"]["user"]}'
                         f" @ {ip_str(s)}"
                     )
                     del s
                 except ValueError:
-                    print(f"\n[*] {msg}", end="")
+                    print(f"{_should_nl()}[*] {msg}", end="")
             self.cache._bolts = None
             if self.cache._jobs is not None and id in self.cache._jobs:
                 del self.cache._jobs[id]
             return
         if a == "session_delete":
             if self._state == MENU_BOLT and self._menu.id == id:
-                print(f"\n[*] {id}: This Bolt was removed or shutdown.")
+                print(f"{_should_nl()}[*] {id}: This Bolt was removed or shutdown.")
             self.cache._bolts, self.cache._jobs = None, None
             return
         if self._state == MENU_BOLT:
             if self._menu.id != id:  # getattr(self._menu, "id") != id:
                 return
             if a == "job_receiving" or a == "job_update" or a == "session_update":
-                return print(f"\n[*] {msg}")
+                return print(f"{_should_nl()}[*] {msg}")
             if a == "job_complete":
                 self.cirrus.job_display(id, job, True)
             return
         # NOTE(dij): Disabeling for now as it can get spammy.
         # if a == "packet_new" and self._state != MENU_BOLT_ALL:
-        #    return print(f"\n[*] {msg}")
+        #    return print(f"{_should_nl()}[*] {msg}")
         if self._state != MENU_BOLT_ALL:
             return
         if a == "job_receiving" or a == "job_update" or a == "session_update":
-            return print(f"\n[*] {msg}")
+            return print(f"{_should_nl()}[*] {msg}")
         if a == "job_complete" and self._menu.results:
             return self.cirrus.job_display(id, job, True, True)
 

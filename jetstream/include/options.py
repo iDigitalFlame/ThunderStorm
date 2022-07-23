@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2021 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2022 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -614,12 +614,14 @@ class Logger(object):
     def error(self, message, err=None):
         if self._prefix is None:
             if err is not None:
-                return self._log.error(f"{message} ({str(err)})\n{format_exc(limit=3)}")
+                return self._log.error(
+                    f"{message} ({str(err)})\n{format_exc(limit=13)}"
+                )
             self._log.error(message)
         else:
             if err is not None:
                 return self._log.error(
-                    f"{self._prefix}: {message} ({str(err)})\n{format_exc(limit=3)}"
+                    f"{self._prefix}: {message} ({str(err)})\n{format_exc(limit=13)}"
                 )
             self._log.error(f"{self._prefix}: {message}")
 

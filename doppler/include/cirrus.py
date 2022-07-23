@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2021 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2022 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -1457,6 +1457,8 @@ class Api(object):
         return self._req(f"session/{id}", 200, "get")
 
     def session_prune(self, duration):
+        if nes(duration) and duration[-1] not in Utils.UNITS:
+            duration += "m"  # Make it default to mins.
         v = Utils.str_to_dur(duration) / 1000000000
         r = list()
         n = datetime.now()
@@ -1579,7 +1581,6 @@ class Api(object):
         p = {"profile": profile, "address": address}
         if nes(script):
             p["script"] = script
-        print(p)
         try:
             return self._req(f"listener/{name}", 201, "put", json=p)
         finally:

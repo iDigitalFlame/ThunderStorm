@@ -71,3 +71,8 @@ into the menu, it will be soon!
 **
 
 __Building and running instructsions will come soon!__
+
+TODO:
+
+- Cirrus: Make scripts save to disk and load only when needed.
+  - Currently scripts are only in memory.

@@ -30,6 +30,7 @@
             "lntdll",
             "LPSTR",
             "LPTHREAD",
+            "LPWSTR",
             "lsass",
             "lwinmm",
             "mipsle",
@@ -56,6 +57,7 @@
             "zasm",
             "zdll",
             "zombified"
-        ]
+        ],
+        "todo-tree.tree.scanMode": "workspace"
     }
 }

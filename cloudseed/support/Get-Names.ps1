@@ -1,5 +1,5 @@
 #!/usr/bin/pwsh
-# Copyright (C) 2021 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2022 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -37,137 +37,7 @@ public class User32 {
 }
 '
 
-function Get-Names {
-    param (
-        [Parameter(
-            Position = 0,
-            Mandatory = $true,
-            ValueFromPipeline = $true,
-            ValueFromPipelineByPropertyName = $true,
-            HelpMessage = "Path to start from when searching."
-        )]
-        [ValidateNotNullOrEmpty()]
-        [string]
-        $StartPath,
-        [Parameter(
-            Position = 1,
-            Mandatory = $true,
-            ValueFromPipeline = $true,
-            ValueFromPipelineByPropertyName = $true,
-            HelpMessage = "Path to save the resulting JSON."
-        )]
-        [ValidateNotNullOrEmpty()]
-        [string]
-        $OutputFile,
-        [Parameter(
-            Position = 2,
-            Mandatory = $false,
-            ValueFromPipeline = $true,
-            ValueFromPipelineByPropertyName = $true,
-            HelpMessage = "Path to save the resulting Icons."
-        )]
-        [ValidateNotNullOrEmpty()]
-        [string]
-        $IconsDir = $null
-    )
-    $dirList = New-Object System.Collections.ArrayList
-    # Need to do something here, maybe add the base dir?
-    foreach ($e in Get-ChildItem -Recurse -Path $StartPath -Directory -ErrorAction Ignore) {
-        $z = $e.FullName.ToLower()
-        if (
-            $z.Contains("\windows\winsxs") -or
-            $z.Contains("\windows\temp") -or
-            $z.Contains("\windows\cursors") -or
-            $z.Contains("\windows\servicing") -or
-            $z.Contains("\windows\assembly") -or
-            $z.Contains("\windows\rescache") -or
-            $z.Contains("\windows\policydefinitions") -or
-            $z.Contains("\windows\fonts") -or
-            $z.Contains("\windows\shellnew") -or
-            $z.Contains("\windows\tasks") -or
-            $z.Contains("\windows\logs") -or
-            $z.Contains("\windows\system32\catroot") -or
-            $z.Contains("\windows\system32\driverstore\filerepository") -or
-            $z.Contains("\modules\psdesiredstateconfiguration\dscresources") -or
-            $z.Contains("\windows\system32\winevt\logs")
-        ) {
-            continue
-        }
-        $dirList.Add($e.FullName) | Out-Null
-    }
-    $results = New-Object System.Collections.ArrayList
-    $nameList = New-Object System.Collections.ArrayList
-    $titleList = New-Object System.Collections.ArrayList
-    $versionList = New-Object System.Collections.ArrayList
-    foreach ($e in $dirList) {
-        $dirFiles = Get-ChildItem -Path $e -ErrorAction Ignore
-        if ($null -eq $dirFiles -or $dirFiles.Length -eq 0) {
-            continue
-        }
-        $dirHasExe = $false
-        $dirExtList = New-Object System.Collections.ArrayList
-        $dirNameList = New-Object System.Collections.ArrayList
-        foreach ($i in $dirFiles) {
-            $n = $i.Name.LastIndexOf(".")
-            if ($n -le 1 -or ($i.Name.Length - $n) -ge 5) {
-                continue
-            }
-            $ext = $i.Name.ToLower().Substring($n + 1)
-            if (-not $dirExtList.Contains($ext)) {
-                $dirExtList.Add($ext) | Out-Null
-            }
-            if ($ext -eq "exe" -or $ext -eq "dll" -or $ext -eq "sys") {
-                if ($null -ne $i.VersionInfo.FileDescription) {
-                    $title = $i.VersionInfo.FileDescription.ToString().Trim().Replace("&", "and").Replace("<", "[").Replace(">", "]")
-                    if ($title.Length -gt 0 -and -not $title.Contains('"') -and -not $title.Contains("'") -and -not $titleList.Contains($title)) {
-                        $titleList.Add($title) | Out-Null
-                    }
-                }
-                if ($null -ne $i.VersionInfo.FileVersion) {
-                    $ver = $i.VersionInfo.FileVersion.Trim()
-                    if ($ver.IndexOf(" ") -gt 0) {
-                        $ver = $ver.Substring(0, $ver.IndexOf(" "))
-                    }
-                    if ($ver.Length -gt 0 -and $ver.Contains(".") -and $ver.Split(".").Length -ge 4 -and -not ($ver -cmatch '[a-zA-Z]') -and -not $versionList.Contains($ver)) {
-                        $versionList.Add($ver) | Out-Null
-                    }
-                }
-                if ($null -ne $IconsDir) {
-                    Get-Icons -File $i.FullName -OutputDir $IconsDir
-                }
-                $dirHasExe = $true
-            }
-            $name = $i.Name.Substring(0, $n).Trim()
-            if ($name.Length -le 3 -or $name.Contains("~")) {
-                continue
-            }
-            if (-not $dirNameList.Contains($name)) {
-                $dirNameList.Add($name) | Out-Null
-            }
-            if (-not $nameList.Contains($name)) {
-                $nameList.Add($name) | Out-Null
-            }
-        }
-        if ($dirExtList.Count -eq 0 -or $dirNameList.Count -eq 0) {
-            continue
-        }
-        $results.Add((New-Object PSObject -Property @{
-                    x86   = (-not $e.Contains("WOW64") -and -not $e.Contains("(x86)"))
-                    exts  = $dirExtList
-                    exec  = $dirHasExe
-                    path  = $e
-                    names = $dirNameList
-                })) | Out-Null
-    }
-    Set-Content -Path $OutputFile -Value ((New-Object PSObject -Property @{
-                files    = $results
-                names    = $nameList
-                titles   = $titleList
-                versions = $versionList
-            }) | ConvertTo-Json -Depth 4)
-}
-
-function Get-Icons {
+function Export-Icons {
     param (
         [Parameter(
             Position = 0,
@@ -209,5 +79,149 @@ function Get-Icons {
     }
 }
 
-Get-Names "C:\Windows" -OutputFile "X:\4.json"
-# Get-Names "C:\Program Files (x86)" -OutputFile "X:\2.json"
+function Export-NamesJSON {
+    param (
+        [Parameter(
+            Position = 0,
+            Mandatory = $true,
+            ValueFromPipeline = $true,
+            ValueFromPipelineByPropertyName = $true,
+            HelpMessage = "Path to save the resulting JSON."
+        )]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $OutputFile,
+        [Parameter(
+            Mandatory = $false,
+            ValueFromPipeline = $false,
+            ValueFromPipelineByPropertyName = $true,
+            HelpMessage = "Path to save the resulting Icons as files."
+        )]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $IconsDir = $null,
+        [Parameter(
+            Mandatory = $true,
+            ValueFromPipeline = $false,
+            ValueFromRemainingArguments = $true,
+            ValueFromPipelineByPropertyName = $true,
+            HelpMessage = "Directory paths to use for search indexing."
+        )]
+        [ValidateNotNullOrEmpty()]
+        [string[]]
+        $SearchPaths
+    )
+    $dirList = New-Object System.Collections.ArrayList
+    foreach ($de in $SearchPaths) {
+        $dirList.Add($de) | Out-Null
+        foreach ($e in Get-ChildItem -Recurse -Path $de -Directory -ErrorAction Ignore -Force) {
+            $z = $e.FullName.ToLower()
+            if (
+                $z.Contains("\windows\winsxs") -or
+                $z.Contains("\windows\temp") -or
+                $z.Contains("\windows\cursors") -or
+                $z.Contains("\windows\servicing") -or
+                $z.Contains("\windows\assembly") -or
+                $z.Contains("\windows\rescache") -or
+                $z.Contains("\windows\policydefinitions") -or
+                $z.Contains("\windows\fonts") -or
+                $z.Contains("\windows\shellnew") -or
+                $z.Contains("\windows\tasks") -or
+                $z.Contains("\windows\logs") -or
+                $z.Contains("\windows\system32\catroot") -or
+                $z.Contains("\windows\system32\driverstore\filerepository") -or
+                $z.Contains("\modules\psdesiredstateconfiguration\dscresources") -or
+                $z.Contains("\windows\system32\winevt\logs") -or
+                $z.Contains("\program files\qemu-ga") -or
+                $z.Contains("\program files\virtio-win") -or
+                $z.Contains("\program files\windowspowershell") -or
+                $z.Contains("\program files\windowsmail") -or
+                $z.Contains("\program files\windowsapps") -or
+                $z.Contains("\program files (x86)\qemu-ga") -or
+                $z.Contains("\program files (x86)\virtio-win") -or
+                $z.Contains("\program files (x86)\windowspowershell") -or
+                $z.Contains("\program files (x86)\windowsmail") -or
+                $z.Contains("\program files (x86)\windowsapps")
+            ) {
+                continue
+            }
+            $dirList.Add($e.FullName) | Out-Null
+        }
+    }
+    $results = New-Object System.Collections.ArrayList
+    $nameList = New-Object System.Collections.ArrayList
+    $titleList = New-Object System.Collections.ArrayList
+    $versionList = New-Object System.Collections.ArrayList
+    foreach ($e in $dirList) {
+        $dirFiles = Get-ChildItem -Path $e -ErrorAction Ignore -Force
+        if ($null -eq $dirFiles -or $dirFiles.Length -eq 0) {
+            continue
+        }
+        $dirHasExe = $false
+        $dirExtList = New-Object System.Collections.ArrayList
+        $dirNameList = New-Object System.Collections.ArrayList
+        foreach ($i in $dirFiles) {
+            if ($i.Name -eq "desktop.ini") {
+                continue
+            }
+            $n = $i.Name.LastIndexOf(".")
+            if ($n -le 1 -or ($i.Name.Length - $n) -ge 5) {
+                continue
+            }
+            $ext = $i.Name.ToLower().Substring($n + 1)
+            if (-not $dirExtList.Contains($ext)) {
+                $dirExtList.Add($ext) | Out-Null
+            }
+            if ($ext -eq "exe" -or $ext -eq "dll" -or $ext -eq "sys") {
+                if ($null -ne $i.VersionInfo.FileDescription) {
+                    $title = $i.VersionInfo.FileDescription.ToString().Trim().Replace("&", "and").Replace("<", "[").Replace(">", "]")
+                    if ($title.Length -gt 0 -and -not $title.Contains('"') -and -not $title.Contains("'") -and -not $titleList.Contains($title)) {
+                        $titleList.Add($title) | Out-Null
+                    }
+                }
+                if ($null -ne $i.VersionInfo.FileVersion) {
+                    $ver = $i.VersionInfo.FileVersion.Trim()
+                    if ($ver.IndexOf(" ") -gt 0) {
+                        $ver = $ver.Substring(0, $ver.IndexOf(" "))
+                    }
+                    if ($ver.Length -gt 0 -and $ver.Contains(".") -and $ver.Split(".").Length -ge 4 -and -not ($ver -cmatch '[a-zA-Z]') -and $ver -match "^([0-9].)+$" -and -not $versionList.Contains($ver)) {
+                        $versionList.Add($ver) | Out-Null
+                    }
+                }
+                if ($null -ne $IconsDir) {
+                    if (!Test-Path -Path $IconsDir) {
+                        New-Item -ItemType Directory -Path $IconsDir
+                    }
+                    Export-Icons -File $i.FullName -OutputDir $IconsDir
+                }
+                $dirHasExe = $true
+            }
+            $name = $i.Name.Substring(0, $n).Trim()
+            if ($name.Length -le 3 -or $name.Contains("~") -or $name.Split("-").Count -gt 2) {
+                continue
+            }
+            if (-not $dirNameList.Contains($name)) {
+                $dirNameList.Add($name) | Out-Null
+            }
+            if (-not $nameList.Contains($name)) {
+                $nameList.Add($name) | Out-Null
+            }
+        }
+        if ($dirExtList.Count -eq 0 -or $dirNameList.Count -eq 0) {
+            continue
+        }
+        $results.Add((New-Object PSObject -Property @{
+                    x86   = (-not $e.Contains("WOW64") -and -not $e.Contains("(x86)"))
+                    exts  = $dirExtList
+                    exec  = $dirHasExe
+                    path  = $e
+                    names = $dirNameList
+                })) | Out-Null
+    }
+    Set-Content -Encoding UTF8 -Path $OutputFile -Value ((New-Object PSObject -Property @{
+                paths    = $results
+                names    = $nameList
+                titles   = $titleList
+                versions = $versionList
+            }) | ConvertTo-Json -Depth 4)
+}

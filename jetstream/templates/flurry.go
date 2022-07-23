@@ -51,8 +51,12 @@ func main() {
 			man.LinkerFromName($event), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 		)
 	} else {
+		// BUG(dij): COM DLLs seem to crash?
+		//           I think it has to do with MS's stupid threading model.
+		//           A workaround for now is to disable critical on non-loop
+		//           DLLs and EXEs (since they die anyway).
 		flurry.Start(
-			$critical, man.LinkerFromName($event), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
+			false, man.LinkerFromName($event), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 		)
 	}
 }

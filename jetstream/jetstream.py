@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2021 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2022 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -242,8 +242,8 @@ class JetStream(object):
         self.log.debug(f'Saving configuration at "{config}".')
         self.opts.save(config)
 
-    def protect(self, base, file):
-        if self.opts.get_option("strip"):
+    def protect(self, strip, base, file):
+        if self.opts.get_option("strip") and strip:
             self.log.debug("Sanitizing and stripping binary..")
             strip_binary(file, self.log.debug)
         if self.opts.get_option("upx"):
@@ -556,6 +556,8 @@ class JetStream(object):
         del f
         if isinstance(extra, list) and len(extra) > 0:
             x += extra
+        if "go_args" in workspace and isinstance(workspace["go_args"], list):
+            x += workspace["go_args"]
         w = workspace["work_dir"]
         if nes(workspace["link"]):
             x.append(
@@ -635,6 +637,8 @@ class JetStream(object):
             "link": v,
             "flags": "",
             "export": self.opts.get_support("cgo_export"),
+            "go_args": list(),
+            "gcc_args": list(),
             "no_clean": no_clean,
             "library": library,
             "main_cgo": "",
@@ -661,7 +665,7 @@ class JetStream(object):
                 self.log.debug("Completed the Build step!")
             with self("SP3"):
                 self.log.info("Starting the Protect step..")
-                self.protect(d, o)
+                self.protect(workspace.get("strip", True), d, o)
                 self.log.debug("Completed the Protect step!")
             if nes(dest):
                 makedirs(dirname(dest), exist_ok=True)
@@ -696,7 +700,7 @@ class JetStream(object):
     def _step_build_cgo(self, base, workspace, env, rc, x64, lib, src, file, out):
         if workspace["os"] != "windows":
             raise ValueError("build: can only use CGO with Windows")
-        c = self.opts.get_bin("wgcc" + "64" if x64 else "32")
+        c = self.opts.get_bin("wgcc" + ("64" if x64 else "32"))
         env["CC"] = c
         env["CGO_ENABLED"] = "1"
         i = join(base, workspace["cgo_out"]) + ".a"
@@ -718,7 +722,7 @@ class JetStream(object):
         del n
         self.log.debug(f'File target name is "{m}".')
         z = list()
-        q = self.opts.get_bin("wres" + "64" if x64 else "32")
+        q = self.opts.get_bin("wres" + ("64" if x64 else "32"))
         if self.opts.get_rc("enabled"):
             self.log.debug("Adding Resource file..")
             r, o = join(base, "res.rc"), join(base, "res.o")
@@ -743,14 +747,10 @@ class JetStream(object):
             del r, o
         if self.opts.get_support("manifest"):
             self.log.debug("Adding Manifest file..")
-            # with open(join(base, f"{m}.manifest"), "w") as f:
             with open(join(base, "file.manifest"), "w") as f:
                 f.write(MANIFEST)
             r, o = join(base, "manifest.rc"), join(base, "manifest.o")
             with open(r, "w") as f:
-                # f.write(
-                #    f'#include "winuser.h"\n{"2" if lib else "1"} RT_MANIFEST {m}.manifest\n'
-                # )
                 f.write(
                     f'#include "winuser.h"\n{"2" if lib else "1"} RT_MANIFEST file.manifest\n'
                 )
@@ -774,6 +774,8 @@ class JetStream(object):
         del q
         o = join(base, m)
         del m
+        if "gcc_args" in workspace and isinstance(workspace["gcc_args"], list):
+            z += workspace["gcc_args"]
         if not lib:
             self.log.info(f'Building CGO Binary "{o}".')
             self._exec(
@@ -788,7 +790,10 @@ class JetStream(object):
                     "-lkernel32",
                     "-lntdll",
                     "-lws2_32",
-                    "-Wl,-x,-s,-nostdlib",
+                    "-Wa,--strip-local-absolute",
+                    "-Wp,-femit-struct-debug-reduced,-O2",
+                    "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",
+                    # "-Wl,-x,-s,-nostdlib"
                     src,
                     i,
                 ]
@@ -811,7 +816,10 @@ class JetStream(object):
                     "-lkernel32",
                     "-lntdll",
                     "-lws2_32",
-                    "-Wl,-x,-s,-nostdlib",
+                    "-Wa,--strip-local-absolute",
+                    "-Wp,-femit-struct-debug-reduced,-O2",
+                    "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",
+                    # "-Wl,-x,-s,-nostdlib"
                     src,
                 ],
                 env=env,
@@ -830,7 +838,10 @@ class JetStream(object):
                     "-lkernel32",
                     "-lntdll",
                     "-lws2_32",
-                    "-Wl,-x,-s,-nostdlib",
+                    "-Wa,--strip-local-absolute",
+                    "-Wp,-femit-struct-debug-reduced,-O2",
+                    "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",
+                    # "-Wl,-x,-s,-nostdlib"
                     f"{o}.o",
                     i,
                 ]

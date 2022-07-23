@@ -52,8 +52,6 @@
 #define NOVIRTUALKEYCODES
 #define WIN32_LEAN_AND_MEAN
 
-#define EXPORT __declspec(dllexport)
-
 #include <winsock.h>
 #include <windows.h>
 

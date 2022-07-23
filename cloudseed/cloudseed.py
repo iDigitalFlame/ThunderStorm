@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2021 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2022 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+from glob import glob
 from re import compile
 from copy import deepcopy
 from shutil import rmtree
@@ -40,11 +41,11 @@ from os.path import isdir, join, isfile, expanduser, expandvars, basename
 from include.values import Pki, Build, Override, Generator, WINDOWS, UNIX
 from include.options import LEVELS, Logger, Options, vet_list_strs, vet_str_exists
 
-_HELP_TEXT = """ JetStream: ThunderStorm Builder
+_HELP_TEXT = """ CloudSeed: ThunderStorm Deployment Pipeline
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
 (c) 2019 - 2022 iDigitalFlame
 
-{proc} [-c config] [-C clone] [-g generator] [-o output] [various options] target
+{proc} [-c config] [-g generator] [-o output] [various options] target
 
 Required Arguments
   target                               The Operating System and Architecture to
@@ -55,36 +56,25 @@ Basic Arguments
   -h                                   Show this help text and exit.
   --help
   -c                  <config_file>    Path to the configuration file to use.
-  --config                               Defaults to "jetstream.conf".
-  -C                  <template_file>  Load the initial configuration from this
-  --clone                                file and save the modified results to
-                                         the config file path (if supplied). This
-                                         file is not modified.
-  -r                                   Do not re-lint/format the configuration
-  --read-only                            file supplied. This will also overrite
-                                         the "save" argument. If a "_" exists in
-                                         the JSON as a top-level key, this argument
-                                         is inferred.
-  -s                                   Save the changes made by arguments to the
-  --save                                 supplied configuration file (if it exists).
-  -g                  <generator_name> Specify the Generator to load and use. This
-  --generator                            defaults to "bolt" (The Bolt Generator)
-                                         if omitted.
+  --config                               Defaults to "cloudseed.conf".
   -G                  <generator_dir>  Specify/Overrite the directory to load
   --generators                           Generator files from.
-  -o                  <output_file>    Specify the path to output the built binary
-  --output                               to. This will default to "result.<ext>"
-                                         when omitted (<ext> being dependent on
-                                         the target type).
-  -k                                   Do not run and only check/print the configuration
-  --check                                then exit.
+  -o                  <output_file>    Specify the path to output the generated
+  --json                                 JSON file to.
+  -O                  <output_dir>     Specify the path to output the generated
+  --dir                                  binary file results to.
   -t                  <templates_dir>  Specify/Overrite the directory to load
   --templates                            Template files from.
 
+CloudSeed Specific Arguments
+  -x                  <config_file>
+  --jetstream
+  -n                  <paths_json>
+  --paths
+  -I                  <icons_dir>
+  --icons
+
 Output Arguments
-  -q                                   Do not print out the configuration. Can be
-  --quiet                                used with '-k' to do a silent check based
-                                         on the exit code.
   -f                  <log_file>       Specify/Overrite an output file to log messages
   --log-file                             to. If empty/omitted and not set, standard out
                                          is used.
@@ -93,19 +83,16 @@ Output Arguments
                                          set, the "INFO" level is used.
 
 Build Arguments
-  -d                  <work_dir>       Specify/Overrite the build directory to use.
-  --dir                                  If empty/omitted and not set, a temporary
-                                         directory is used.
+  --debug                              Do not cleanup the building directories.
+                                         This can be used to diagnose a build failure
+                                         as the files will NOT be removed upon
+                                         completion.
   -l                  <link_dir>       Specify/Overrite the link dirrectory to use.
   --link                                 The linked dir will have a symlink of the
                                          build directory (above) placed in it. This
                                          is used during Go build operations and will
                                          be changed into when building. Useful for
                                          building packages in a specific workspace.
-  -z                                   Do not remove the build directory or it's
-  --no-clean                             contents when finished.
-  -D                                   Build in library (DLL on Windows .so on nix)
-  --library                              mode. Currently only supports CGO builds.
 
 Options Override Arguments
  These options can change the way the build occurs. This will NOT be saved to the
@@ -280,7 +267,7 @@ class CloudSeed(object):
         "_tmp",
         "_gen",
         "_opts",
-        "_names",
+        "_paths",
         "_icons",
         "_bolts",
         "_extra",
@@ -296,6 +283,7 @@ class CloudSeed(object):
     )
 
     def __init__(self, config=None):
+        self._tmp = None
         self._opts = None
         self._output = dict()
         self._builds = dict()
@@ -305,33 +293,34 @@ class CloudSeed(object):
         if nes(config):
             self.load(config)
 
-    def _cleanup(self):
-        self.log.info("Performing cleanup..")
-        self._builds.clear()
-        del self._builds
-        if isdir(self._tmp):
-            self.log.debug(f'Deleting working directory "{self._tmp}"..')
-            try:
-                rmtree(self._tmp, ignore_errors=True)
-            except Exception as err:
-                self.log.error(
-                    f'Error deleting working directory "{self._tmp}": {err}!', err=err
-                )
-        self.log.debug("Deleting any existing Golang cache directories.")
-        try:
-            _cleanup_temp()
-        except Exception as err:
-            self.log.error(f"Error deleting Golang cache directories: {err}!", err=err)
-
     def _build_prep(self):
-        if nes(self._icons):
-            self._opts.set("build.support.rc.icon_multi.file", self._icons)
-        if nes(self._titles):
-            self._opts.set("build.support.rc.title_multi.file", self._titles)
-        if nes(self._versions):
-            self._opts.set("build.support.rc.version_multi.file", self._versions)
         self._tmp = mkdtemp(prefix="cloudseed-")
         self.log.info(f'Setting up temp dir "{self._tmp}".')
+        if nes(self._icons):
+            self._opts.set("build.support.rc.icon", "")
+            self._opts.set("build.support.rc.icon_multi.file", "")
+            self._opts.set("build.support.rc.icon_multi.enabled", True)
+            # NOTE(dij): I shouldn't have to verify this list tbh.
+            self._opts.set(
+                "build.support.rc.icon_multi.choices",
+                glob(join(expanduser(expandvars(self._icons)), "*"), recursive=False),
+            )
+            if not isinstance(
+                self._opts.get("build.support.rc.icon_multi.chance"), int
+            ):
+                self._opts.set("build.support.rc.icon_multi.chance", 2)
+        if isinstance(self._titles, list) and len(self._titles) > 0:
+            self._opts.set("build.support.rc.title", "")
+            self._opts.set("build.support.rc.title_multi.file", "")
+            self._opts.set("build.support.rc.title_multi.chance", 0)
+            self._opts.set("build.support.rc.title_multi.enabled", True)
+            self._opts.set("build.support.rc.title_multi.choices", self._titles)
+        if isinstance(self._versions, list) and len(self._versions) > 0:
+            self._opts.set("build.support.rc.version", "")
+            self._opts.set("build.support.rc.version_multi.file", "")
+            self._opts.set("build.support.rc.version_multi.chance", 0)
+            self._opts.set("build.support.rc.version_multi.enabled", True)
+            self._opts.set("build.support.rc.version_multi.choices", self._versions)
         self._output["overrides"] = dict()
         if len(self._overrides) > 0:
             for k, v in self._overrides.items():
@@ -358,6 +347,27 @@ class CloudSeed(object):
         which_empty(self._opts)
         self._build_prep_sign()
 
+    def _cleanup(self, debug):
+        if self._builds is None:
+            return
+        self.log.info("Performing cleanup..")
+        self._builds.clear()
+        self._builds = None
+        # del self._builds
+        if isdir(self._tmp) and not debug:
+            self.log.debug(f'Deleting working directory "{self._tmp}"..')
+            try:
+                rmtree(self._tmp, ignore_errors=True)
+            except Exception as err:
+                self.log.error(
+                    f'Error deleting working directory "{self._tmp}": {err}!', err=err
+                )
+        self.log.debug("Deleting any existing Golang cache directories.")
+        try:
+            _cleanup_temp()
+        except Exception as err:
+            self.log.error(f"Error deleting Golang cache directories: {err}!", err=err)
+
     def _build_prep_sign(self):
         if self._pki.generate:
             return self._build_prep_sign_generate()
@@ -375,16 +385,10 @@ class CloudSeed(object):
             self._opts.load(a.jetstream)
         if a.file_icons:
             self._icons = a.file_icons
-        if a.file_names:
-            self._names = a.file_names
-        if a.file_titles:
-            self._titles = a.file_titles
-        if a.file_versions:
-            self._versions = a.file_versions
-        vet_str_exists("resources.icons", self._icons, null=True)
-        vet_str_exists("resources.names", self._names, null=False)
-        vet_str_exists("resources.titles", self._titles, null=True)
-        vet_str_exists("resources.versions", self._versions, null=True)
+        if a.file_paths:
+            self._paths = a.file_paths
+        vet_str_exists("resources.paths", self._paths, null=False)
+        vet_str_exists("resources.icons", self._icons, null=True, f=isdir)
         if a.log_level is not None:
             n = a.log_level
         if a.log_file is not None:
@@ -404,27 +408,32 @@ class CloudSeed(object):
         if nes(self._gen.key_file):
             with open(expanduser(expandvars(self._gen.key_file)), "rb") as f:
                 k = f.read()
-            self._opts.set("build.generators.flurry.key_path", self._gen.key_file)
-        elif nes(self._gen.key_b64):
-            k = b64decode(self._gen.key_b64, validate=True)
-            self._opts.set("build.generators.flurry.key_path", "")
-            self._opts.set("build.generators.flurry.key", self._gen.key_b64)
-        elif nes(self._gen.key):
-            k = self._gen.key.encode("UTF-8")
-            self._opts.set("build.generators.flurry.key_path", "")
-            self._opts.set("build.generators.flurry.key", b64encode(k).decode("UTF-8"))
-        elif self._gen.sentinel.encrypt:
-            self.log.info(
-                "No keys found, but encryption is enabled, generating new key.."
+            self._opts.set("build.generators.flurry.key", "")
+            self._opts.set("build.generators.flurry.key_file", "")
+            self._opts.set(
+                "build.generators.flurry.key_base64", b64encode(k).decode("UTF-8")
             )
-            k = token_bytes(64)
-            self._gen.key_b64 = b64encode(k).decode("UTF-8")
-            self._opts.set("build.generators.flurry.key_path", "")
-            self._opts.set("build.generators.flurry.key", self._gen.key_b64)
+        else:
+            if nes(self._gen.key_b64):
+                k = b64decode(self._gen.key_b64, validate=True)
+            elif nes(self._gen.key):
+                k = self._gen.key.encode("UTF-8")
+            elif self._gen.sentinel.encrypt:
+                self.log.info(
+                    "No keys found, but encryption is enabled, generating new key.."
+                )
+                k = token_bytes(64)
+            if k is not None:
+                self._opts.set("build.generators.flurry.key", "")
+                self._opts.set("build.generators.flurry.key_file", "")
+                self._opts.set(
+                    "build.generators.flurry.key_base64", b64encode(k).decode("UTF-8")
+                )
         if k is None:
             self.log.info("Not encrypting Sentinel contents.")
-            self._opts.set("build.generators.flurry.key_path", "")
             self._opts.set("build.generators.flurry.key", "")
+            self._opts.set("build.generators.flurry.key_path", "")
+            self._opts.set("build.generators.flurry.key_base64", "")
             self._output["sentinel_key"] = ""
         else:
             self._output["sentinel_key"] = b64encode(k).decode("UTF-8")
@@ -486,7 +495,7 @@ class CloudSeed(object):
                 self._output["builders"][b]["results"].append(x)
                 del x, b
             del r
-        except (Exception, KeyboardInterrupt) as err:
+        except BaseException as err:
             self.log.error(f"Error building/waiting for threads: {err}!", err=err)
             raise err
         finally:
@@ -526,19 +535,15 @@ class CloudSeed(object):
                 self._overrides[k] = Override(v, k)
         if "resources" in d and isinstance(d["resources"], dict):
             self._icons = d["resources"].get("icons")
-            self._names = d["resources"].get("names")
-            self._titles = d["resources"].get("titles")
-            self._versions = d["resources"].get("versions")
+            self._paths = d["resources"].get("paths")
         n, m = None, None
         if len(self._builds) == 0:
             raise ValueError('"builds" is empty')
         if verify:
-            if not nes(self._names):
-                raise ValueError('"resources.names" value must be a non-empty string')
-            vet_str_exists("resources.icons", self._icons, null=True)
-            vet_str_exists("resources.names", self._names, null=False)
-            vet_str_exists("resources.titles", self._titles, null=True)
-            vet_str_exists("resources.versions", self._versions, null=True)
+            if not nes(self._paths):
+                raise ValueError('"resources.paths" value must be a non-empty string')
+            vet_str_exists("resources.paths", self._paths, null=False)
+            vet_str_exists("resources.icons", self._icons, null=True, f=isdir)
         c = 0
         if isinstance(self._bolts, list):
             vet_list_strs("targets.bolts", self._bolts, False, False)
@@ -636,7 +641,13 @@ class CloudSeed(object):
             v, e = self._builds[i], list()
             for _ in range(0, v.count):
                 x = self._mangle.pick(
-                    v.ext, True, x86, sep=pathval.sep, base=v.base, only=v.dir
+                    v.ext,
+                    True,
+                    x86,
+                    only=v.dir,
+                    base=v.base,
+                    sz=v.name_size,
+                    sep=pathval.sep,
                 )
                 if not pathval.valid(x.path):
                     raise ValueError(f'check: path "{x.path}" is not valid')
@@ -660,7 +671,13 @@ class CloudSeed(object):
             v, e = self._builds[i], list()
             for _ in range(0, v.count):
                 x = self._mangle.pick(
-                    v.ext, True, x86, sep=pathval.sep, base=v.base, only=v.dir
+                    v.ext,
+                    True,
+                    x86,
+                    only=v.dir,
+                    base=v.base,
+                    sz=v.name_size,
+                    sep=pathval.sep,
                 )
                 if not pathval.valid(x.path):
                     raise ValueError(f'check: path "{x.path}" is not valid')
@@ -696,56 +713,6 @@ class CloudSeed(object):
             n = "info"
         return n, o
 
-    def run(self, out_dir, out_file, target):
-        # NOTE(dij): Call this to init ALL the Generators with their default values.
-        self._opts.generators(None)
-        # NOTE(dij): We're gonna do a thing here to allow for empty/invalid
-        #            options in our config. The reason for this is /most/ options
-        #            that we supply can be omitted, but JetStream does not like
-        #            that.
-        v = deepcopy(self._opts)
-        if self._pki and not nes(v.get_sign("generate_target")):
-            v.set("build.support.sign.generate_target", "<>")
-        if nes(self._gen.linker):
-            if not nes(v.get("build.generators.bolt.linker")):
-                v.set("build.generators.bolt.linker", self._gen.linker)
-            if not nes(v.get("build.generators.flurry.linker")):
-                v.set("build.generators.flurry.linker", self._gen.linker)
-        if nes(self._gen.guardian):
-            if not nes(v.get("build.generators.bolt.guardian")):
-                v.set("build.generators.bolt.guardian", self._gen.guardian)
-            if not nes(v.get("build.generators.flurry.guardian")):
-                v.set("build.generators.flurry.guardian", self._gen.guardian)
-        if not nes(v.get("build.generators.flurry.key")):
-            v.set("build.generators.flurry.key", "derp")
-        if not isinstance(v.get("build.generators.flurry.paths"), list):
-            v.set("build.generators.flurry.paths", ["<>"])
-        if len(v.get("build.generators.flurry.paths")) == 0:
-            v.set("build.generators.flurry.paths", ["<>"])
-        for x in self._opts.generators(None).values():
-            x.check(v)
-        j = JetStream(v, self.log, False)
-        o, a = j.check(target, None, None, False, False)
-        del j, v
-        self._opts.vet()
-        with open(expanduser(expandvars(self._names))) as f:
-            self._mangle = Mangler(loads(f.read()))
-        p = WINDOWS if o.lower() == "windows" else UNIX
-        self._generate("64" not in a, p)
-        del p
-        d = expandvars(expanduser(out_dir))
-        try:
-            self._build(o, a, d)
-            self.log.info(f'Saved {len(self._output["results"])} files to "{d}".')
-        finally:
-            del o, a, d
-            self._cleanup()
-        u = expandvars(expanduser(out_file))
-        with open(u, "w") as f:
-            f.write(dumps(self._output))
-        self.log.info(f'Saved the JSON output to "{u}".')
-        del u
-
     def _generate_flurries(self, x86, pathval):
         if not isinstance(self._flurries, list):
             return
@@ -758,7 +725,13 @@ class CloudSeed(object):
                 n = self._gen.sentinel.size
             for _ in range(0, v.count):
                 x = self._mangle.pick(
-                    v.ext, True, x86, sep=pathval.sep, base=v.base, only=v.dir
+                    v.ext,
+                    True,
+                    x86,
+                    only=v.dir,
+                    base=v.base,
+                    sz=v.name_size,
+                    sep=pathval.sep,
                 )
                 if not pathval.valid(x.path):
                     raise ValueError(f'check: path "{x.path}" is not valid')
@@ -842,8 +815,8 @@ class CloudSeed(object):
                 False,
                 x86,
                 sep=pathval.sep,
-                base=self._gen.sentinel.base,
                 only=self._gen.sentinel.dir,
+                base=self._gen.sentinel.base,
             )
             if not pathval.valid(x.path):
                 raise ValueError(f'check: path "{x.path}" is not valid')
@@ -855,6 +828,65 @@ class CloudSeed(object):
                     raise ValueError(f'check: path "{i}" is not valid')
                 r.append(Path(i, pathval.parent(i), pathval.base(i)))
         return r
+
+    def run(self, out_dir, out_file, target, debug=False):
+        # NOTE(dij): Call this to init ALL the Generators with their default values.
+        self._opts.generators(None)
+        # NOTE(dij): We're gonna do a thing here to allow for empty/invalid
+        #            options in our config. The reason for this is /most/ options
+        #            that we supply can be omitted, but JetStream does not like
+        #            that.
+        v = deepcopy(self._opts)
+        if self._pki and not nes(v.get_sign("generate_target")):
+            v.set("build.support.sign.generate_target", "<>")
+        if nes(self._gen.linker):
+            if not nes(v.get("build.generators.bolt.linker")):
+                v.set("build.generators.bolt.linker", self._gen.linker)
+            if not nes(v.get("build.generators.flurry.linker")):
+                v.set("build.generators.flurry.linker", self._gen.linker)
+        if nes(self._gen.guardian):
+            if not nes(v.get("build.generators.bolt.guardian")):
+                v.set("build.generators.bolt.guardian", self._gen.guardian)
+            if not nes(v.get("build.generators.flurry.guardian")):
+                v.set("build.generators.flurry.guardian", self._gen.guardian)
+        if not nes(v.get("build.generators.flurry.key")):
+            v.set("build.generators.flurry.key", "<>")
+        if not isinstance(v.get("build.generators.flurry.paths"), list):
+            v.set("build.generators.flurry.paths", ["<>"])
+        if len(v.get("build.generators.flurry.paths")) == 0:
+            v.set("build.generators.flurry.paths", ["<>"])
+        g = self._opts.generators(None)
+        for x in self._builds.values():
+            g[x.generator].check(v)
+        del g
+        j = JetStream(v, self.log, False)
+        o, a = j.check(target, None, None, False, False)
+        del j, v
+        self._opts.vet()
+        with open(expanduser(expandvars(self._paths))) as f:
+            d = loads(f.read())
+            self._mangle = Mangler(d["paths"], d.get("names"))
+            self._titles = d.get("titles")
+            self._versions = d.get("versions")
+            del d
+        self._generate("64" not in a, WINDOWS if o.lower() == "windows" else UNIX)
+        d = expandvars(expanduser(out_dir))
+        u = expandvars(expanduser(out_file))
+        try:
+            self._build(o, a, d)
+            self.log.info(f'Saved {len(self._output["results"])} files to "{d}".')
+        except BaseException as err:
+            self.log.error(f"Build error: {err}!")
+            raise err
+        else:
+            self._cleanup(False)
+        finally:
+            del o, a, d
+            self._cleanup(debug)
+            with open(u, "w") as f:
+                f.write(dumps(self._output))
+            self.log.info(f'Saved the JSON output to "{u}".')
+            del u
 
     def _build_thread(self, work, out, idx, osv, arch, x):
         self.log.info(
@@ -891,19 +923,6 @@ class CloudSeed(object):
             )
         del o
 
-    def _build_thread_enter(self, opts, osv, arch, gen, builder, out, path, t, base):
-        e = JetStream(opts, self.log, False)
-        e.run(osv, arch, gen, builder.lib, out, False)
-        del e
-        if isdir(base):
-            rmtree(base, ignore_errors=True)
-        r = path._asdict()
-        r["type"] = _BUILD_TYPES[t]
-        r["builder"] = builder.name
-        r["overrides"] = dict()
-        r["generator"] = builder.generator
-        return (r, builder.name)
-
     def _build_thread_start(self, work, out, opts, idx, sdx, osv, arch, gen, x, val):
         b = join(self._tmp, f"builder-{idx}-{sdx}")
         if not nes(opts.get_build("dir")):
@@ -925,12 +944,36 @@ class CloudSeed(object):
                 arch,
                 gen,
                 x.builder,
-                join(out, n),
+                out,
                 p,
                 x.build,
                 b,
+                n,
             )
         )
+
+    def _build_thread_enter(self, opts, osv, arch, gen, builder, out, path, t, base, n):
+        e = JetStream(opts, self.log, False)
+        n = f"{randint(0, 100)}-{n}"
+        try:
+            e.run(osv, arch, gen, builder.lib, join(out, n), False)
+        except BaseException as err:
+            # NOTE(dij): Don't delete files on failure.
+            raise err
+        else:
+            if isdir(base):
+                rmtree(base, ignore_errors=True)
+        finally:
+            del e
+        r = path._asdict()
+        r["name"] = n
+        r["type"] = _BUILD_TYPES[t]
+        r["library"] = builder.lib
+        r["builder"] = builder.name
+        r["overrides"] = dict()
+        r["generator"] = builder.generator
+        del n
+        return (r, builder.name)
 
 
 class Parser(ArgumentParser):
@@ -964,10 +1007,11 @@ class Parser(ArgumentParser):
         self.add("-G", "--generators", dest="dir_generators", type=str)
         # CloudSeed Arguments
         self.add("-x", "--jetstream", dest="jetstream", type=str)
-        self.add("-n", "--names", dest="file_names", type=str)
+        self.add("-n", "--paths", dest="file_paths", type=str)
         self.add("-I", "--icons", dest="file_icons", type=str)
-        self.add("-T", "--titles", dest="file_titles", type=str)
-        self.add("-V", "--versions", dest="file_versions", type=str)
+        self.add("--debug", dest="debug", action="store_true")
+        # self.add("-T", "--titles", dest="file_titles", type=str)
+        # self.add("-V", "--versions", dest="file_versions", type=str)
         # Config [build.bin] Arguments
         self.add("--bin-go", dest="bin_go", type=str)
         self.add("--bin-gcc", dest="bin_gcc", type=str)
@@ -1052,7 +1096,7 @@ if __name__ == "__main__":
     if r.output_file:
         o = expandvars(expanduser(r.output_file))
     try:
-        c.run(d, o, r.target)
+        c.run(d, o, r.target, r.debug)
     except KeyboardInterrupt:
         print("Interrupted!", file=stderr)
         exit(1)

@@ -157,7 +157,7 @@ func (p *profileManager) httpProfilePost(_ context.Context, w http.ResponseWrite
 	p.Unlock()
 	p.events.publishProfileUpdate(n)
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"result":` + c.String() + `}`))
+	w.Write([]byte(`{"result":"` + c.String() + `"}`))
 }
 func (p *profileManager) httpProfileDelete(_ context.Context, w http.ResponseWriter, r *routex.Request) {
 	v, n := p.profile(r.Values.StringDefault("name", ""))

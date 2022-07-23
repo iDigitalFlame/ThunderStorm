@@ -6,9 +6,7 @@ bolt/sources/xsupport
 src
 cirrus.json
 js.json
-*.json
 
-jetstream.conf
 cloudseed.conf
 
 cloudseed/templates/_*
@@ -24,6 +22,8 @@ jetstream/generators/_**
 .bolt-cfg
 .bolt-cfg.bak
 .bolt-cfg.old
+
+bin/cirrus
 
 # Binaries for programs and plugins
 *.exe

