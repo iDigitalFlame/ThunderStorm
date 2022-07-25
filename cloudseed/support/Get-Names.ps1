@@ -189,8 +189,8 @@ function Export-NamesJSON {
                     }
                 }
                 if ($null -ne $IconsDir) {
-                    if (!Test-Path -Path $IconsDir) {
-                        New-Item -ItemType Directory -Path $IconsDir
+                    if (-not (Test-Path -Path $IconsDir)) {
+                        New-Item -ItemType Directory -Path $IconsDir | Out-Null
                     }
                     Export-Icons -File $i.FullName -OutputDir $IconsDir
                 }

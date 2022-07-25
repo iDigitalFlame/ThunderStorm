@@ -9,6 +9,9 @@ js.json
 
 cloudseed.conf
 
+cloudseed/resources
+cloudseed/resources/*
+
 cloudseed/templates/_*
 cloudseed/templates/_**
 cloudseed/generators/_*

@@ -4605,7 +4605,7 @@ class _MenuListeners(object):
         if len(n) == 0:
             return print("delete <name|all>")
         try:
-            if n != "all":
+            if n == "all":
                 if not do_ask("Confirm deletion of ALL Listeners"):
                     return print("[-] Aborting delete!")
                 for e in self.shell.cirrus.listeners():

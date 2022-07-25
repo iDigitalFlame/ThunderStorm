@@ -126,7 +126,11 @@ class Mangler(object):
         if c > 3 and exe and randint(0, c) != 0:
             return None
         del c
-        if randint(0, 8) == 0:
+        if (
+            len(sel["names"]) == 0
+            or (len(sel["names"]) == 1 and randint(0, 2) == 0)
+            or randint(0, 8) == 0
+        ):
             n = choice(self._extras)
             if n in sel["names"]:
                 n = mangle_name(n)

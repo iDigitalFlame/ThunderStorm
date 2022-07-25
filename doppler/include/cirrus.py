@@ -520,7 +520,7 @@ def _pkg_window(
     if isinstance(handle, int) and handle < 0:
         if a[0] != "m" or (a[0] == "m" and (a[1] == "v" or a[1] == "o")):
             raise ValueError('"handle" integer must be greater than or equal to zero')
-    elif handle == "desktop":
+    elif handle == "desktop" or handle == "wm":
         handle = -1
     elif handle == "all" or handle == "*" or handle == "0":
         handle = 0
