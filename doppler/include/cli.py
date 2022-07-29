@@ -17,7 +17,7 @@
 
 from cmd import Cmd
 from json import dumps
-from shlex import split
+from shlex import split, shlex
 from threading import Lock
 from os import getcwd, getenv
 from string import whitespace
@@ -1489,7 +1489,7 @@ class _MenuBolt(object):
         if len(a) == 0:
             return print("dex [-x|--detach] [-a user-agent] <url>")
         r = _PARSERS[0x2].parse_args(a)
-        if nes(r.url):
+        if not nes(r.url):
             return print("dex [-x|--detach] [-a user-agent] <url>")
         self._exec(
             self.shell.cirrus.task_pull_exec,
@@ -5247,7 +5247,7 @@ class Shell(Cmd):
             print()
         except Exception as err:
             print(
-                f"{_should_nl()}[!] {err.__class__.__name__} {err}\n{format_exc(4)}",
+                f"{_should_nl()}[!] {err.__class__.__name__} {err}\n{format_exc(5)}",
                 file=stderr,
             )
         self.close()
@@ -5525,7 +5525,11 @@ class Shell(Cmd):
                 if not can_hist:
                     return print("[!] Not allowed to run history commands!")
                 for x in range(1, get_history_length()):
-                    print(f"{x:3}: {get_history_item(x)}")
+                    v = get_history_item(x)
+                    if v is None:
+                        continue
+                    print(f"{x:3}: {v}")
+                    del v
                 return
             if len(n) == 6 and n == "@clear":
                 if not can_hist:
@@ -5627,7 +5631,11 @@ class Shell(Cmd):
         del c
         if k == 1:
             try:
-                v = split(a)
+                # v = split(a)
+                z = shlex(a, punctuation_chars=True)
+                z.whitespace_split = True
+                v = list(z)
+                del z
             except ValueError:
                 if y:
                     return f(a, line=n)
@@ -5640,7 +5648,11 @@ class Shell(Cmd):
                 return f(a, line=n)
             return f(a)
         try:
-            v = split(a)
+            # v = split(a)
+            z = shlex(a, punctuation_chars=True)
+            z.whitespace_split = True
+            v = list(z)
+            del z
         except ValueError:
             if y:
                 return f(a, line=n)

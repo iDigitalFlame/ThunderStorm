@@ -23,6 +23,7 @@ from sys import stderr, argv
 from include.util import nes
 from json import loads, dumps
 from secrets import token_bytes
+from traceback import format_exc
 from include.sign import make_pki
 from collections import namedtuple
 from random import randint, sample
@@ -249,10 +250,10 @@ def _parse_date(gen, opts):
             del v
     r = opts.get_sign("date_range")
     if isinstance(r, int) and r > 0:
-        x = timedelta(days=r)
-        if d is None or (datetime.now() - x).days < r:
-            d = datetime.now() - x
-        del x
+        x, t = timedelta(days=r), datetime.now()
+        if d is None or (t - (t - x)).days < r:
+            d = (t - (t - x)).days
+        del x, t
     del r
     if d is None:
         return d
@@ -1101,6 +1102,6 @@ if __name__ == "__main__":
         print("Interrupted!", file=stderr)
         exit(1)
     except Exception as err:
-        print(f"Error: {err}!", file=stderr)
+        print(f"Error: {err}!\n{format_exc(5)}", file=stderr)
         exit(1)
     del o, d, c, r

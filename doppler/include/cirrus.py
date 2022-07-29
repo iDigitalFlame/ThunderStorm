@@ -1457,6 +1457,9 @@ class Api(object):
         return self._req(f"session/{id}", 200, "get")
 
     def session_prune(self, duration):
+        # NOTE(dij): Should this be in this section?
+        #            or does it make more sense in doppler?
+        #            Since it's more interactive than API-ish.
         if nes(duration) and duration[-1] not in Utils.UNITS:
             duration += "m"  # Make it default to mins.
         v = Utils.str_to_dur(duration) / 1000000000
@@ -1470,6 +1473,7 @@ class Api(object):
         del v
         if len(r) == 0:
             del r
+            print("[-] There were no Bolts matching the prune limit.")
             return False
         print(f'{"ID":9}Last\n{"="*20}')
         for i in r:

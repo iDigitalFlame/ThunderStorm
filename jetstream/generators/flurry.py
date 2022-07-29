@@ -191,14 +191,14 @@ class Flurry(object):
         b.close()
         del b, v
         d = templates[t].substitute(
+            event=e,
             paths=r,
             checks=c,
             period=str(p),
-            event=f'"{e}"',
             key=go_bytes(k),
             guard=go_bytes(g),
             files_key=go_bytes(d),
-            service=f'"{cfg["service_name"]}"',
+            service=cfg["service_name"],
             critical="true"
             if cfg["critical"] and not workspace["library"] and cfg["service"]
             else "false",

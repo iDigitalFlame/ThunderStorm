@@ -508,11 +508,16 @@ class Doppler(Api):
                     u = u[:30] + "~"
                 if s["device"]["domain"]:
                     u = u + "@"
+                h = s["device"]["hostname"]
+                if len(h) > 19 and "." in h:
+                    h = h.split(".")[0]
+                if len(h) > 19:
+                    h = h[:19] + "~"
                 print(
-                    f'{s["device"]["hostname"]:20}{ip_str(s):17}{o:27}{u:32}{v:20}'
+                    f"{h:20}{ip_str(s):17}{o:27}{u:32}{v:20}"
                     f'{s["device"]["pid"]:<9}{"C" if s["channel"] else " "}{time_str(t, s["last"])}'
                 )
-                del v, o, u
+                del v, o, u, h
                 continue
             if hw:
                 print(f'{s["device"]["id"][:16]+ s["id"]:25}', end="")
@@ -526,12 +531,16 @@ class Doppler(Api):
                 u = u[:30] + "~"
             if s["device"]["domain"]:
                 u = u + "@"
+            h = s["device"]["hostname"]
+            if len(h) > 19 and "." in h:
+                h = h.split(".")[0]
+            if len(h) > 19:
+                h = h[:19] + "~"
             print(
-                f'{s["device"]["hostname"]:20}{ip_str(s):17}{s["device"]["os"]:10}'
-                f'{u:32}{s["device"]["pid"]:<9}'
+                f'{h:20}{ip_str(s):17}{s["device"]["os"]:10}{u:32}{s["device"]["pid"]:<9}'
                 f'{"C" if s["channel"] else " "}{time_str(t, s["last"])}'
             )
-            del u
+            del u, h
         del t, e
 
     def session_proxy_delete(self, id, name):

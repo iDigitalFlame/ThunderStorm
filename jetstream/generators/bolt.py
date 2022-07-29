@@ -158,13 +158,13 @@ class Bolt(object):
         if not nes(c):
             c = "false"
         d = templates[t].substitute(
+            event=e,
             checks=c,
-            event=f'"{e}"',
             key=go_bytes(k),
             pipe=go_bytes(p),
             guard=go_bytes(g),
             profile=go_bytes(n),
-            service=f'"{cfg["service_name"]}"',
+            service=cfg["service_name"],
             load="true" if cfg["load"] else "false",
             ignore="true" if cfg["ignore"] else "false",
             critical="true"

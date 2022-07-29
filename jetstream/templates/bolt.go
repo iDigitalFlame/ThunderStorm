@@ -48,7 +48,7 @@ func main() {
 	subtle.XorOp(z, k[:])
 	// NOTE(dij): "os.Args" Will only work if non-CGO, GO-CGO cannot access argv.
 	bolt.Start(
-		$ignore || len(os.Args) > 2, $load, $critical, man.LinkerFromName($event),
+		$ignore || len(os.Args) > 2, $load, $critical, man.LinkerFromName(`$event`),
 		crypto.UnwrapString(k[:], g[:]), crypto.UnwrapString(k[:], p[:]), z,
 	)
 }
@@ -60,7 +60,7 @@ func secondary() {
 	}
 	subtle.XorOp(z, k[:])
 	bolt.Start(
-		true, $load, $critical, man.LinkerFromName($event),
+		true, $load, $critical, man.LinkerFromName(`$event`),
 		crypto.UnwrapString(k[:], g[:]), crypto.UnwrapString(k[:], p[:]), z,
 	)
 }

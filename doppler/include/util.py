@@ -78,6 +78,9 @@ def ip_str(s):
         for n in i["ip"]:
             if n.startswith("127.0") or ":" in n:
                 continue
+            # TODO(dij): We're going to have to address IPv6 addresses here.
+            #            they will overflow the Bolt list space, just an annoying
+            #            view issue we can fix later.
             return n
     return ""
 

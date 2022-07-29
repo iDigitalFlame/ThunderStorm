@@ -425,6 +425,13 @@ class JetStream(object):
                 )
             else:
                 print(f'- | = {"CGO Export:":20}[randomized]', file=file)
+            if self.opts.get_support("cgo_secondary"):
+                print(
+                    f'- | = {"CGO Secondary:":20}{self.opts.get_support("cgo_secondary")}',
+                    file=file,
+                )
+            else:
+                print(f'- | = {"CGO Secondary:":20}[randomized]', file=file)
         print("- | Signing Configuration", file=file)
         print(f'- | = {"Enabled:":20}{self.opts.get_sign("enabled")}', file=file)
         if self.opts.get_sign("enabled"):
@@ -643,6 +650,7 @@ class JetStream(object):
             "library": library,
             "main_cgo": "",
             "work_dir": d,
+            "secondary": self.opts.get_support("cgo_secondary"),
         }
         del v
         if nes(k):
@@ -668,10 +676,16 @@ class JetStream(object):
                 self.protect(workspace.get("strip", True), d, o)
                 self.log.debug("Completed the Protect step!")
             if nes(dest):
-                makedirs(dirname(dest), exist_ok=True)
+                b = dirname(dest)
+                if len(b) > 0:
+                    makedirs(b, exist_ok=True)
+                del b
                 copy(o, dest)
             else:
-                makedirs(dirname(output), exist_ok=True)
+                b = dirname(output)
+                if len(b) > 0:
+                    makedirs(b, exist_ok=True)
+                del b
                 copy(o, output)
             del o, f
         except KeyboardInterrupt as err:

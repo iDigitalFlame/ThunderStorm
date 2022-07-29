@@ -276,13 +276,16 @@ def _cfg_support(cfg, b):
     if not isinstance(b, dict):
         cfg["manifest"] = True
         cfg["cgo_export"] = ""
+        cfg["cgo_secondary"] = ""
         _cfg_rc(cfg["rc"], None)
         _cfg_sign(cfg["sign"], None)
         return
     cfg["manifest"] = b.get("manifest", True)
     cfg["cgo_export"] = b.get("cgo_export", "")
+    cfg["cgo_secondary"] = b.get("cgo_secondary", "")
     vet_bool("build.support.manifest", cfg["manifest"])
     vet_str("build.support.cgo_export", cfg["cgo_export"])
+    vet_str("build.support.cgo_secondary", cfg["cgo_secondary"])
     _cfg_rc(cfg["rc"], b.get("rc"))
     _cfg_sign(cfg["sign"], b.get("sign"))
 
