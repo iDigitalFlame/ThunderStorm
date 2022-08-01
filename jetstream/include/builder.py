@@ -451,7 +451,9 @@ def tiny_root(old, new, timeout=5):
     _sed(
         join(new, "src", "runtime", "proc.go"),
         ['if n, ok := atoi32(gogetenv("GOMAXPROCS")); ok && n > 0 {'],
-        ["if n, ok := int32(0), false; ok && n > 0 {"],
+        [
+            "if n, ok := int32(1), true; ok && n > 0 {"
+        ],  # NOTE(dij): Set GOMAXPROCS to '1' here
     )
     _sed(
         join(new, "src", "runtime", "runtime1.go"),

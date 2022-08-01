@@ -96,14 +96,16 @@ func Loop(wait time.Duration, critical bool, l man.Linker, guard string, key []b
 	}()
 	limits.Ignore()
 	var (
-		w = make(chan os.Signal, 1)
-		t = time.NewTicker(wait)
-		s uint32
-		z bool
+		x, y = context.WithCancel(context.Background())
+		w    = make(chan os.Signal, 1)
+		t    = time.NewTicker(wait)
+		s    uint32
+		z    bool
 	)
 	if limits.Notify(w, syscall.SIGINT, syscall.SIGTERM); critical {
 		z, _ = device.SetCritical(true)
 	}
+	limits.MemorySweep(x)
 loop:
 	for time.Sleep(time.Millisecond * time.Duration(100+util.FastRandN(200))); ; {
 		select {
@@ -125,6 +127,7 @@ loop:
 	if t.Stop(); critical && !z {
 		device.SetCritical(false)
 	}
+	y()
 	limits.Reset()
 	limits.StopNotify(w)
 	close(w)
