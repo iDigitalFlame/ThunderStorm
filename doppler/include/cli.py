@@ -5541,16 +5541,13 @@ class Shell(Cmd):
                 try:
                     v = int(n[1:])
                 except ValueError:
-                    r = list()
                     y = n[1:].lower()
                     for x in range(1, get_history_length()):
                         u = get_history_item(x)
-                        if nes(u) and not u.lower().startswith(y):
+                        if u is None or (nes(u) and not u.lower().startswith(y)):
                             continue
-                        r.append((x, u))
-                    for i in r:
-                        print(f"{i[0]:3}: {i[1]}")
-                    del r, y
+                        print(f"{x:3}: {u}")
+                    del y
                     return
                 try:
                     x = get_history_item(v)
