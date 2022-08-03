@@ -100,13 +100,14 @@ func Start(ignore, load, critical bool, l man.Linker, guard, pipe string, c cfg.
 	case <-x.Done():
 	case <-s.Done():
 	}
+	f()
 	if s.Close(); critical && !z {
 		device.SetCritical(false)
 	}
+	cleanup()
 	limits.Reset()
 	limits.StopNotify(w)
 	close(w)
-	f()
 	device.GoExit()
 }
 

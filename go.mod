@@ -7,7 +7,7 @@ require (
 	github.com/PurpleSec/logx v1.6.0
 	github.com/PurpleSec/routex v1.2.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/iDigitalFlame/xmt v0.3.8-b2
+	github.com/iDigitalFlame/xmt v0.3.9
 )
 
-require golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
+require golang.org/x/sys v0.0.0-20220803195053-6e608f9ce704 // indirect
