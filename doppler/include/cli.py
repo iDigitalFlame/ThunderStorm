@@ -5164,7 +5164,7 @@ will ignore the output file argument and will use a generated one instead.
         print('[+] Set Command Output to "False".')
 
     def do_download(self, p, f):
-        if nes(p):
+        if nes(f):
             print(f'The value "{f}" will not be parsed.')
         super(__class__, self).do_download(p, None)
 
