@@ -17,11 +17,11 @@
 
 from cmd import Cmd
 from json import dumps
-from shlex import split, shlex
 from threading import Lock
 from os import getcwd, getenv
 from string import whitespace
 from datetime import datetime
+from shlex import split, shlex
 from argparse import REMAINDER
 from traceback import format_exc
 from include.config import Config
@@ -874,23 +874,19 @@ class Exp(object):
             if "device" not in i:
                 continue
             if isinstance(self.elevated, bool):
-                if self.elevated and i["device"]["elevated"]:
-                    n.append(i)
-                elif not self.elevated and not i["device"]["elevated"]:
-                    n.append(i)
+                if self.elevated and not i["device"]["elevated"]:
+                    continue
+                if not self.elevated and i["device"]["elevated"]:
+                    continue
+            if _ex(self.ip) and not _is_match(self.ip, ip_str(i)):
                 continue
-            if _ex(self.ip) and _is_match(self.ip, ip_str(i)):
-                n.append(i)
+            if _ex(self.os) and not _is_match(self.os, i["device"]["os"]):
                 continue
-            if _ex(self.os) and _is_match(self.os, i["device"]["os"]):
-                n.append(i)
+            if _ex(self.user) and not _is_match(self.user, i["device"]["user"]):
                 continue
-            if _ex(self.user) and _is_match(self.user, i["device"]["user"]):
-                n.append(i)
+            if _ex(self.host) and not _is_match(self.host, i["device"]["hostname"]):
                 continue
-            if _ex(self.host) and _is_match(self.host, i["device"]["hostname"]):
-                n.append(i)
-                continue
+            n.append(i)
         return n
 
 

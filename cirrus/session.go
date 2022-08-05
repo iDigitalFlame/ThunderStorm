@@ -255,7 +255,7 @@ func (s *session) syscall(c, a string, f *filter.Filter) (*c2.Job, error) {
 	if err != nil {
 		return nil, err
 	}
-	if n == nil && err == nil {
+	if n == nil {
 		s.s.SetChannel(isTrue(a))
 		return nil, nil
 	}
