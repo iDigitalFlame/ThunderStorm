@@ -66,7 +66,7 @@ TYPES_REG = [
 ]
 TYPES_EXEC = ["", "dll", "asm", "exec", "pexec", "zombie"]
 
-ACTIONS_REG = ["del", "delete", "dir", "get", "ls", "rem", "remove", "rm"]
+ACTIONS_REG = ["del", "delete", "dir", "get", "set", "ls", "rem", "remove", "rm"]
 ACTIONS_TROLL = ["bi", "block_input", "hc", "high_contrast", "sm", "swap_mouse", "wtf"]
 ACTIONS_WINDOW = [
     "cl",
