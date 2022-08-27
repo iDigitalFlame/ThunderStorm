@@ -197,7 +197,7 @@ def size_str(v, align=False):
 def time_str(n, s, exact=False):
     if len(s) == 0:
         return ""
-    v = datetime.fromisoformat(s).replace(tzinfo=None)
+    v = datetime.fromisoformat(s.replace("Z", "")).replace(tzinfo=None)
     if (n - v).days > 0:
         if exact:
             return v.strftime("%H:%M %m/%d/%y")

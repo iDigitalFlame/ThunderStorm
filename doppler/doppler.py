@@ -225,11 +225,14 @@ class Doppler(Api):
                 end="",
             )
             if "complete" in j:
+                s = datetime.fromisoformat(j["complete"].replace("Z", "")).replace(
+                    tzinfo=None
+                )
                 print(
-                    f'{time_str(t, j["complete"]):10}'
-                    f'{time_str(datetime.fromisoformat(j["complete"]).replace(tzinfo=None), j["start"]):8}',
+                    f'{time_str(t, j["complete"]):10}' f'{time_str(s, j["start"]):8}',
                     end="",
                 )
+                del s
             else:
                 print(f'{"":10}{"":10}', end="")
             if "result" in j and isinstance(j["result"], int) and j["result"] > 0:

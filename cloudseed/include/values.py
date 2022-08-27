@@ -50,7 +50,7 @@ class Pki(object):
         vet_str("pki.generate_ca", self.ca, True)
         vet_str("pki.generate_date", self.date, True)
         if nes(self.date):
-            datetime.fromisoformat(self.date)
+            datetime.fromisoformat(self.date.replace("Z", ""))
 
     def __bool__(self):
         return self.generate or nes(self.spoof)

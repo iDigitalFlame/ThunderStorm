@@ -259,7 +259,7 @@ def upx(js, file):
 
 def _sign_range(d, exp):
     if nes(d):
-        t = datetime.fromisoformat(d)
+        t = datetime.fromisoformat(d.replace("Z", ""))
     else:
         t = datetime.now()
     if not isinstance(exp, int) or exp <= 0:

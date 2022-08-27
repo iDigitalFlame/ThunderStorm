@@ -240,9 +240,9 @@ def _cleanup_temp():
 def _parse_date(gen, opts):
     d = None
     if nes(gen):
-        d = datetime.fromisoformat(gen)
+        d = datetime.fromisoformat(gen.replace("Z", ""))
         if nes(opts.get_sign("date")):
-            v = datetime.fromisoformat(opts.get_sign("date"))
+            v = datetime.fromisoformat(opts.get_sign("date").replace("Z", ""))
             if v < d:
                 raise ValueError(
                     f'sign: date "{opts.get_sign("date")}" is before cert date "{gen}"'

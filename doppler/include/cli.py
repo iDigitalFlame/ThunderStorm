@@ -610,7 +610,12 @@ def _print_job_result(id, job, type, res, out, script):
         print(f'returned: {len(res["entries"])} entries')
         t = datetime.now()
         for i in res["entries"]:
-            v, y = datetime.fromisoformat(i["modtime"]).replace(tzinfo=None), None
+            v, y = (
+                datetime.fromisoformat(i["modtime"].replace("Z", "")).replace(
+                    tzinfo=None
+                ),
+                None,
+            )
             if v.year < t.year:
                 y = v.strftime("%Y")
             else:

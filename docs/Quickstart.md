@@ -25,7 +25,7 @@ You will need the XMT src in order to run some builds and scripts!
 
 There is not many dependencies that you'll need unless you are doing any building.
 
-_For commands: If the line starts with '#' it means you're root for this_
+_Most commands will need root._
 
 ### Client Dependencies
 
@@ -40,30 +40,30 @@ To install these:
 
 **Python with Packages (recommended)**
 
-```bash
-# pacman -S python python-websocket-client python-requests
+```text
+pacman -S python python-websocket-client python-requests
 ```
 
 **Python with PIP and Packages**
 
-```bash
-# pacman -S python python-pip
-$ pip install requests websocket-client
+```text
+pacman -S python python-pip
+pip install requests websocket-client
 ```
 
 #### Kali (or any distro with "apt")
 
 **Python with Packages (recommended)**
 
-```bash
-# apt install python3 python3-websocket python3-requests
+```text
+apt install python3 python3-websocket python3-requests
 ```
 
 **Python with PIP and Packages**
 
-```bash
-# apt install python3 python3-pip
-$ pip install requests websocket-client
+```text
+apt install python3 python3-pip
+pip install requests websocket-client
 ```
 
 ### Building Dependencies
@@ -86,14 +86,14 @@ To install these:
 
 **Basic (Required)**
 
-```bash
-# pacman -S go gcc
+```text
+pacman -S go gcc
 ```
 
 **To use the Signing tool**
 
-```bash
-# pacman -S openssl
+```text
+pacman -S openssl
 ```
 
 You'll have to use your preferred AUR helper for `osslsigncode` or build it from
@@ -101,59 +101,59 @@ You'll have to use your preferred AUR helper for `osslsigncode` or build it from
 
 If you have `yay` you can use
 
-```bash
+```text
 yay -S osslsigncode
 ```
 
 **To use UPX**
 
-```bash
-# pacman -S upx
+```text
+pacman -S upx
 ```
 
 **To build for Windows (x86 and x64)**
 
-```bash
-# pacman -S mingw-w64-binutils mingw-w64-crt mingw-w64-gcc mingw-w64-headers mingw-w64-winpthreads
+```text
+pacman -S mingw-w64-binutils mingw-w64-crt mingw-w64-gcc mingw-w64-headers mingw-w64-winpthreads
 ```
 
 **If you want it all**
 
-```bash
-# pacman -S go gcc openssl upx mingw-w64-binutils mingw-w64-crt mingw-w64-gcc mingw-w64-headers mingw-w64-winpthreads
-$ yay -S osslsigncode
+```text
+pacman -S go gcc openssl upx mingw-w64-binutils mingw-w64-crt mingw-w64-gcc mingw-w64-headers mingw-w64-winpthreads
+yay -S osslsigncode
 ```
 
 #### Kali (or any distro with "apt")
 
 **Basic (Required)**
 
-```bash
-# apt install golang gcc
+```text
+apt install golang gcc
 ```
 
 **To use the Signing tool**
 
-```bash
-# apt install openssl osslsigncode
+```text
+apt install openssl osslsigncode
 ```
 
 **To use UPX**
 
-```bash
-# apt install upx
+```text
+apt install upx
 ```
 
 **To build for Windows (x86 and x64)**
 
-```bash
-# apt install binutils-mingw-w64 gcc-mingw-w64-x86-64-win32-runtime gcc-mingw-w64 gcc-mingw-w64-base gcc-mingw-w64-i686 mingw-w64 mingw-w64-tools
+```text
+apt install binutils-mingw-w64 gcc-mingw-w64-x86-64-win32-runtime gcc-mingw-w64 gcc-mingw-w64-base gcc-mingw-w64-i686 mingw-w64 mingw-w64-tools
 ```
 
 **If you want it all**
 
-```bash
-# apt install golang gcc openssl osslsigncode upx binutils-mingw-w64 gcc-mingw-w64-x86-64-win32-runtime gcc-mingw-w64 gcc-mingw-w64-base gcc-mingw-w64-i686 mingw-w64 mingw-w64-tools
+```text
+apt install golang gcc openssl osslsigncode upx binutils-mingw-w64 gcc-mingw-w64-x86-64-win32-runtime gcc-mingw-w64 gcc-mingw-w64-base gcc-mingw-w64-i686 mingw-w64 mingw-w64-tools
 ```
 
 #### Garble
@@ -161,7 +161,7 @@ $ yay -S osslsigncode
 If you would like to use [Garble](https://github.com/burrowers/garble) you can
 run the following on any system to install it:
 
-```bash
+```text
 go install mvdan.cc/garble@latest
 ```
 
@@ -338,7 +338,7 @@ Now you have a Profile ready to be used!
 Now you have a Profile all ready to go, let's add a Listener with it.
 
 From where you are in Doppler, type in `main` to take you back to the main menu.
-Then type `listener` and hit enter.
+Then type `listeners` and hit enter.
 
 _Protip: you can always hit CTRL+C to cancel a command or go back one level_
 _while CTRL_D will exit the shell._
@@ -376,7 +376,7 @@ You can check it with the following command (in the same Doppler terminal);
 ```
 
 _Yup that's right! You can enter local commands on the host as long as they are_
-_prefixed with "!". NOTE: For security reasons, history entries and oneliners cannot_
+_prefixed with "!". For security reasons, history entries and oneliners cannot_
 _run commands._
 
 You should see something similar to:
@@ -471,6 +471,8 @@ file, name it `js.json`.
 This is the basic config file that will get you started easily. This configuration
 will work well on Windows and will need some tweaking for any *nix system.
 
+**This config assumes that you installed ALL the things**
+
 ### Linux/BSD/OSX Support
 
 If you would like to run a non-Windows build, the only things you would have to
@@ -511,6 +513,7 @@ With that in mind, lets pick a build type. Heres some common ones:
 - darwin/amd64
 
 There are more avaliable, consult `go tool dist list` for all of them.
+
 _NOTE: JetStream might not be able to build new types as soon as they come out._
 
 Once you made your pick, let's fire up JetStream by running (Omit the ".exe" if

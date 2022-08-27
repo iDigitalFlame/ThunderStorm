@@ -171,7 +171,7 @@ def _cfg_sign(cfg, b):
     vet_str("build.support.sign.date", cfg["date"])
     vet_int("build.support.sign.date_range", cfg["date_range"], min=0)
     if nes(cfg["date"]):
-        datetime.fromisoformat(cfg["date"])
+        datetime.fromisoformat(cfg["date"].replace("Z", ""))
     vet_str_exists("build.support.sign.pfx", cfg["pfx"])
     vet_str("build.support.sign.pfx_raw", cfg["pfx_raw"], b64=True)
     vet_str("build.support.sign.pfx_password", cfg["pfx_password"])

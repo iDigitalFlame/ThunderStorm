@@ -1466,7 +1466,9 @@ class Api(object):
         r = list()
         n = datetime.now()
         for i in self.sessions():
-            x = n - datetime.fromisoformat(i["last"]).replace(tzinfo=None)
+            x = n - datetime.fromisoformat(i["last"].replace("Z", "")).replace(
+                tzinfo=None
+            )
             if x.total_seconds() > v:
                 r.append((i["id"], i["last"]))
             del x

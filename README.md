@@ -6,6 +6,8 @@ Golang Full C2 Solution using [XMT](https://github.com/iDigitalFlame/xmt)
 
 ThunderStorm is made up of multiple components that work together.
 
+Try the new [Quickstart Guide](docs/Quickstart.md)!
+
 ##  Cirrus
 
 *I smell a storm comming*
