@@ -573,40 +573,20 @@ class JetStream(object):
             w = workspace["link"]
         else:
             x.append(file)
+        if not nes(workspace["link"]):
+            b = self.opts.get_bin("go")
+            self._exec(
+                [b, "mod", "init", "jetstream"],
+                env=env,
+                trunc=g,
+                wd=w,
+                dout=False,
+            )
+            self._exec([b, "mod", "tidy"], env=env, trunc=g, wd=w, dout=False)
+            del b
         self._exec(x, env=env, trunc=g, wd=w)
         del x, w, g
         return out
-
-    def _exec(self, cmd, env=None, trunc=False, out=True, wd=None):
-        self.log.debug(f'Running "{_print_cmd(cmd, trunc)}"..')
-        e = env
-        if env is None:
-            e = environ
-        try:
-            r = run(
-                cmd,
-                env=e,
-                cwd=wd,
-                text=True,
-                check=True,
-                shell=False,
-                capture_output=out,
-            )
-        except CalledProcessError as err:
-            self.log.error(
-                f'Error running command (exit {err.returncode}) "{_print_cmd(cmd, trunc)}": {_get_stdout(err)}'
-            )
-            if trunc:
-                err.cmd = _print_cmd(cmd, trunc, True)
-            raise err
-        finally:
-            del e
-        if out:
-            o = _get_stdout(r)
-            if nes(o):
-                self.log.debug(f"Command output: {o}")
-            del o
-        del r
 
     def run(self, osv, arch, gen, library, output, no_clean, dest=None):
         if not nes(output):
@@ -711,6 +691,37 @@ class JetStream(object):
         self.log.info(f'Output result file "{output}".')
         return output
 
+    def _exec(self, cmd, env=None, trunc=False, out=True, wd=None, dout=True):
+        self.log.debug(f'Running "{_print_cmd(cmd, trunc)}"..')
+        e = env
+        if env is None:
+            e = environ
+        try:
+            r = run(
+                cmd,
+                env=e,
+                cwd=wd,
+                text=True,
+                check=True,
+                shell=False,
+                capture_output=out,
+            )
+        except CalledProcessError as err:
+            self.log.error(
+                f'Error running command (exit {err.returncode}) "{_print_cmd(cmd, trunc)}": {_get_stdout(err)}'
+            )
+            if trunc:
+                err.cmd = _print_cmd(cmd, trunc, True)
+            raise err
+        finally:
+            del e
+        if out and dout:
+            o = _get_stdout(r)
+            if nes(o):
+                self.log.debug(f"Command output: {o}")
+            del o
+        del r
+
     def _step_build_cgo(self, base, workspace, env, rc, x64, lib, src, file, out):
         if workspace["os"] != "windows":
             raise ValueError("build: can only use CGO with Windows")
@@ -722,7 +733,7 @@ class JetStream(object):
             workspace,
             env,
             "-H=windowsgui",
-            ["-buildmode=c-archive", "-gcflags", "-G=0"],
+            ["-buildmode=c-archive"],
             file,
             i,
         )
@@ -804,6 +815,7 @@ class JetStream(object):
                     "-lkernel32",
                     "-lntdll",
                     "-lws2_32",
+                    "-O2",
                     "-Wa,--strip-local-absolute",
                     "-Wp,-femit-struct-debug-reduced,-O2",
                     "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",
@@ -830,6 +842,7 @@ class JetStream(object):
                     "-lkernel32",
                     "-lntdll",
                     "-lws2_32",
+                    "-O2",
                     "-Wa,--strip-local-absolute",
                     "-Wp,-femit-struct-debug-reduced,-O2",
                     "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",
@@ -852,6 +865,7 @@ class JetStream(object):
                     "-lkernel32",
                     "-lntdll",
                     "-lws2_32",
+                    "-O2",
                     "-Wa,--strip-local-absolute",
                     "-Wp,-femit-struct-debug-reduced,-O2",
                     "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",

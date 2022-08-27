@@ -34,44 +34,67 @@ _HELP_TEXT = """ Doppler: ThunderStorm C2 Console Interface
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
 (c) 2019 - 2022 iDigitalFlame
 
-Usage: {proc} -a <cirrus> [-p password] [-b] [-B] [-j] [-l] [-x] [-s] [-i] [-c cmd] [...]
+Usage: {proc} -a <cirrus> [-p password] [-A] [-D] [-b] [-B] [-j] [-l] [-x] [-s] [-i] [-c cmd] [...]
 
 Required Arguments:
-  -a
+  -a          <cirrus_address>   Name/IP and port of the Cirrus server. This
+                                  argument is required. Can be set via the
+                                  "DOPPLER_HOST" environment variable.
 
 Optional Arguments:
-  -p          <password>         |
+  -p          <password>         Password to use with the specified Cirrus server.
+                                  Can be set via the "DOPPLER_PW" environment variable.
 
  Shell Option Arguments
-  -N                             |
-  --no-empty
-  -z          <file|'-'>         |
-  --input
-  -i          <Bolt ID>          |
-  --interact
+  -N                             Disable automatic command handeling. If specified,
+  --no-empty                      all commands must be ran using a prefix (run|shell|
+                                  pwsh). Can be set via the "DOPPLER_NO_EMPTY"
+                                  environment variable.
+  -P          <pile_name>        Specify a default pipe name to be used for spawn/migrate
+  --pipe                          commands. Can be set via the "DOPPLER_PIPE" environment
+                                  variable.
+  -z          <file|'-'>         Specify a file (or '-' for stdin) that contains
+  --input                         newline seperated commands to be ran as input to
+                                  the shell before entering the prompt. Running
+                                  commands and history are not allowed.
+  -i          <Bolt ID>          Directly enter into a shell with the specified
+  --interact                      Bolt ID.
+  -A          <asm_file>         Specify a default ASM file that can be used as
+  --asm                           the default file source for spawn/migrate commands
+                                  when no file is specified. If supplied, this will
+                                  also default empty methods to "asm". Can be set
+                                  via the "DOPPLER_ASM" environment variable.
+  -D          <dll_file>         Specify a default DLL file that can be used as
+  --dll                           the default file source for spawn/migrate commands
+                                  when no file is specified. If supplied, this will
+                                  also default empty methods to "dll" if no ASM file
+                                  is specified. Can be set via the "DOPPLER_DLL"
+                                  environment variable.
 
  Execution Option Arguments:
-  -c          <command>          |
-  --cmd
-  -w          <duration[s|m|h]>  |
-  --timeout
-  -k          <cli command>      |
-  --oneline
+  -c          <command>          Run a single shell command and exit. This command
+  --cmd                           requires that a Bolt ID be specified.
+  -w          <duration[s|m|h]>  Specify a timeout for a "command" operation (above)
+  --timeout                       to wait for before a timeout occurs. This value
+                                  defaults to seconds, but a duration identifier may
+                                  be specified.
+  -k          <command>          Specify a comand (or set of commands seperated by
+  --oneline                       a semicolon ";") that are executed in the context
+                                  of the Doppler shell.
 
  List Operations
-  -b
-  --bolts
-  -B
-  --bolts-adv
-  -j
-  --jobs
-  -s
-  --scripts
-  -n
-  --profiles
-  -l
-  --listeners
-
+  -b                             List the current Bolts connected to the supplied
+  --bolts                         Cirrus server.
+  -B                             List the current Bolts connected to the supplied
+  --bolts-adv                     Cirrus server with more information.
+  -j                             List all Jobs saved and/or active currently. An
+  --jobs                          expression may be used to filter the results.
+  -s                             List all the Scripts contained on the supplied
+  --scripts                       Cirrus server.
+  -n                             List all the Profiles contained on the supplied
+  --profiles                      Cirrus server.
+  -l                             List all the active Listeners on the supplied
+  --listeners                     Cirrus server.
 """
 _UPDATE_NAMES = [
     "job_delete",
@@ -845,7 +868,7 @@ class _Parser(ArgumentParser):
     @staticmethod
     def _verify(a):
         if not nes(a.cirrus):
-            raise ValueError("empty/missing Cirrus API target")
+            raise ValueError("empty/missing Cirrus server")
         if isinstance(a.extra, list):
             a.extra = " ".join(a.extra)
         if nes(a.timeout):
@@ -873,6 +896,11 @@ class _Parser(ArgumentParser):
         self.add("-l", "--listeners", dest="listeners", action="store_true")
         self.add("-b", "--bolts", dest="bolts", action="store_true")
         self.add("-B", "--bolts-adv", dest="bolts_adv", action="store_true")
+        # Shell Helper Arguments
+        self.add(
+            "-A", "--asm", type=str, dest="bolt_asm", default=getenv("DOPPLER_ASM")
+        )
+        self.add("-D", "--dll", type=str, dest="bolt_dll", default=getenv("c"))
         # Execution Arguments
         self.add("-c", "--cmd", type=str, dest="cmd")
         self.add("-w", "--timeout", type=str, dest="timeout")
@@ -911,7 +939,7 @@ def _main():
     try:
         d = Doppler(r.cirrus, r.pw)
     except (OSError, ValueError) as err:
-        print(f"Error: {str(err)}!", file=stderr)
+        print(f"Error: {str(err)}\n{format_exc(5)}!", file=stderr)
         exit(1)
     try:
         if r.jobs:
@@ -924,7 +952,7 @@ def _main():
             return d.show_listeners(r.extra)
         if r.bolts or r.bolts_adv:
             return d.show_sessions(advanced=r.bolts_adv, exp=Exp.parse(r.extra))
-        s = Shell(d, r.no_empty, r.pipe)
+        s = Shell(d, r.no_empty, r.pipe, r.bolt_asm, r.bolt_dll)
         if nes(r.cmd):
             d.session(r.extra)
             s.set_menu(MENU_BOLT, r.extra)
@@ -950,7 +978,7 @@ def _main():
             s.set_menu(MENU_BOLT, r.extra)
         s.enter()
     except (OSError, ValueError, CirrusError) as err:
-        print(f"Error: {str(err)}!")
+        print(f"Error: {str(err)}\n{format_exc(5)}!", file=stderr)
         exit(1)
     finally:
         d.close()

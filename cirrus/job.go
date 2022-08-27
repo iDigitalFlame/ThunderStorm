@@ -80,7 +80,7 @@ func (j *jobManager) prune(x context.Context) {
 					delete(j.e, k)
 				}
 			}
-			if len(j.sessions.e) > 0 {
+			if j.sessions.Lock(); len(j.sessions.e) > 0 {
 				for i := range j.sessions.e {
 					if j.sessions.e[i].Lock(); len(j.sessions.e[i].j) == 0 {
 						j.sessions.e[i].Unlock()
@@ -113,6 +113,7 @@ func (j *jobManager) prune(x context.Context) {
 					j.sessions.e[i].Unlock()
 				}
 			}
+			j.sessions.Unlock()
 			j.Unlock()
 		case <-x.Done():
 			t.Stop()

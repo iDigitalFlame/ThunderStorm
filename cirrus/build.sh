@@ -15,13 +15,27 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-output="bin/cirrus"
+output="cirrus"
+buildroot="cmd/cirrus.go"
+
 if [ $# -ge 1 ]; then
     output="$1"
+    if [ -d "$(pwd)/cirrus" ]; then
+        buildroot="cirrus/cmd/cirrus.go"
+    fi
+else
+    if [ -d "$(pwd)/cirrus" ]; then
+        output="$(pwd)/bin/cirrus"
+        buildroot="cirrus/cmd/cirrus.go"
+    else
+        if [ -f "$(pwd)/server.go" ]; then
+            output="$(pwd)/../bin/cirrus"
+        fi
+    fi
 fi
 
 printf "Building...\n"
-go build -trimpath -buildvcs=false -ldflags "-s -w" -o "$output" cmd/cirrus.go
+go build -trimpath -buildvcs=false -ldflags "-s -w" -o "$output" $buildroot
 
 which upx &> /dev/null
 if [ $? -eq 0 ] && [ -f "$output" ]; then

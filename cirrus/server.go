@@ -45,10 +45,14 @@ Optional Arguments:
                                   HTTP header for connections. If this is empty, and
                                   the "-no-auth" argument is not specified, a random
                                   password will be generated for you and printed to
-                                  stdout during startup.
+                                  stdout during startup. If a password was specified
+                                  in the "data_file" argument, this can be omitted to
+                                  use that instead.
   -no-auth                      Argument that can be used to force Cirrus to NOT
                                   validate connections with a password. If a password
                                   is specified with "-p", this argument is ignored.
+                                  However, this value will take precedence over any
+                                  passwords saved in the "data_file".
   -f <data_file>                Path to a file to be used as the backing store for
                                   Cirrus. This can be used to save/load the contents
                                   and state during startup/shutdown for Scripts,
@@ -117,15 +121,10 @@ func Cmdline() {
 		log = logx.Console(logx.Normal(e, logx.Info))
 	}
 
-	if len(p) == 0 && !n {
-		p = text.All.String(16)
-		os.Stdout.WriteString("Generated authentication password: " + p + "\n")
-	}
-
 	var (
 		x, q = context.WithCancel(context.Background())
 		i    = c2.NewServerContext(x, log)
-		a    = NewContext(x, i, p)
+		a    = NewContext(x, i, "")
 	)
 
 	if len(d) == 0 {
@@ -141,6 +140,15 @@ func Cmdline() {
 		i.Close()
 		os.Stderr.WriteString("Error " + err.Error() + "!\n")
 		os.Exit(1)
+	}
+
+	switch {
+	case len(a.Auth) == 0 && n:
+	case len(a.Auth) == 0 && !n && len(p) > 0:
+		a.Auth = p
+	case len(a.Auth) == 0 && !n && len(p) == 0:
+		a.Auth = text.All.String(16)
+		os.Stdout.WriteString("Generated authentication password: " + a.Auth + "\n")
 	}
 
 	if err = a.TrackStats(c, t); err != nil {

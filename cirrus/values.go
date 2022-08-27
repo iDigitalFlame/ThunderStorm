@@ -319,7 +319,7 @@ func (t taskCommand) Packet() (*com.Packet, error) {
 	if p.Stdin, err = readEmptyB64(t.Stdin); err != nil {
 		return nil, err
 	}
-	if len(t.Command) == 1 && len(t.Stdin) == 0 {
+	if len(t.Command) == 0 && len(t.Stdin) == 0 {
 		return nil, errInvalidCommand
 	}
 	switch t.Command[0] {

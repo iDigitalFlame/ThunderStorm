@@ -520,7 +520,7 @@ def tiny_root(old, new, timeout=5):
         ['buildInfoMagic = []byte("\\xff __ _________")'],
     )
     _sed(
-        join(new, "src", "runtime", "cgo", "libcgo_windows.h"),
+        join(new, "src", "runtime", "cgo", "gcc_libinit_windows.c"),
         ["__declspec(dllexport) int _cgo_dummy_export;"],
         [f"__declspec(dllexport) int _{random_chars(12, True)};"],
     )
@@ -603,6 +603,14 @@ def tiny_root(old, new, timeout=5):
         ['stopTheWorldGC("GOMAXPROCS")'],
         ['stopTheWorldGC("GMP")'],
     )
+    _sed(
+        join(new, "src", "runtime", "panic.go"),
+        [
+            "switch r := recover().(type) {",
+            'text := "panic while printing panic value"',
+        ],
+        ["switch recover().(type) {", ""],
+    )
     # NOTE(dij): I have this commented out since I don't necessarily want to break
     #            support for long paths and cause os.fixPath to allocate.
     #            Basically the "runtime.initLongPathSupport" function causes the
@@ -626,6 +634,8 @@ def tiny_root(old, new, timeout=5):
         if not isfile(i):
             continue
         _sed(i, ['runtime.GOROOT() + "/lib/time/zoneinfo.zip",'], ["runtime.GOROOT(),"])
+    with open(join(new, "go.mod"), "w") as f:
+        f.write("")
 
 
 def random_chars(size, lower=False):

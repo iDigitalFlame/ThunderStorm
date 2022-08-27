@@ -104,7 +104,8 @@ func Start(ignore, load, critical bool, l man.Linker, guard, pipe string, c cfg.
 	if s.Close(); critical && !z {
 		device.SetCritical(false)
 	}
-	cleanup()
+	// NOTE(dij): Give some cleanup time to handle any loose ends. (1.5s)
+	time.Sleep(1500000000)
 	limits.Reset()
 	limits.StopNotify(w)
 	close(w)

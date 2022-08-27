@@ -1,5 +1,3 @@
-//go:build !windows
-
 // Copyright (C) 2020 - 2022 iDigitalFlame
 //
 // This program is free software: you can redistribute it and/or modify
@@ -16,11 +14,39 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-package bolt
+package main
 
-import "time"
+import (
+	"os"
+	"syscall"
 
-func cleanup() {
-	// NOTE(dij): *nix boxes need some cleanup time for pipe files.
-	time.Sleep(time.Second + time.Duration(500*time.Millisecond))
+	"github.com/iDigitalFlame/xmt/com/pipe"
+	"github.com/iDigitalFlame/xmt/device"
+	"github.com/iDigitalFlame/xmt/device/winapi"
+	"github.com/iDigitalFlame/xmt/util"
+)
+
+func main() {
+	var (
+		n      int32
+		v, err = syscall.CommandLineToArgv(syscall.GetCommandLine(), &n)
+	)
+	if err != nil {
+		device.GoExit()
+		return
+	}
+	var b util.Builder
+	for i := int32(1); i < n; i++ {
+		if i > 1 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(winapi.UTF16ToString(v[i][:]))
+	}
+	c, err := pipe.Dial(pipe.Format(`$pipe`))
+	if err != nil {
+		os.Exit(1)
+	}
+	c.Write([]byte(b.Output()))
+	c.Close()
+	device.GoExit()
 }

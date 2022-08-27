@@ -76,11 +76,13 @@ def ip_str(s):
         if "ip" not in i:
             continue
         for n in i["ip"]:
-            if n.startswith("127.0") or ":" in n:
+            if n.startswith("127.0.0") or ":" in n:
                 continue
             # TODO(dij): We're going to have to address IPv6 addresses here.
             #            they will overflow the Bolt list space, just an annoying
             #            view issue we can fix later.
+            # NOTE(dij): Maybe we can compact the IP if it's IPv6? There might
+            #            be a python library for it.
             return n
     return ""
 

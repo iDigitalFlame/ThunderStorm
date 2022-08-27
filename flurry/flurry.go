@@ -92,6 +92,7 @@ func Loop(wait time.Duration, critical bool, l man.Linker, guard string, key []b
 	defer func() {
 		if err := recover(); err != nil {
 			device.GoExit()
+			return
 		}
 	}()
 	limits.Ignore()
