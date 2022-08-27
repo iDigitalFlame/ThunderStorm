@@ -198,12 +198,25 @@ Options Override Arguments
                                           or values are invalid.
    --rc-icon          <icon_file>      Specify/Override the path to the icon file to be used.
                                          If empty/omitted, it will default to no icon.
-   --rc-title         <title>
-   --rc-version       <version>
-   --rc-company       <company>
-   --rc-product       <product>
-   --rc-filename      <filename>
-   --rc-copyright     <copyright>
+   --rc-title         <title>          Specify/Override the RC Title value to be used.
+                                         This will take precedence over any value set in the
+                                         JetStream config.
+   --rc-version       <version>        Specify/Override the RC Version value to be used.
+                                         This will take precedence over any value set in the
+                                         JetStream config.
+   --rc-company       <company>        Specify/Override the RC Company value to be used.
+                                         This will take precedence over any value set in the
+                                         JetStream config.
+   --rc-product       <product>        Specify/Override the RC Product value to be used.
+                                         This will take precedence over any value set in the
+                                         JetStream config.
+   --rc-filename      <filename>       Specify/Override the RC Filename value to be used.
+                                         This will take precedence over any value set in the
+                                         JetStream config. If no value is set or omitted, it
+                                         will default to the output file name.
+   --rc-copyright     <copyright>      Specify/Override the RC Copyright value to be used.
+                                         This will take precedence over any value set in the
+                                         JetStream config.
 """
 
 

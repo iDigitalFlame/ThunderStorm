@@ -31,38 +31,77 @@ _LINKERS = {
     "mailslot": "n",
     "semaphore": "s",
 }
-_HELP_TEXT = """ Generates a Bolt build based on the supplied profile and behavior arguments.
+_HELP_TEXT = """ Generates a Bolt build based on the supplied profile and behavior
+ arguments.
 
  Arguments
-  CGO Build Arguments
-   -T                 <thread_name>   |
-   --thread
-   -F                 <function_name> |
-   --func
-
   Bolt Specific Arguments
-   -n                 <profile_file>  |
-   --profile
-   -L                                 |
-   --load
-   -P                 <pipe_name>     |
-   --pipe
-   -I
-   --ignore
-   -W                 <guardian_name> |
-   --guardian
-   -E                 <linker_type>   |
-   --linker
+   -n                 <profile_file>  Specify the Profile to be used for this Bolt.
+   --profile                            This can be an absolute path or contain
+                                        environment variables.
+   -L                                 Enable or disable the ability for this Bolt
+   --load                               to attempt to load via a Spawn/Migrate call.
+                                        If disabled via a "no" argument, this Bolt
+                                        will not be able to load via Spawn/Migrate.
+   -P                 <pipe_name>     Specify the Pipe name used when doing a
+   --pipe                               Spawn/Migrate operation. This option may be
+                                        omitted if "load" is false.
+   -I                                 Enable ignoring other Bolt instances currently
+   --ignore                             running if enabled (default disabled). NOTE:
+                                        By default, every Bolt has the ability via
+                                        a command line option to disable ignore on
+                                        the fly, so only enable this if truly needed.
+   -W                 <guardian_name> Set the name used by the Bolt's Guardian. This
+   --guardian                           can be omitted if "ignore" is true.
+   -E                 <linker_type>   Set the type of Linker event used for the Bolt's
+   --linker                             Guardian. This is dependent on the target OS
+                                        type. See the "Linker Types" section for more
+                                        info.
 
   Behavior Arguments
-   -S
-   --service
-   -A                 <service_name>  |
-   --service-name
-   -R                 <checks>        |
-   --checks
-   -K
-   --critical
+   -S                                 Enable the Bolt to be built into a Service/Daemon
+   --service                            build. On Windows, it must be launched via SCM.
+                                        This does not take any effect on non-Windows
+                                        devices.
+   -A                 <service_name>  Specify the name of the Service to be used when
+   --service-name                       running as a Service. This has no effect when
+                                        not running as a Service and realistically only
+                                        has a purpose when running as a Service DLL on
+                                        Windows.
+   -R                 <checks>        Specify a string value of "Checks" to be used to
+   --checks                             determine if the Bolt should run or exit. See
+                                        the XMT document "Check Strings" for more
+                                        information.
+   -K                                 Enable or disable the ability for this Bolt to
+   --critical                           mark itself as "Critical" which makes it harder
+                                        to be stopped by users or solutions. This only
+                                        takes effect on Windows devices when ran with
+                                        administrative privileges.
+
+  CGO Build Arguments
+   -T                 <thread_name>   Supply the thread name to be used in the
+   --thread                             generated C stub file.
+   -F                 <function_name> Supply the function name to be used in the
+   --func                               generated C stub file. This is what can
+                                        be used to call the secondary function
+                                        using rundll32, using "rundll32 <dll>,<func>".
+
+ Linker Types
+  The following Linker or event types are avaliable to be used for the "-E' or
+  "--linker" arguments.
+
+   tcp          Use a TCP port for Linker event communication. This type is
+                  avaliable on any device and OS.
+   pipe         Use Windows named pipes or pipe files in *nix for Linker event
+                  communication. This type is avaliable on any device and OS.
+   event        Use Windows Events for Linker event communication. This type is
+                  only avaliable on Windows devices.
+   mutex        Use Windows Mutexes for Linker event communication. This type is
+                  only avaliable on Windows devices.
+   mailslot     Use Windows Mailslots for Linker event communication. This type
+                  is only avaliable on Windows devices.
+   semaphore    Use Windows Semaphores for Linker event communication. This type
+                  is only avaliable on Windows devices.
 """
 
 
@@ -89,7 +128,7 @@ class Bolt(object):
             raise ValueError('"service_name" must be a non-empty string')
 
     def config_load(self, cfg):
-        # Bolt Specific Options
+        # Bolt Options
         self._m.add("pipe", ("-P", "--pipe"), "", is_str(True), str)
         self._m.add("load", ("-L", "--load"), False, action=BooleanOptionalAction)
         self._m.add("ignore", ("-I", "--ignore"), False, action=BooleanOptionalAction)
@@ -109,7 +148,7 @@ class Bolt(object):
         self._m.add(
             "critical", ("-K", "--critical"), False, action=BooleanOptionalAction
         )
-        # Build Options
+        # CGO Build Options
         self._m.add("func", ("-F", "--func"), "", is_str(True, ft=True), str)
         self._m.add("thread", ("-T", "--thread"), "", is_str(True, ft=True), str)
         self._m.init(cfg)

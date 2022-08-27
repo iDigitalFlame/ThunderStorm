@@ -21,28 +21,34 @@ from include.builder import random_chars
 from argparse import BooleanOptionalAction
 from include.manager import Manager, is_str
 
-_HELP_TEXT = """ Generates a Bolt build based on the supplied profile and behavior arguments.
+_HELP_TEXT = """ Generates an Elevate build based on the supplied profile and behavior
+ arguments.
 
  Arguments
-  CGO Build Arguments
-   -T                 <thread_name>   |
-   --thread
-   -F                 <function_name> |
-   --func
-
-  Bolt Specific Arguments
-   -n                 <profile_file>  |
-   --profile
-   -L                                 |
-   --load
-   -P                 <pipe_name>     |
-   --pipe
+   Elevate Specific Arguments
+   -P                 <pipe_name>     Specify the name of the pipe that the server will
+   --pipe                               operate on or the client will connect to.
+   -X                                 Specify if this should build a Elevate client
+   --client                             which can be used to connect, or a server which
+                                        can be used to listen.
 
   Behavior Arguments
-   -A                 <service_name>  |
-   --service-name
-   -K
-   --critical
+   -A                 <service_name>  Specify the name of the Service to be used when
+   --service-name                       running as a Service. This has no effect when
+                                        not running as a Service and realistically only
+                                        has a purpose when running as a Service DLL on
+                                        Windows.
+   -K                                 Enable or disable the ability for this build to
+   --critical                           mark itself as "Critical" which makes it harder
+                                        to be stopped by users or solutions. This only
+                                        takes effect on Windows devices when ran with
+                                        administrative privileges.
+
+  CGO Build Arguments
+   -T                 <thread_name>   Supply the thread name to be used in the
+   --thread                             generated C stub file.
+   -F                 <function_name> Supply the function name to be used in the
+   --func                               generated C stub file.
 """
 
 
@@ -59,14 +65,17 @@ class Elevate(object):
         self._m.verify(cfg)
 
     def config_load(self, cfg):
+        # Elevate Options
         self._m.add("pipe", ("-P", "--pipe"), "", is_str(False, min=5), str)
         self._m.add("client", ("-X", "--client"), False, action=BooleanOptionalAction)
+        # Behavior/Type Options
         self._m.add("service_name", ("-A", "--service-name"), "", is_str(True), str)
-        self._m.add("func", ("-F", "--func"), "", is_str(True, ft=True), str)
-        self._m.add("thread", ("-T", "--thread"), "", is_str(True, ft=True), str)
         self._m.add(
             "critical", ("-K", "--critical"), False, action=BooleanOptionalAction
         )
+        # CGO Build Options
+        self._m.add("func", ("-F", "--func"), "", is_str(True, ft=True), str)
+        self._m.add("thread", ("-T", "--thread"), "", is_str(True, ft=True), str)
         self._m.init(cfg)
 
     def args_pre(self, parser):
@@ -76,7 +85,21 @@ class Elevate(object):
         self._m.parse(cfg, args)
 
     def print_options(self, cfg, root, file):
-        return
+        print("- | Elevate Generator", file=file)
+        print(f'- | = {"Pipe:":20}{cfg["pipe"]}', file=file)
+        print(f'- | = {"Client:":20}{cfg["client"]}', file=file)
+        print(f'- | = {"Critical:":20}{cfg["critical"]}', file=file)
+        print(f'- | = {"Service Name:":20}{cfg["service_name"]}', file=file)
+        if not root.get_option("cgo"):
+            return
+        if nes(cfg["thread"]):
+            print(f'- | = {"CGO Thread:":20}{cfg["thread"]}', file=file)
+        else:
+            print(f'- | = {"CGO Thread:":20}[random]', file=file)
+        if nes(cfg["func"]):
+            print(f'- | = {"CGO Func:":20}{cfg["func"]}', file=file)
+        else:
+            print(f'- | = {"CGO Func:":20}[random]', file=file)
 
     def run(self, cfg, base, workspace, templates):
         p = join(base, "bolt.go")

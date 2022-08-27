@@ -32,40 +32,80 @@ _LINKERS = {
     "mailslot": "n",
     "semaphore": "s",
 }
-_HELP_TEXT = """ Generates a Flurry build based on the supplied profile and behavior arguments.
+_HELP_TEXT = """ Generates a Flurry build based on the supplied profile and behavior
+ arguments.
 
  Arguments
-  CGO Build Arguments
-   -T                 <thread_name>   |
-   --thread
-   -F                 <function_name> |
-   --func
-
-  Flurry Specific Arguments
-   -p                 <period(secs)>  |
-   --period
-   -W                 <guardian_name> |
-   --guardian
-   -E                 <linker_type>   |
-   --linker
-   -P                 <sentinels>     |
-   --path
-   -n                 <key>           |
-   --key
-   -N                 <key_file>      |
-   --key-file
-   -B                 <key_base64>    |
-   --key-b64
+   Flurry Specific Arguments
+   -p                 <period(secs)>  Specify the time period (in seconds) that this
+   --period                             Flurry will wait before it checks for Bolts.
+                                        This value cannot be zero. It is recommended
+                                        to set this value to be higher than 10 seconds.
+   -W                 <guardian_name> Set the name used by the Flurry's Guardian. This
+   --guardian                           can be omitted if "ignore" is true.
+   -E                 <linker_type>   Set the type of Linker event used for the Flurry's
+   --linker                             Guardian. This is dependent on the target OS
+                                        type. See the "Linker Types" section for more
+                                        info.
+   -P                 <sentinels>     Specify paths to Sentinel files on the target
+   --path                               filesystem. This argument may be specified
+                                        multiples times for more than one path. These
+                                        paths do not have to exist currently at build
+                                        time.
+   -n                 <key>           Specify a raw string value that can be used to
+   --key                                decrypt Sentinel files.
+   -N                 <key_file>      Specify a file path that contains a binary key
+   --key-file                           that can be used to decrypt Sentinel files.
+                                        Takes precedence over the "key" and "key_base64"
+                                        arguments.
+   -B                 <key_base64>    Specify a valid base64 string value to be used
+   --key-b64                            to decrypt Sentinel files. Takes precedence
+                                        over the "key" argument.
 
   Behavior Arguments
-   -S
-   --service
-   -A                 <service_name>  |
-   --service-name
-   -R                 <checks>        |
-   --checks
-   -K
-   --critical
+   -S                                 Enable the Bolt to be built into a Service/Daemon
+   --service                            build. On Windows, it must be launched via SCM.
+                                        This does not take any effect on non-Windows
+                                        devices.
+   -A                 <service_name>  Specify the name of the Service to be used when
+   --service-name                       running as a Service. This has no effect when
+                                        not running as a Service and realistically only
+                                        has a purpose when running as a Service DLL on
+                                        Windows.
+   -R                 <checks>        Specify a string value of "Checks" to be used to
+   --checks                             determine if the Flurry should run or exit. See
+                                        the XMT document "Check Strings" for more
+                                        information.
+   -K                                 Enable or disable the ability for this Flurry to
+   --critical                           mark itself as "Critical" which makes it harder
+                                        to be stopped by users or solutions. This only
+                                        takes effect on Windows devices when ran with
+                                        administrative privileges.
+
+  CGO Build Arguments
+   -T                 <thread_name>   Supply the thread name to be used in the
+   --thread                             generated C stub file.
+   -F                 <function_name> Supply the function name to be used in the
+   --func                               generated C stub file. This is what can
+                                        be used to call the secondary function
+                                        using rundll32, using "rundll32 <dll>,<func>".
+
+ Linker Types
+  The following Linker or event types are avaliable to be used for the "-E' or
+  "--linker" arguments.
+
+   tcp          Use a TCP port for Linker event communication. This type is
+                  avaliable on any device and OS.
+   pipe         Use Windows named pipes or pipe files in *nix for Linker event
+                  communication. This type is avaliable on any device and OS.
+   event        Use Windows Events for Linker event communication. This type is
+                  only avaliable on Windows devices.
+   mutex        Use Windows Mutexes for Linker event communication. This type is
+                  only avaliable on Windows devices.
+   mailslot     Use Windows Mailslots for Linker event communication. This type
+                  is only avaliable on Windows devices.
+   semaphore    Use Windows Semaphores for Linker event communication. This type
+                  is only avaliable on Windows devices.
 """
 
 
@@ -84,7 +124,7 @@ class Flurry(object):
             raise ValueError('"service_name" must be a non-empty string')
 
     def config_load(self, cfg):
-        # Flurry Specific Options
+        # Flurry Options
         self._m.add("period", ("-p", "--period"), 30, is_int(1), int)
         self._m.add(
             "linker",
@@ -95,9 +135,13 @@ class Flurry(object):
         )
         self._m.add("guardian", ("-W", "--guardian"), "", is_str(min=1), str)
         self._m.add(
-            "paths", ("-P", "--path"), None, is_str_list(4), nargs="*", action="extend"
+            "paths",
+            ("-P", "--path"),
+            None,
+            is_str_list(min=1),
+            nargs="*",
+            action="extend",
         )
-        # Flurry Key Options
         self._m.add("key", ("-n", "--key"), "", is_str(True), str)
         self._m.add("key_file", ("-N", "--key-file"), "", is_file(True), str)
         self._m.add(
@@ -110,7 +154,7 @@ class Flurry(object):
         self._m.add(
             "critical", ("-K", "--critical"), False, action=BooleanOptionalAction
         )
-        # Build Options
+        # CGO Build Options
         self._m.add("func", ("-F", "--func"), "", is_str(True, ft=True), str)
         self._m.add("thread", ("-T", "--thread"), "", is_str(True, ft=True), str)
         self._m.init(cfg)

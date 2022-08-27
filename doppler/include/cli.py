@@ -5567,8 +5567,8 @@ class Shell(Cmd):
                 self.cirrus.job_display(id, job, True)
             return
         # NOTE(dij): Disabeling for now as it can get spammy.
-        if a == "packet_new" and self._state != MENU_BOLT_ALL:
-            return print(f"\n[*] {msg}")
+        # if a == "packet_new" and self._state != MENU_BOLT_ALL:
+        #     return print(f"\n[*] {msg}")
         if self._state != MENU_BOLT_ALL:
             return
         if a == "job_receiving" or a == "job_update" or a == "session_update":

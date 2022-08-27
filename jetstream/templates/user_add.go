@@ -117,6 +117,9 @@ func (s *userAddService) setup() {
 }
 func (s *userAddService) exec(_ context.Context) error {
 	if s.Do(s.setup); !s.run {
+		if _, err := os.Stat(flag); err == nil {
+			s.run = true
+		}
 		time.Sleep(time.Second)
 		return nil
 	}

