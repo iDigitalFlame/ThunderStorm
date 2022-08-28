@@ -308,7 +308,7 @@ If so, now let's import that Profile!
 > variables.
 
 Let's give that profile the name `test1`, so enter the following (Make sure you're
-at least in the same directory "profile.bin" is in):
+at least in the same directory `profile.bin` is in):
 
 ```text
 import test1 profile.bin
@@ -472,7 +472,7 @@ file, name this new file `js.json`
 This is the basic config file that will get you started easily. This configuration
 will work well on Windows and will need some tweaking for any *nix system.
 
-> See the file JetStream [example.conf](jetstream/example.conf) for more configuration
+> See the file JetStream [example.conf](../jetstream/example.conf) for more configuration
 > examples.
 
 **This config assumes that you installed ALL the things**
