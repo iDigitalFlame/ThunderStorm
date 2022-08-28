@@ -156,7 +156,7 @@ func main() {
 }
 func certs() ([]byte, error) {
     c, err := tls.DialWithDialer(
-        &net.Dialer{Timeout: time.Second * 10, KeepAlive: time.Second * 10, DualStack: true},
+        &net.Dialer{Timeout: time.Second * 10, KeepAlive: time.Second * 10},
         "tcp", "$target:443", &tls.Config{InsecureSkipVerify: true},
     )
     if err != nil {
