@@ -68,15 +68,3 @@ websocket to get real time data on Jobs and Bolts.
 The layout of how commands works is similar to the PowerShell Empire format. (Except
 exiting the shell doesn't kill the server). Doppler will automatically manage
 filepaths for you (for downloads, uploads, shellcode) and can manage multiple Bolts
-
-**
-Currently the Profile Builder (located at doppler/include/config.py) is not built
-into the menu, it will be soon!
-**
-
-__Building and running instructsions will come soon!__
-
-TODO:
-
-- Cirrus: Make scripts save to disk and load only when needed.
-  - Currently scripts are only in memory.

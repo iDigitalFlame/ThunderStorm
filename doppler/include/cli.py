@@ -116,31 +116,58 @@ bolt <BoltID>
   Bolts simultaneously. Supplying an additional argument to "all" can specify a
   filter match to shrink the target of the "all" command.
 
+  If the BoltID is empty, this will take you to the Bolts menu.
+
 bolts
   Take you to the Bolts menu.
 
-script <Script Name>
+script <script>
   Enters the interactive scripting interface. This can be used to add/edit
   commands and options of the targeted script.
+
+    If the Script name is empty, this will take you to the Scripts menu.
 
 scripts
   Take you to the Scripts menu.
 
-profile <Profile Name>
+profile <profile>
   Take you to the Profile-specific menu, which has all the options of the
   Profiles menu, but is targeted to the specific Profile.
+
+  If the Profile name is empty, this will take you to the Profiles menu.
 
 profiles
   Take you to the Profiles menu.
 
-listener <Listener Name>
+listener <listener>
+  Take you to the Listeners-specific menu, which has all the options of the
+  Listeners menu, but is targeted to the specific Listener.
 
--
+  If the Listener name is empty, this will take you to the Listeners menu.
 
+listeners
+  Take you to the Listeners menu.
 
+jobs
+  List all cached Jobs.
 
+job <BoltID>
+  List all cached Jobs for the specific BoltID
+
+job <BoltID> <JobID>
+  Retrieve the cached Job output from the specified BoltID and JobID combo.
 """
-_HELP_MAIN_LS = """"""
+_HELP_MAIN_LS = """bolt
+bolts
+script
+scripts
+profile
+profiles
+listener
+listeners
+job
+jobs
+"""
 
 HELP_TEXT = [
     _HELP_MAIN,
@@ -804,12 +831,13 @@ _PARSERS = __parsers()
 
 
 class Exp(object):
-    __slots__ = ("ip", "os", "user", "host", "elevated")
+    __slots__ = ("ip", "os", "hw", "user", "host", "elevated")
 
-    def __init__(self, host, ip, os, user, elevated):
+    def __init__(self, host, ip, os, user, elevated, hw):
         self.elevated = elevated
         self.ip = Exp._compile(ip)
         self.os = Exp._compile(os)
+        self.hw = Exp._compile(hw)
         self.user = Exp._compile(user)
         self.host = Exp._compile(host)
 
@@ -820,7 +848,7 @@ class Exp(object):
         s = split(v)
         if len(s) == 0:
             return None
-        h, i, o, u, a = None, None, None, None, None
+        h, i, o, u, a, b = None, None, None, None, None, None
         for e in s:
             if ":" not in e:
                 if not nes(h):
@@ -848,6 +876,11 @@ class Exp(object):
                     o = e[n + 1 :]
                     continue
                 raise ValueError('"os" expression specified multiple times')
+            if x[0] == "d":
+                if not nes(b):
+                    b = e[n + 1 :]
+                    continue
+                raise ValueError('"device" expression specified multiple times')
             if x[0] == "e" or x[0] == "a":
                 if a is None:
                     a = is_true(e[n + 1 :])
@@ -862,8 +895,8 @@ class Exp(object):
                 raise ValueError('"host" expression specified multiple times')
             raise ValueError(f'invalid expression "{e}"')
         del s
-        e = Exp(h, i, o, u, a)
-        del h, i, o, u, a
+        e = Exp(h, i, o, u, a, b)
+        del h, i, o, u, a, b
         return e
 
     def empty(self):
@@ -914,6 +947,7 @@ class Exp(object):
         if (
             self.ip is None
             and self.os is None
+            and self.hw is None
             and self.user is None
             and self.host is None
             and self.elevated is None
@@ -933,6 +967,8 @@ class Exp(object):
             if _ex(self.ip) and not _is_match(self.ip, ip_str(i)):
                 continue
             if _ex(self.os) and not _is_match(self.os, i["device"]["os"]):
+                continue
+            if _ex(self.hw) and not _is_match(self.hw, i["device"]["id"]):
                 continue
             if _ex(self.user) and not _is_match(self.user, i["device"]["user"]):
                 continue

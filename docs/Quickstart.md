@@ -18,14 +18,15 @@ Welcome! Here's some basic steps to bootstrap and get you running ThunderStorm :
 
 # Prerequisites
 
-**First things first**: Make sure you cloned this repository with `--recurse`!
+**First things first**: Make sure you cloned this repository with `--recurse`
+
 You will need the XMT src in order to run some builds and scripts!
 
 ## Installing Dependencies
 
 There is not many dependencies that you'll need unless you are doing any building.
 
-_Most commands will need root._
+_Most install commands will need root!_
 
 ### Client Dependencies
 
@@ -36,15 +37,15 @@ _Most commands will need root._
 
 To install these:
 
-#### ArchLinux (Easiest)
+#### ArchLinux
 
-**Python with Packages (recommended)**
+Python with Packages (recommended)
 
 ```text
 pacman -S python python-websocket-client python-requests
 ```
 
-**Python with PIP and Packages**
+Python with PIP and Packages
 
 ```text
 pacman -S python python-pip
@@ -53,13 +54,13 @@ pip install requests websocket-client
 
 #### Kali (or any distro with "apt")
 
-**Python with Packages (recommended)**
+Python with Packages (recommended)
 
 ```text
 apt install python3 python3-websocket python3-requests
 ```
 
-**Python with PIP and Packages**
+Python with PIP and Packages
 
 ```text
 apt install python3 python3-pip
@@ -72,25 +73,24 @@ Now, if you're building, you will need the above dependencies and the following
 additional ones
 
 - Golang
-- Garble _(Optional, only if using Garble)_
 - GCC
+- Garble _(Optional, only if using Garble)_
 - Openssl _(Optional, only if using the Signer)_
 - Osslsigncode _(Optional, only if using the Signer)_
 - UPX _(Optional, only if using UPX)_
-- MinGW (x64) _(Optional, only if building for Windows x64)_
-- MinGW (x86) _(Optional, only if building for Windows x86)_
+- MinGW (x64/x86) _(Optional, only if building for Windows)_
 
 To install these:
 
-#### ArchLinux (Easiest)
+#### ArchLinux
 
-**Basic (Required)**
+Basic (Required)
 
 ```text
 pacman -S go gcc
 ```
 
-**To use the Signing tool**
+To use the Signing tool
 
 ```text
 pacman -S openssl
@@ -105,19 +105,19 @@ If you have `yay` you can use
 yay -S osslsigncode
 ```
 
-**To use UPX**
+To use UPX
 
 ```text
 pacman -S upx
 ```
 
-**To build for Windows (x86 and x64)**
+To build for Windows (x86 and x64)
 
 ```text
 pacman -S mingw-w64-binutils mingw-w64-crt mingw-w64-gcc mingw-w64-headers mingw-w64-winpthreads
 ```
 
-**If you want it all**
+If you want it all
 
 ```text
 pacman -S go gcc openssl upx mingw-w64-binutils mingw-w64-crt mingw-w64-gcc mingw-w64-headers mingw-w64-winpthreads
@@ -126,31 +126,31 @@ yay -S osslsigncode
 
 #### Kali (or any distro with "apt")
 
-**Basic (Required)**
+Basic (Required)
 
 ```text
 apt install golang gcc
 ```
 
-**To use the Signing tool**
+To use the Signing tool
 
 ```text
 apt install openssl osslsigncode
 ```
 
-**To use UPX**
+To use UPX
 
 ```text
 apt install upx
 ```
 
-**To build for Windows (x86 and x64)**
+To build for Windows (x86 and x64)
 
 ```text
 apt install binutils-mingw-w64 gcc-mingw-w64-x86-64-win32-runtime gcc-mingw-w64 gcc-mingw-w64-base gcc-mingw-w64-i686 mingw-w64 mingw-w64-tools
 ```
 
-**If you want it all**
+If you want it all
 
 ```text
 apt install golang gcc openssl osslsigncode upx binutils-mingw-w64 gcc-mingw-w64-x86-64-win32-runtime gcc-mingw-w64 gcc-mingw-w64-base gcc-mingw-w64-i686 mingw-w64 mingw-w64-tools
@@ -174,16 +174,16 @@ and then run
 bash cirrus/build.sh
 ```
 
-Should take less than a minute and a new file `./bin/cirrus` should be present
-now.
+This should take less than a minute and a new file `./bin/cirrus` should be present
+in the `bin` directory now.
 
 If you have any errors, running the `go mod tidy` command will fix those, then
 just re-run the command above.
 
 ## Loading Profiles
 
-This walkthrough will give you a _very_ basic into Profiles as they are very complex
-utilities that can be used in cool ways.
+This walkthrough will give you a _very_ basic introduction into Profiles as they
+are very complex utilities that can be used in cool ways.
 
 First off, go ahead and issue the command:
 
@@ -191,20 +191,21 @@ First off, go ahead and issue the command:
 python bin/profile
 ```
 
-This will show you just how many options are avaliable to you.
+This will show you just how many options are avaliable to you. _There's a lot!_
 
 ### Creating your first Profile
 
 Let's go ahead an build a simple Profile to bootstrap outselves.
 
-Run the command, replace "<ip:port>" with the ip/hostname of your C2 and port
-you'll be using (in host:port format). For this example we will use TCP.
+Run the following command, replacing "<ip:port>" with the ip/hostname of your C2
+and port you'll be using _(in host:port format)_: (For this example we will using
+TCP)
 
 ```bash
 python bin/profile -o profile.bin --tcp --xor --sleep 10s --jitter 50 --host <ip:port>
 ```
 
-This will create a new file "profile.bin" that specifies a basic Profile that:
+This will create a new file `profile.bin` that specifies a basic Profile which:
 
 - Uses TCP.
 - Wrapped with XOR for encryption.
@@ -252,9 +253,8 @@ Looks good? Let's import that into Cirrus.
 
 ### Importing the Profile into Cirrus
 
-Alright, this is where the fun begins!
-
-Pop open a new shell window and change into the cloned "ThunderStorm" directory again.
+Alright, this is where the fun begins! Pop open a new shell window and change into
+the cloned "ThunderStorm" directory again.
 
 Run the command:
 
@@ -262,19 +262,19 @@ Run the command:
 ./bin/cirrus -b localhost:7777 -p supersecret
 ```
 
-This will launch Cirrus and bind the control address to port tcp/7777 on the local
+This will launch Cirrus and bind the control address to port 7777/tcp on the local
 address. If you would like to change it, it takes the "host:port" format.
 
-The "-p supersecret" argument is specifying the authentication password that Doppler
+The `-p supersecret` argument is specifying the authentication password that Doppler
 clients need to use to connect to Cirrus. We recommend you change this and use a
 better password.
 
-_While not recommended, you can force Cirrus to not need a password, however this_
-_can allow anyone to connect and gives them the ability to control your Bolts and_
-_Listeners!_
+> While not recommended, you can force Cirrus to not need a password, however this
+> can allow anyone to connect and gives them the ability to control your Bolts and
+> Listeners!
 
 Once cirrus is online, run the following command in your previous terminal (the
-one not running Cirrus).
+one not running Cirrus):
 
 _If you changed the Cirrus bind address or password, make sure to change it in_
 _the command below_
@@ -295,7 +295,7 @@ If you get connection or authentication errors, check the command and make sure
 you entered the correct ip/port and password and try again.
 
 Once you're in the Doppler command line, go ahead and issue the `profiles`
-command, you should see the command prefix is now looking like below:
+command and hit enter, you should see the command prefix is now looking like:
 
 ```text
  > Profiles >
@@ -303,11 +303,11 @@ command, you should see the command prefix is now looking like below:
 
 If so, now let's import that Profile!
 
-Doppler will _always_ attempt to understand the command line arguments as if you
-were running under an actual shell. This includes using "~/" or even environment
-variables.
+> Doppler will always attempt to understand the command line arguments as if you
+> were running under an actual shell. This includes using "~/" or even environment
+> variables.
 
-Let's give that profile the name "test1", so enter the following (Make sure you're
+Let's give that profile the name `test1`, so enter the following (Make sure you're
 at least in the same directory "profile.bin" is in):
 
 ```text
@@ -321,7 +321,7 @@ You should see the following:
  > Profiles >
 ```
 
-And you can enter `ls` to confirm it:
+And you can enter `ls` _(and hit enter)_ to confirm it:
 
 ```text
  > Profiles > ls
@@ -337,11 +337,11 @@ Now you have a Profile ready to be used!
 
 Now you have a Profile all ready to go, let's add a Listener with it.
 
-From where you are in Doppler, type in `main` to take you back to the main menu.
-Then type `listeners` and hit enter.
+From where you are in Doppler, type in `main` and hit enter to take you back to
+the main menu. Then type `listeners` and hit enter.
 
-_Protip: you can always hit CTRL+C to cancel a command or go back one level_
-_while CTRL_D will exit the shell._
+> PROTIP: You can always hit CTRL+C to cancel a command or go back one level
+> while CTRL+D will exit the shell.
 
 Now you should see the following prompt:
 
@@ -349,10 +349,10 @@ Now you should see the following prompt:
  > Listeners >
 ```
 
-In here we can now add Listeners, we're going to add a Listener called "test" with
-our Profile "test1".
+In this menu we can add Listeners, so we're going to add a Listener called `test`
+with our Profile `test1`.
 
-Type in the following command (Replace "<ip:port>" with the ip/hostname of your
+Type in the following command (Replacing "<ip:port>" with the ip/hostname of your
 C2 and port you'll be using, in host:port format. Similar to when you created the
 Profile):
 
@@ -360,7 +360,7 @@ Profile):
 new test <ip:port> test1
 ```
 
-_For the Profile name, you can use tab auto-completion if you desire!_
+_For the Profile name, you can use tab auto-completion to make typing quicker!_
 
 Now you should something similar to the following:
 
@@ -375,19 +375,20 @@ You can check it with the following command (in the same Doppler terminal);
 !netstat -pant|grep cirrus
 ```
 
-_Yup that's right! You can enter local commands on the host as long as they are_
-_prefixed with "!". For security reasons, history entries and oneliners cannot_
-_run commands._
+> Yup that's right! You can enter local commands on the host as long as they are
+> prefixed with `!`. For security reasons, history entries and oneliners cannot
+> run commands.
 
 You should see something similar to:
 
 ```text
 tcp        0      0 192.168.1.20:443        0.0.0.0:*               LISTEN      3626496/./cirrus
-tcp        0      0 127.0.0.1:7777          0.0.0.0:*               LISTEN      3626496/./cirrus1
+tcp        0      0 127.0.0.1:7777          0.0.0.0:*               LISTEN      3626496/./cirrus
 ```
 
-Once you see this, type `bolts` to go to the Bolts menu, which is where we can
-wait to see any new connections!
+Once you see this, type `bolts` and hit enter to go to the Bolts menu, which is
+where we can wait to see any new connections! _(You'll get a new notification_
+_once a connection is made)_
 
 Now you're ready to connect some Bolts!
 
@@ -398,8 +399,8 @@ a simple command will make it all work.
 
 ## Initial Configuration
 
-Copy this example config and place it in the same directory as the "profile.bin"
-file, name it `js.json`.
+Copy this example config and place it in the same directory as the `profile.bin`
+file, name this new file `js.json`
 
 ```json
 {
@@ -471,6 +472,9 @@ file, name it `js.json`.
 This is the basic config file that will get you started easily. This configuration
 will work well on Windows and will need some tweaking for any *nix system.
 
+> See the file JetStream [example.conf](jetstream/example.conf) for more configuration
+> examples.
+
 **This config assumes that you installed ALL the things**
 
 ### Linux/BSD/OSX Support
@@ -478,13 +482,13 @@ will work well on Windows and will need some tweaking for any *nix system.
 If you would like to run a non-Windows build, the only things you would have to
 change are:
 
-- "build.generators.bolt.linker" to "pipe"
-  - This is the only supported non-Windows event type
-  - I would also change the name of "build.generators.bolt.guardian" and "build.generators.bolt.pipe"
-    to fit the OS theme you're going for.
-- "build.options.cgo" to false
-- "build.support.rc.enabled" to false
-- "build.support.sign.enabled" to false
+- `build.generators.bolt.linker` to `pipe` or `tcp`
+  - This is the one of the supported non-Windows event types
+  - It is recommended to also change the name of `build.generators.bolt.guardian`
+    and `build.generators.bolt.pipe` to fit the OS theme you're going for.
+- `build.options.cgo` to `false`
+- `build.support.rc.enabled` to `false`
+- `build.support.sign.enabled` to `false`
 
 The reason you need to change these (besides the linker type) is that JetStream
 will still RC and sign non-Windows binaries, which might seem weird for a "Microsoft"
@@ -494,19 +498,25 @@ signed binary running as "httpd" or "apache2" lol.
 
 Showtime! Let's get to building.
 
-To build with JetStream, there is three **super** (technically four) important
-things to remember:
+To build with JetStream, there are four **super** (technically five) important
+things to remember before building:
 
-- Configuration file "-c"
-  - Make sure it's correct!
-- Output and Output Type "-o"
-  - If you would like a DLL file, don't forget to add a "-D", so "-o" becomes "-Do"
+- Configuration file `-c`
+  - Make sure it's correct! _(You'll get errors if it isn't)_
+  - The `-rc` we are using **prevents** JetStream from linting it, just in case
+    we need to fix it for now.
+- Output and output type `-o`
+  - If you would like a DLL file, don't forget to add a `-D`, so `-o` becomes `-Do`
 - OS/Arch
   - JetStream needs the OS/Arch (in a Go format) to build what you want.
+- Generator type
+  - By default, JetStream will use the `bolt` generator _(which builds a Bolt)_
+    but there are more generators that can be used!
+  - This can be changed with the `-g` argument.
 - _Overrides can be specified to change the config values for each build if you desire._
-  - These are additional command line arguments.
+  - _These are additional command line arguments._
 
-With that in mind, lets pick a build type. Heres some common ones:
+With that in mind, lets pick a build type. Here are some common ones:
 
 - windows/amd64
 - linux/amd64
@@ -514,7 +524,7 @@ With that in mind, lets pick a build type. Heres some common ones:
 
 There are more avaliable, consult `go tool dist list` for all of them.
 
-_NOTE: JetStream might not be able to build new types as soon as they come out._
+> While JetStream has support for all this types, sometimes your milage may vary.
 
 Once you made your pick, let's fire up JetStream by running (Omit the ".exe" if
 your're not building for Windows and replace "<os/arch>" with your chosen target):
@@ -555,6 +565,8 @@ interactive shell like so:
  > Bolts > ABCDEEF0 >
 ```
 
-Now you're ready to Hack the Planet!
+Now you're ready to Hack the Planet! This shell will take commands just as if you
+had direct shell access to the device. Additional functions may be discovered by
+using the shell tab completion function and the `help` command.
 
 _More in-depth guides comming soon..._

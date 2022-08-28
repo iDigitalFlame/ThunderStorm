@@ -20,10 +20,11 @@ from json import loads
 from requests import post
 from base64 import b64decode
 from include.util import nes
+from sys import stderr, exit
 from include.cirrus import Api
 from traceback import format_exc
-from sys import stderr, exit, argv
 from include.sentinel import Reader
+from argparse import ArgumentParser
 from os.path import expanduser, expandvars, exists
 
 IGNORE_USER = ""
@@ -128,20 +129,32 @@ class Proxy(Api):
 
 
 if __name__ == "__main__":
-
+    a = ArgumentParser(prog="Password Proxy", description="Cirrus Passwords Proxy")
+    a.add_argument(
+        "-a", "--api", dest="api", type=str, required=True, help="Cirrus API Target"
+    )
+    a.add_argument(
+        "-p", "--password", dest="pass", type=str, help="Cirrus API Password"
+    )
+    a.add_argument(
+        "-i", "--id", dest="id", type=int, default=77, help="Password Packet ID"
+    )
+    a.add_argument("-f", "--file", dest="file", type=str, help="Passwords CSV Output")
+    a.add_argument(
+        "-t", "--target", dest="target", type=str, help="Password Proxy API Target"
+    )
+    r = a.parse_args()
+    del a
     try:
-        a = Proxy(
-            "http://localhost:8081",
-            77,
-            "http://127.0.0.1:7777",
-            "",
-            "",
-        )
+        s = Proxy(r.api, r.id, r.target, r.password, r.file)
     except Exception as err:
         print(f"Error: {err}\n{format_exc(limit=5)}", file=stderr)
         exit(1)
     try:
-        a.start()
+        s.start()
     except KeyboardInterrupt:
-        a.close()
-    del a
+        s.close()
+    except Exception as err:
+        print(f"Error: {err}\n{format_exc(limit=5)}", file=stderr)
+        exit(1)
+    del s, r
