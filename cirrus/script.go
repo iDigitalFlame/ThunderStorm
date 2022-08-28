@@ -250,7 +250,7 @@ func (s *scriptManager) httpScriptGet(_ context.Context, w http.ResponseWriter, 
 	}
 	writeScript(http.StatusOK, w, q)
 }
-func (s *scriptManager) httpScriptsGet(_ context.Context, w http.ResponseWriter, r *routex.Request) {
+func (s *scriptManager) httpScriptsGet(_ context.Context, w http.ResponseWriter, _ *routex.Request) {
 	w.Write([]byte{'{'})
 	if s.RLock(); len(s.e) > 0 {
 		var n int

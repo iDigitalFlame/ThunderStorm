@@ -67,7 +67,7 @@ type Cirrus struct {
 	Timeout time.Duration
 }
 
-// Close stoppes all Cirrus instances and listening endpoints.
+// Close stops all Cirrus instances and listening endpoints.
 //
 // This will NOT close any Sessions or Listeners created.
 func (c *Cirrus) Close() error {
@@ -326,8 +326,7 @@ func (c *Cirrus) ListenTLS(addr, cert, key string) error {
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 		},
-		CurvePreferences:         []tls.CurveID{tls.CurveP256, tls.X25519},
-		PreferServerCipherSuites: true,
+		CurvePreferences: []tls.CurveID{tls.CurveP256, tls.X25519},
 	}
 	if err := c.srv.ListenAndServeTLS(cert, key); err != http.ErrServerClosed {
 		c.Close()
@@ -339,7 +338,7 @@ func (c *Cirrus) ListenTLS(addr, cert, key string) error {
 // NewContext creates a new Cirrus REST server instance using the supplied C2
 // Server instance.
 //
-// This function allows specifying a Context to aid in cancelation.
+// This function allows specifying a Context to aid in cancellation.
 func NewContext(x context.Context, s *c2.Server, key string) *Cirrus {
 	c := &Cirrus{s: s, Auth: key, Timeout: timeout, ch: make(chan struct{})}
 	c.jobs = &jobManager{Cirrus: c, e: make(map[uint64]*c2.Job)}
@@ -398,7 +397,7 @@ func NewContext(x context.Context, s *c2.Server, key string) *Cirrus {
 //
 // Quick version of "NewContext(x, s, l, key).Listen(addr)".
 //
-// This function allows specifying a Context to aid in cancelation.
+// This function allows specifying a Context to aid in cancellation.
 func ListenContext(x context.Context, s *c2.Server, key, addr string) error {
 	return NewContext(x, s, key).Listen(addr)
 }

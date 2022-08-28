@@ -91,21 +91,21 @@ _HELP_TEXT = """ Generates a Flurry build based on the supplied profile and b
                                         using rundll32, using "rundll32 <dll>,<func>".
 
  Linker Types
-  The following Linker or event types are avaliable to be used for the "-E' or
+  The following Linker or event types are available to be used for the "-E' or
   "--linker" arguments.
 
    tcp          Use a TCP port for Linker event communication. This type is
-                  avaliable on any device and OS.
+                  available on any device and OS.
    pipe         Use Windows named pipes or pipe files in *nix for Linker event
-                  communication. This type is avaliable on any device and OS.
+                  communication. This type is available on any device and OS.
    event        Use Windows Events for Linker event communication. This type is
-                  only avaliable on Windows devices.
+                  only available on Windows devices.
    mutex        Use Windows Mutexes for Linker event communication. This type is
-                  only avaliable on Windows devices.
+                  only available on Windows devices.
    mailslot     Use Windows Mailslots for Linker event communication. This type
-                  is only avaliable on Windows devices.
+                  is only available on Windows devices.
    semaphore    Use Windows Semaphores for Linker event communication. This type
-                  is only avaliable on Windows devices.
+                  is only available on Windows devices.
 """
 
 

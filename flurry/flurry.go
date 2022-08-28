@@ -65,7 +65,7 @@ func Start(critical bool, l man.Linker, guard string, key []byte, files []string
 
 // Loop attempts to create a Flurry instance with the supplied arguments. This
 // function will run 'Start' every 'wait' duration and will run until it receives
-// a SIGINT or SIGTERM to shutdown safely.
+// a SIGINT or SIGTERM to shut down safely.
 //
 // This function will block and will NOT return (it calls 'device.GoExit').
 //
@@ -137,7 +137,7 @@ loop:
 
 // Daemon will start the process of locating and triggering a Guardian as a *nix
 // daemon or a Windows service. This function will run 'Start' every 'wait'
-// duration and will run until it receives a SIGINT or SIGTERM to shutdown safely.
+// duration and will run until it receives a SIGINT or SIGTERM to shut down safely.
 // (or a ServiceStop message in the case of Windows)
 //
 // Arguments:

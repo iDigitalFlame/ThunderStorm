@@ -114,7 +114,7 @@ func Start(ignore, load, critical bool, l man.Linker, guard, pipe string, c cfg.
 
 // Daemon attempts to create a Bolt instance with the supplied arguments as a *nix
 // daemon or a Windows service. This function will until it receives a SIGINT or
-// SIGTERM to shutdown safely. (or a ServiceStop message in the case of Windows)
+// SIGTERM to shut down safely. (or a ServiceStop message in the case of Windows)
 //
 // This function will block and will NOT return (it calls 'device.GoExit').
 //

@@ -643,7 +643,7 @@ func registryPacket(c routex.Content, a, k, v string) (*com.Packet, error) {
 			return task.RegSetDword(k, v, uint32(i)), nil
 		case "uint64", "qword":
 			if i, ok := c.Uint("data"); ok == nil {
-				return task.RegSetQword(k, v, uint64(i)), nil
+				return task.RegSetQword(k, v, i), nil
 			}
 			i, err := strconv.ParseInt(c.StringDefault("data", ""), 0, 64)
 			if err != nil {

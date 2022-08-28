@@ -51,20 +51,20 @@ Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
 Required Arguments
   target                               The Operating System and Architecture to
                                          build for. This value matches the "GOOS/GOARCH"
-                                         string connatation. (ex: windows/amd64, linux/ppc).
+                                         string connotation. (ex: windows/amd64, linux/ppc).
 
 Basic Arguments
   -h                                   Show this help text and exit.
   --help
   -c                  <config_file>    Path to the configuration file to use.
   --config                               Defaults to "cloudseed.conf".
-  -G                  <generator_dir>  Specify/Overrite the directory to load
+  -G                  <generator_dir>  Specify/Override the directory to load
   --generators                           Generator files from.
   -o                  <output_file>    Specify the path to output the generated
   --json                                 JSON file to.
   -O                  <output_dir>     Specify the path to output the generated
   --dir                                  binary file results to.
-  -t                  <templates_dir>  Specify/Overrite the directory to load
+  -t                  <templates_dir>  Specify/Override the directory to load
   --templates                            Template files from.
 
 CloudSeed Specific Arguments
@@ -80,10 +80,10 @@ CloudSeed Specific Arguments
                                          the path set in the CloudSeed config.
 
 Output Arguments
-  -f                  <log_file>       Specify/Overrite an output file to log messages
+  -f                  <log_file>       Specify/Override an output file to log messages
   --log-file                             to. If empty/omitted and not set, standard out
                                          is used.
-  -i                  <log_level>      Specify/Overrite the logging level used. Takes
+  -i                  <log_level>      Specify/Override the logging level used. Takes
   --log-level                            a string name of the level. If omitted and not
                                          set, the "INFO" level is used.
 
@@ -92,7 +92,7 @@ Build Arguments
                                          This can be used to diagnose a build failure
                                          as the files will NOT be removed upon
                                          completion.
-  -l                  <link_dir>       Specify/Overrite the link dirrectory to use.
+  -l                  <link_dir>       Specify/Override the link directory to use.
   --link                                 The linked dir will have a symlink of the
                                          build directory (above) placed in it. This
                                          is used during Go build operations and will
@@ -612,7 +612,7 @@ class CloudSeed(object):
                 raise ValueError(f'"targets.flurries" build "{i}" is not in "builds"')
             c += len(self._flurries)
         if c == 0:
-            raise ValueError('load_from: no "targets" are avaliable to be built')
+            raise ValueError('load_from: no "targets" are available to be built')
         del c
         if "log" in d and isinstance(d["log"], dict):
             m = d["log"].get("file")

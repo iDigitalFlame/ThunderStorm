@@ -182,7 +182,7 @@ just re-run the command above.
 
 ## Loading Profiles
 
-This walkthrough will give you a _very_ basic introduction into Profiles as they
+This walk through will give you a _very_ basic introduction into Profiles as they
 are very complex utilities that can be used in cool ways.
 
 First off, go ahead and issue the command:
@@ -191,14 +191,14 @@ First off, go ahead and issue the command:
 python bin/profile
 ```
 
-This will show you just how many options are avaliable to you. _There's a lot!_
+This will show you just how many options are available to you. _There's a lot!_
 
 ### Creating your first Profile
 
-Let's go ahead an build a simple Profile to bootstrap outselves.
+Let's go ahead and build a simple Profile to bootstrap ourselves.
 
 Run the following command, replacing "<ip:port>" with the ip/hostname of your C2
-and port you'll be using _(in host:port format)_: (For this example we will using
+and port you'll be using _(in host:port format)_: (For this example we will be using
 TCP)
 
 ```bash
@@ -248,7 +248,7 @@ similar to this below:
 ]
 ```
 
-The value for the "xor" section should be different, as it's randomally generated.
+The value for the "xor" section should be different, as it's randomly generated.
 Looks good? Let's import that into Cirrus.
 
 ### Importing the Profile into Cirrus
@@ -362,7 +362,7 @@ new test <ip:port> test1
 
 _For the Profile name, you can use tab auto-completion to make typing quicker!_
 
-Now you should something similar to the following:
+Now you should see something similar to the following:
 
 ```text
 [+] Listener "test" @ 192.168.1.20:443 (host,sleep,jitter,tcp,xor) created!
@@ -522,12 +522,12 @@ With that in mind, lets pick a build type. Here are some common ones:
 - linux/amd64
 - darwin/amd64
 
-There are more avaliable, consult `go tool dist list` for all of them.
+There are more available, consult `go tool dist list` for all of them.
 
-> While JetStream has support for all this types, sometimes your milage may vary.
+> While JetStream has support for all this types, sometimes your mileage may vary.
 
 Once you made your pick, let's fire up JetStream by running (Omit the ".exe" if
-your're not building for Windows and replace "<os/arch>" with your chosen target):
+you're not building for Windows and replace "<os/arch>" with your chosen target):
 
 ```bash
 python bin/jetstream -rc js.json -o bolt.exe <os/arch>
@@ -569,4 +569,4 @@ Now you're ready to Hack the Planet! This shell will take commands just as if yo
 had direct shell access to the device. Additional functions may be discovered by
 using the shell tab completion function and the `help` command.
 
-_More in-depth guides comming soon..._
+_More in-depth guides coming soon..._

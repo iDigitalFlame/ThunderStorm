@@ -56,7 +56,7 @@ func (p *profileManager) UnmarshalJSON(b []byte) error {
 	}
 	p.Lock()
 	for k, v := range m {
-		p.e[k] = cfg.Config(v)
+		p.e[k] = v
 	}
 	p.Unlock()
 	return nil

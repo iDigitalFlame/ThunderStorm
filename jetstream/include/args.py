@@ -31,7 +31,7 @@ Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
 Required Arguments
   target                               The Operating System and Architecture to
                                          build for. This value matches the "GOOS/GOARCH"
-                                         string connatation. (ex: windows/amd64, linux/ppc).
+                                         string connotation. (ex: windows/amd64, linux/ppc).
 
 Basic Arguments
   -h                                   Show this help text and exit.
@@ -52,7 +52,7 @@ Basic Arguments
   -g                  <generator_name> Specify the Generator to load and use. This
   --generator                            defaults to "bolt" (The Bolt Generator)
                                          if omitted.
-  -G                  <generator_dir>  Specify/Overrite the directory to load
+  -G                  <generator_dir>  Specify/Override the directory to load
   --generators                           Generator files from.
   -o                  <output_file>    Specify the path to output the built binary
   --output                               to. This will default to "result.<ext>"
@@ -60,25 +60,25 @@ Basic Arguments
                                          the target type).
   -k                                   Do not run and only check/print the configuration
   --check                                then exit.
-  -t                  <templates_dir>  Specify/Overrite the directory to load
+  -t                  <templates_dir>  Specify/Override the directory to load
   --templates                            Template files from.
 
 Output Arguments
   -q                                   Do not print out the configuration. Can be
   --quiet                                used with '-k' to do a silent check based
                                          on the exit code.
-  -f                  <log_file>       Specify/Overrite an output file to log messages
+  -f                  <log_file>       Specify/Override an output file to log messages
   --log-file                             to. If empty/omitted and not set, standard out
                                          is used.
-  -i                  <log_level>      Specify/Overrite the logging level used. Takes
+  -i                  <log_level>      Specify/Override the logging level used. Takes
   --log-level                            a string name of the level. If omitted and not
                                          set, the "INFO" level is used.
 
 Build Arguments
-  -d                  <work_dir>       Specify/Overrite the build directory to use.
+  -d                  <work_dir>       Specify/Override the build directory to use.
   --dir                                  If empty/omitted and not set, a temporary
                                          directory is used.
-  -l                  <link_dir>       Specify/Overrite the link dirrectory to use.
+  -l                  <link_dir>       Specify/Override the link directory to use.
   --link                                 The linked dir will have a symlink of the
                                          build directory (above) placed in it. This
                                          is used during Go build operations and will

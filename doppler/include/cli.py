@@ -108,7 +108,7 @@ Doppler.
 Most Doppler commands can be used with tab-based autocomplete can will automatically
 fetch any relevant results from Cirrus.
 
-From this menu, the following options are avaliable:
+From this menu, the following options are available:
 
 bolt <BoltID>
   This command will put you in direct control of the Bolt with the matching ID
@@ -1201,7 +1201,7 @@ class _MenuBolt(object):
         "_user",
         "filter",
         "_domain",
-        "__dict__",  # Added as we dynamically overrite functions for Script
+        "__dict__",  # Added as we dynamically override functions for Script
         "_password",
     )
 
@@ -1340,7 +1340,7 @@ class _MenuBolt(object):
         OPsec: Safe
         Admin: No
 
-        Retrives a list of running processes on the client device.
+        Retrieves a list of running processes on the client device.
         """
         self._system("ps")
 
@@ -1432,7 +1432,7 @@ class _MenuBolt(object):
         Admin: Maybe (depends on command)
 
         Executes a command on the client but detaches immediately and returns
-        without retriving the exit code or stdout/stderr.
+        without retrieving the exit code or stdout/stderr.
 
         The parent of this command can be controlled by the parent filter, which
         can be updated with the filter commands. By default the parent will be
@@ -2721,7 +2721,7 @@ class _MenuBolt(object):
 
         Retrieve, delete or modify data on the client system's registry.
 
-        The action argument specifies what to do and how many paramaters are
+        The action argument specifies what to do and how many parameters are
         required
 
         Actions:
@@ -2730,7 +2730,7 @@ class _MenuBolt(object):
         |  option is required, use an empty string to specify the "(Default)" value.
 
         ls|dir
-        |  Retreive a listing of the keys and values for the supplied key path.
+        |  Retrieve a listing of the keys and values for the supplied key path.
         |  If "value" is specified, this will behave like a "get" action.
 
         set|edit|update
@@ -3710,7 +3710,7 @@ class _MenuBolt(object):
         The following are valid actions:
 
         ls, get
-        |  Retrieves the list of windows to choose from. This command also retrives
+        |  Retrieves the list of windows to choose from. This command also retrieves
         |  the window position, title and size.
 
         cl, close
@@ -4348,7 +4348,7 @@ class _MenuProfiles(object):
         # if len(n) == 0:
         #    return print("new <name>")
         # TODO(dij): Work on
-        #            Could probally pipe the args into this from cfg-builder?
+        #            Could probably pipe the args into this from cfg-builder?
         print("Come back later...")
         # self.shell.cache._profiles = None
 
@@ -4832,7 +4832,7 @@ These will only be executed ONCE the script is ran on a target (as a connection
 script or using the "script" command).
 
 Some operations are not available in scripts and any "output" or "destination"
-arguments will be omitted and instead randomally generated.
+arguments will be omitted and instead randomly generated.
 
 The "undo", "rollback" and "history" commands can be used to view command history
 or undo any entries."""
@@ -5602,7 +5602,7 @@ class Shell(Cmd):
             if a == "job_complete":
                 self.cirrus.job_display(id, job, True)
             return
-        # NOTE(dij): Disabeling for now as it can get spammy.
+        # NOTE(dij): Disabling for now as it can get spammy.
         # if a == "packet_new" and self._state != MENU_BOLT_ALL:
         #     return print(f"\n[*] {msg}")
         if self._state != MENU_BOLT_ALL:
@@ -5663,7 +5663,7 @@ class Shell(Cmd):
                 try:
                     x = get_history_item(v)
                 except IndexError:
-                    return print("[!] Non-existant history index!")
+                    return print("[!] Non-existent history index!")
                 if not nes(x):
                     return print("[!] Invalid history index!")
                 if x[0] == "@" or x[0] == "!":

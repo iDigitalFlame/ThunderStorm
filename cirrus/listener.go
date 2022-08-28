@@ -83,7 +83,7 @@ func (l *listener) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(t, &k); err != nil {
 		return err
 	}
-	l.p, k = cfg.Config(k), nil
+	l.p, k = k, nil
 	if t, ok = m["script"]; ok {
 		if err := json.Unmarshal(t, &l.s); err != nil {
 			return err

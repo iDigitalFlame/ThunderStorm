@@ -49,7 +49,7 @@ class Proxy(Api):
         try:
             p = self.packet(n)
         except ValueError as err:
-            return print(f'Unable to retrive Packet "{n}": {err}!', file=stderr)
+            return print(f'Unable to retrieve Packet "{n}": {err}!', file=stderr)
         try:
             d = b64decode(p["data"])
         except Exception as err:
