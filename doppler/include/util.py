@@ -266,7 +266,7 @@ def bytes_from_src(
         if v[1] == '"':
             k -= 1
         if path and v[0] == "p":
-            p = expandvars(expanduser(v[2:]))
+            p = expandvars(expanduser(v[2:k]))
             if not isfile(p):
                 raise ValueError(f'file "{p}" does not exist')
             with open(p, "rb") as f:
