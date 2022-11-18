@@ -14,6 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+// Package cirrus is the primary package container for the Cirrus ReST service.
 package cirrus
 
 import (
@@ -25,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/PurpleSec/logx"
 	"github.com/PurpleSec/routex"
 	"github.com/gorilla/websocket"
 	"github.com/iDigitalFlame/xmt/c2"
@@ -53,6 +55,7 @@ type Cirrus struct {
 	st     *stats
 	ch     chan struct{}
 	mux    *routex.Mux
+	log    logx.Log
 	cancel context.CancelFunc
 
 	jobs      *jobManager
@@ -106,7 +109,7 @@ func (c *Cirrus) Save(s string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(device.Expand(s), b, 0o644)
+	return os.WriteFile(device.Expand(s), b, 0o640)
 }
 
 // Load will attempt to load in a previously saved Cirrus state from the provided
@@ -158,16 +161,6 @@ func (c *Cirrus) Load(s string) error {
 	return nil
 }
 
-// New creates a new Cirrus REST server instance using the supplied C2 Server.
-//
-// The provided key can be used to authenticate to the Rest service with the
-// 'X-CirrusAuth' HTTP header containing the supplied key.
-//
-// If empty, authentication is disabled.
-func New(s *c2.Server, key string) *Cirrus {
-	return NewContext(context.Background(), s, key)
-}
-
 // Listen will bind to the specified address and begin serving requests.
 // This function will return when the server is closed.
 func (c *Cirrus) Listen(addr string) error {
@@ -192,13 +185,21 @@ func configureRoutes(c *Cirrus, m *routex.Mux) {
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/regedit$`, routex.Wrap(ws(valTaskRegistry), routex.WrapFunc(c.scripts.httpScriptRegistry)), http.MethodPut)
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/download$`, routex.Wrap(ws(valTaskDownload), routex.WrapFunc(c.scripts.httpScriptDownload)), http.MethodPut)
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/dll$`, routex.Marshal[taskDLL](ws(valTaskDLL), routex.MarshalFunc[taskDLL](c.scripts.httpScriptDLL)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/dll/check$`, routex.Marshal[taskCheck](ws(valTaskPatchCheck), routex.MarshalFunc[taskCheck](c.scripts.httpScriptCheck)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/dll/patch$`, routex.Marshal[taskPatch](ws(valTaskPatchCheck), routex.MarshalFunc[taskPatch](c.scripts.httpScriptPatch)), http.MethodPut)
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/pexec$`, routex.Marshal[taskPull](ws(valPullEx), routex.MarshalFunc[taskPull](c.scripts.httpScriptPexec)), http.MethodPut)
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/spawn$`, routex.Marshal[taskSpawn](ws(valTaskSpawn), routex.MarshalFunc[taskSpawn](c.scripts.httpScriptSpawn)), http.MethodPut)
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/sys$`, routex.Marshal[taskSystem](ws(valTaskSystem), routex.MarshalFunc[taskSystem](c.scripts.httpScriptSystem)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/sys/workhours$`, routex.Marshal[taskWorkHours](ws(valTaskWorkHours), routex.MarshalFunc[taskWorkHours](c.scripts.httpScriptWorkHours)), http.MethodPut)
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/zombie$`, routex.Marshal[taskZombie](ws(valTaskZombie), routex.MarshalFunc[taskZombie](c.scripts.httpScriptZombie)), http.MethodPut)
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/exec$`, routex.Marshal[taskCommand](ws(valTaskSimple), routex.MarshalFunc[taskCommand](c.scripts.httpScriptCommand)), http.MethodPut)
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/migrate$`, routex.Marshal[taskMigrate](ws(valTaskMigrate), routex.MarshalFunc[taskMigrate](c.scripts.httpScriptMigrate)), http.MethodPut)
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/asm$`, routex.Marshal[taskAssembly](ws(valTaskAssembly), routex.MarshalFunc[taskAssembly](c.scripts.httpScriptAssembly)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/wts$`, routex.Wrap(ws(valTaskWTS), routex.WrapFunc(c.scripts.httpScriptWTS)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/evade$`, routex.Wrap(ws(valTaskEvade), routex.WrapFunc(c.scripts.httpScriptEvade)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/power$`, routex.Marshal[taskPower](ws(valTaskPower), routex.MarshalFunc[taskPower](c.scripts.httpScriptPower)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/net$`, routex.Marshal[taskNetcat](ws(valTaskNetcat), routex.MarshalFunc[taskNetcat](c.scripts.httpScriptNetcat)), http.MethodPut)
+	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)/funcmap$`, routex.Marshal[taskFuncmap](ws(valTaskFuncmap), routex.MarshalFunc[taskFuncmap](c.scripts.httpScriptFuncmap)), http.MethodPut)
 	m.Must(prefix+`/events$`, routex.Func(c.websocket), http.MethodGet)
 	m.Must(prefix+`/packet$`, routex.Func(c.packets.httpPacketsGet), http.MethodGet)
 	m.Must(prefix+`/packet/(?P<name>[a-z]+)$`, routex.Func(c.packets.httpPacketGetDelete), http.MethodGet, http.MethodDelete)
@@ -231,23 +232,21 @@ func configureRoutes(c *Cirrus, m *routex.Mux) {
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/regedit$`, routex.Wrap(valTaskRegistry, routex.WrapFunc(c.sessions.httpTaskRegistry)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/download$`, routex.Wrap(valTaskDownload, routex.WrapFunc(c.sessions.httpTaskDownload)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/dll$`, routex.Marshal[taskDLL](valTaskDLL, routex.MarshalFunc[taskDLL](c.sessions.httpTaskDLL)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/dll/check$`, routex.Marshal[taskCheck](valTaskPatchCheck, routex.MarshalFunc[taskCheck](c.sessions.httpTaskCheck)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/dll/patch$`, routex.Marshal[taskPatch](valTaskPatchCheck, routex.MarshalFunc[taskPatch](c.sessions.httpTaskPatch)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/pexec$`, routex.Marshal[taskPull](valPullEx, routex.MarshalFunc[taskPull](c.sessions.httpTaskPexec)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/spawn$`, routex.Marshal[taskSpawn](valTaskSpawn, routex.MarshalFunc[taskSpawn](c.sessions.httpTaskSpawn)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/sys$`, routex.Marshal[taskSystem](valTaskSystem, routex.MarshalFunc[taskSystem](c.sessions.httpTaskSystem)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/sys/workhours$`, routex.Marshal[taskWorkHours](valTaskWorkHours, routex.MarshalFunc[taskWorkHours](c.sessions.httpTaskWorkHours)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/zombie$`, routex.Marshal[taskZombie](valTaskZombie, routex.MarshalFunc[taskZombie](c.sessions.httpTaskZombie)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/exec$`, routex.Marshal[taskCommand](valTaskSimple, routex.MarshalFunc[taskCommand](c.sessions.httpTaskCommand)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/migrate$`, routex.Marshal[taskMigrate](valTaskMigrate, routex.MarshalFunc[taskMigrate](c.sessions.httpTaskMigrate)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/asm$`, routex.Marshal[taskAssembly](valTaskAssembly, routex.MarshalFunc[taskAssembly](c.sessions.httpTaskAssembly)), http.MethodPut)
-}
-
-// Listen is a quick utility function that allows for creation of a new
-// Cirrus REST service and will start it immediately.
-//
-// This function will block until the server is closed.
-//
-// Quick version of "NewContext(context.Background(), s, key).Listen(addr)".
-func Listen(s *c2.Server, key, addr string) error {
-	return NewContext(context.Background(), s, key).Listen(addr)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/wts$`, routex.Wrap(valTaskWTS, routex.WrapFunc(c.sessions.httpTaskWTS)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/evade$`, routex.Wrap(valTaskEvade, routex.WrapFunc(c.sessions.httpTaskEvade)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/power$`, routex.Marshal[taskPower](valTaskPower, routex.MarshalFunc[taskPower](c.sessions.httpTaskPower)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/net$`, routex.Marshal[taskNetcat](valTaskNetcat, routex.MarshalFunc[taskNetcat](c.sessions.httpTaskNetcat)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/funcmap$`, routex.Marshal[taskFuncmap](valTaskFuncmap, routex.MarshalFunc[taskFuncmap](c.sessions.httpTaskFuncmap)), http.MethodPut)
 }
 
 // TrackStats will enable the CSV and Tracker files. This function can enable
@@ -273,7 +272,7 @@ func (c *Cirrus) TrackStats(csv, tracker string) error {
 			h      = err != nil || v.Size() == 0
 		)
 		// 0x1441 - os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_SYNC
-		if c.st.f, err = os.OpenFile(csv, 0x1441, 0o644); err != nil {
+		if c.st.f, err = os.OpenFile(csv, 0x1441, 0o640); err != nil {
 			return err
 		}
 		if h {
@@ -287,7 +286,7 @@ func (c *Cirrus) TrackStats(csv, tracker string) error {
 	}
 	var err error
 	// 0x1441 - os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_SYNC
-	if c.st.t, err = os.OpenFile(tracker, 0x1441, 0o644); err != nil {
+	if c.st.t, err = os.OpenFile(tracker, 0x1441, 0o640); err != nil {
 		return err
 	}
 	return nil
@@ -306,6 +305,7 @@ func (c *Cirrus) ListenTLS(addr, cert, key string) error {
 	go c.jobs.prune(c.ctx)
 	go c.events.run(c.ctx)
 	if c.st != nil {
+		c.log.Info("[cirrus] Starting Tracking thread!")
 		go c.st.track(c.ctx)
 	}
 	if len(cert) == 0 || len(key) == 0 {
@@ -335,12 +335,32 @@ func (c *Cirrus) ListenTLS(addr, cert, key string) error {
 	return nil
 }
 
+// New creates a new Cirrus REST server instance using the supplied C2 Server.
+//
+// The provided key can be used to authenticate to the Rest service with the
+// 'X-CirrusAuth' HTTP header containing the supplied key.
+//
+// If empty, authentication is disabled.
+func New(s *c2.Server, log logx.Log, key string) *Cirrus {
+	return NewContext(context.Background(), s, log, key)
+}
+
+// Listen is a quick utility function that allows for creation of a new
+// Cirrus REST service and will start it immediately.
+//
+// This function will block until the server is closed.
+//
+// Quick version of "NewContext(context.Background(), s, log, key).Listen(addr)".
+func Listen(s *c2.Server, log logx.Log, key, addr string) error {
+	return NewContext(context.Background(), s, log, key).Listen(addr)
+}
+
 // NewContext creates a new Cirrus REST server instance using the supplied C2
 // Server instance.
 //
 // This function allows specifying a Context to aid in cancellation.
-func NewContext(x context.Context, s *c2.Server, key string) *Cirrus {
-	c := &Cirrus{s: s, Auth: key, Timeout: timeout, ch: make(chan struct{})}
+func NewContext(x context.Context, s *c2.Server, log logx.Log, key string) *Cirrus {
+	c := &Cirrus{s: s, Auth: key, Timeout: timeout, ch: make(chan struct{}), log: log}
 	c.jobs = &jobManager{Cirrus: c, e: make(map[uint64]*c2.Job)}
 	c.packets = &packetManager{Cirrus: c, e: make(map[string]*packet)}
 	c.scripts = &scriptManager{Cirrus: c, e: make(map[string]*script)}
@@ -359,7 +379,12 @@ func NewContext(x context.Context, s *c2.Server, key string) *Cirrus {
 		WriteBufferSize:  1024,
 		HandshakeTimeout: time.Second * 5,
 	}
-	configureRoutes(c, c.mux)
+	if configureRoutes(c, c.mux); c.log == nil {
+		c.log = logx.NOP
+	} else {
+		c.log.SetPrintLevel(logx.Trace)
+		c.mux.SetLog(c.log)
+	}
 	if c.srv.Handler = c.mux; s.New != nil {
 		f := s.New
 		s.New = func(v *c2.Session) {
@@ -395,9 +420,9 @@ func NewContext(x context.Context, s *c2.Server, key string) *Cirrus {
 //
 // This function will block until the server is closed.
 //
-// Quick version of "NewContext(x, s, l, key).Listen(addr)".
+// Quick version of "NewContext(x, s, log, key).Listen(addr)".
 //
 // This function allows specifying a Context to aid in cancellation.
-func ListenContext(x context.Context, s *c2.Server, key, addr string) error {
-	return NewContext(x, s, key).Listen(addr)
+func ListenContext(x context.Context, s *c2.Server, log logx.Log, key, addr string) error {
+	return NewContext(x, s, log, key).Listen(addr)
 }

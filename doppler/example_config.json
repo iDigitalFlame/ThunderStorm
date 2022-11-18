@@ -1,0 +1,8 @@
+{
+    "cirrus": "http://localhost:7777",
+    "cirrus_password": "<password>",
+    "default_exec": true,
+    "default_asm": "<path_to_asm_file>",
+    "default_dll": "<path_to_dll_file>",
+    "default_pipe": "<migrate_spawn_pipe_name>"
+}

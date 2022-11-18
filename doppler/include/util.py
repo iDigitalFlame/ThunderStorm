@@ -17,8 +17,10 @@
 
 from math import floor
 from io import StringIO
+from base64 import b64decode
 from datetime import datetime
 from argparse import ArgumentParser
+from os.path import expanduser, expandvars, isfile
 
 _BOOLEANS = ["1", "on", "t", "true", "y", "yes", "en", "enable"]
 
@@ -56,19 +58,6 @@ def xor(k, d):
     return r
 
 
-def do_ask(m):
-    try:
-        v = input(f"[?] {m}? [Y/n] ")
-        if not nes(v) or v.lower() != "y":
-            return False
-        return True
-    except EOFError:
-        print()
-    except KeyboardInterrupt:
-        pass
-    return False
-
-
 def ip_str(s):
     if "network" not in s["device"]:
         return ""
@@ -88,6 +77,10 @@ def ip_str(s):
 
 
 def is_true(v):
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, int):
+        return v > 0
     if not nes(v):
         return False
     return v.strip().lower() in _BOOLEANS
@@ -156,6 +149,18 @@ def perm_str(v):
     return r
 
 
+def _eq_quotes(v):
+    if len(v) == 0:
+        return v
+    if len(v) <= 2:
+        return v
+    if v[0] != '"' and v[0] != "'":
+        return v
+    if v[-1] != '"' and v[-1] != "'":
+        return v
+    return v[1:-1]
+
+
 def split_user_domain(u, d):
     if not nes(u):
         if nes(d):
@@ -194,10 +199,29 @@ def size_str(v, align=False):
     return f"{float(v):.1f}Y"
 
 
+def do_ask(m, default=False):
+    try:
+        v = input(f"[?] {m}? [{'Y/n' if default else 'y/N'}] ")
+        if not nes(v):
+            return default
+        if len(v) > 0 and (v[0] == "y" or v[0] == "Y"):
+            return True
+        # if not default and len(v) > 0 and (v[0] == "y" or v[0] == "Y"):
+        #    return False
+        return False
+    except EOFError:
+        print()
+    except KeyboardInterrupt:
+        pass
+    return default
+
+
 def time_str(n, s, exact=False):
     if len(s) == 0:
         return ""
     v = datetime.fromisoformat(s.replace("Z", "")).replace(tzinfo=None)
+    if v.year < 1971:
+        return ""
     if (n - v).days > 0:
         if exact:
             return v.strftime("%H:%M %m/%d/%y")
@@ -212,6 +236,71 @@ def time_str(n, s, exact=False):
     if m > 0:
         return f"{m}m {n}s"
     return f"{n}s"
+
+
+def bytes_from_src(
+    v, path=True, b64=True, cb64=False, raw=True, ext=False, empty=False, explicit=False
+):
+    if v is None or len(v) == 0:
+        if not empty:
+            raise ValueError(
+                "explicit data identifier or valid local file path is required"
+            )
+        return bytearray(), False
+    if len(v) <= 2:
+        if not path:
+            if not raw or explicit:
+                raise ValueError(
+                    "explicit data identifier or valid local file path is required"
+                )
+            return v.encode("UTF-8"), False
+        p = expandvars(expanduser(v))
+        if not isfile(p):
+            raise ValueError(f'file "{p}" does not exist')
+        with open(p, "rb") as f:
+            d = f.read()
+        del p
+        return d, False
+    if v[1] == "$" or (v[1] == '"' and v[-1] == '"'):
+        k = len(v)
+        if v[1] == '"':
+            k -= 1
+        if path and v[0] == "p":
+            p = expandvars(expanduser(v[2:]))
+            if not isfile(p):
+                raise ValueError(f'file "{p}" does not exist')
+            with open(p, "rb") as f:
+                d = f.read()
+            del p
+            return d, False
+        if ext and v[0] == "x":
+            return v[2:k], True
+        if v[0] == "b" or v[0] == "r":
+            return (
+                v[2:k].encode().decode("unicode_escape").encode("raw_unicode_escape")
+            ), False
+        if b64 and v[0] == "e":
+            return b64decode(v[2:k], validate=True), False
+        del k
+    if explicit:
+        raise ValueError("explicit data identifier required")
+    if path:
+        p = expandvars(expanduser(v))
+        if isfile(p):
+            with open(p, "rb") as f:
+                d = f.read()
+            return d, False
+        del p
+    if b64 and cb64:
+        try:
+            return b64decode(v, validate=True), False
+        except ValueError:
+            pass
+    if not raw:
+        raise ValueError(
+            "explicit data identifier or valid local file path is required"
+        )
+    return v.encode("UTF-8"), False
 
 
 class Parser(ArgumentParser):
@@ -240,20 +329,26 @@ class Parser(ArgumentParser):
     def exit(self, _=0, m=None):
         pass
 
-    def parse_args(self, args=None, namespace=None, nones=True, cat=None):
+    def parse_args(self, args=None, namespace=None, nones=True, cat=None, eq=False):
         r = super(__class__, self).parse_args(args, namespace)
         if r is None:
             return r
         for i in r.__dict__.keys():
             try:
                 v = getattr(r, i)
+                if not nones and v is None:
+                    setattr(r, i, "")
+                    continue
                 if not isinstance(v, list):
                     continue
                 if len(v) == 1:
                     if not nones and v[0] is None:
                         setattr(r, i, "")
                     else:
-                        setattr(r, i, v[0])
+                        if eq:
+                            setattr(r, i, _eq_quotes(v[0]))
+                        else:
+                            setattr(r, i, v[0])
                     continue
                 if len(v) > 0:
                     if nes(cat):

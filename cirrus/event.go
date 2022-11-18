@@ -35,6 +35,7 @@ var bufs = sync.Pool{
 }
 
 type event struct {
+	_                   [0]func()
 	Name, Action        string
 	Value, Count, Total uint16
 }
@@ -75,11 +76,12 @@ func (e *eventManager) run(x context.Context) {
 		return
 	}
 loop:
-	for {
+	for e.log.Debug("[cirrus/event] Starting up eventer.."); ; {
 		select {
 		case <-x.Done():
 			break loop
 		case n := <-e.in:
+			e.log.Trace(`[cirrus/event] Sending event "%s".`, n.Action)
 			var (
 				b = bufs.Get().(*data.Chunk)
 				c = make([]*websocket.Conn, 0, len(e.clients))
@@ -112,6 +114,7 @@ loop:
 			e.clients = append(e.clients, n)
 		}
 	}
+	e.log.Debug("[cirrus/event] Shutting down eventer.")
 	e.shutdown()
 }
 func (e *eventManager) publishScriptNew(s string) {

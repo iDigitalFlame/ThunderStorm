@@ -24,7 +24,7 @@ You will need the XMT src in order to run some builds and scripts!
 
 ## Installing Dependencies
 
-There is not many dependencies that you'll need unless you are doing any building.
+There are not many dependencies that you'll need unless you're building Bolts.
 
 _Most install commands will need root!_
 
@@ -69,7 +69,7 @@ pip install requests websocket-client
 
 ### Building Dependencies
 
-Now, if you're building, you will need the above dependencies and the following
+Now, if you're building Bolt, you will need the above dependencies and the following
 additional ones
 
 - Golang
@@ -283,7 +283,7 @@ _the command below_
 python bin/doppler -a "http://localhost:7777" -p supersecret
 ```
 
-Now this should land you into a happy interface like below:
+Now this should land you into a happy interface like this:
 
 ```text
 Welcome to the Doppler  interface. Use "help" to display the command guide.
@@ -341,7 +341,7 @@ From where you are in Doppler, type in `main` and hit enter to take you back to
 the main menu. Then type `listeners` and hit enter.
 
 > PROTIP: You can always hit CTRL+C to cancel a command or go back one level
-> while CTRL+D will exit the shell.
+> while CTRL+D will always exit the shell.
 
 Now you should see the following prompt:
 
@@ -394,8 +394,8 @@ Now you're ready to connect some Bolts!
 
 # JetStream
 
-JetStream is how we'll build the Bolts for you to use. Once we configure JetSteam
-a simple command will make it all work.
+JetStream is how we'll build the Bolts to use. Once we configure JetSteam, a
+simple command will make it all work.
 
 ## Initial Configuration
 
@@ -470,7 +470,7 @@ file, name this new file `js.json`
 ```
 
 This is the basic config file that will get you started easily. This configuration
-will work well on Windows and will need some tweaking for any *nix system.
+will work well on Windows, but will need some tweaking for any *nix system.
 
 > See the file JetStream [example.conf](../jetstream/example.conf) for more configuration
 > examples.
@@ -483,7 +483,7 @@ If you would like to run a non-Windows build, the only things you would have to
 change are:
 
 - `build.generators.bolt.linker` to `pipe` or `tcp`
-  - This is the one of the supported non-Windows event types
+  - These are two of the supported non-Windows event types
   - It is recommended to also change the name of `build.generators.bolt.guardian`
     and `build.generators.bolt.pipe` to fit the OS theme you're going for.
 - `build.options.cgo` to `false`
@@ -498,20 +498,22 @@ signed binary running as "httpd" or "apache2" lol.
 
 Showtime! Let's get to building.
 
-To build with JetStream, there are four **super** (technically five) important
+To build with JetStream, there are four **super** _(technically five)_ important
 things to remember before building:
 
 - Configuration file `-c`
-  - Make sure it's correct! _(You'll get errors if it isn't)_
+  - Make sure it's the correct path and format! _(You'll get errors if it isn't)_
   - The `-rc` we are using **prevents** JetStream from linting it, just in case
     we need to fix it for now.
 - Output and output type `-o`
-  - If you would like a DLL file, don't forget to add a `-D`, so `-o` becomes `-Do`
-- OS/Arch
-  - JetStream needs the OS/Arch (in a Go format) to build what you want.
+  - If you want to build a DLL file, don't forget to add a `-D`, so `-o` becomes
+    `-Do`. Adding `-D` separately will also work.
+- <os>/<arch>
+  - JetStream using the <os>/<arch> (in a Go format) to build what binary format
+    you want.
 - Generator type
-  - By default, JetStream will use the `bolt` generator _(which builds a Bolt)_
-    but there are more generators that can be used!
+  - By default _(or if not supplied)_, JetStream will use the `bolt` generator
+    _(which builds a Bolt)_ but there are more generators that can be used!
   - This can be changed with the `-g` argument.
 - _Overrides can be specified to change the config values for each build if you desire._
   - _These are additional command line arguments._
@@ -522,12 +524,13 @@ With that in mind, lets pick a build type. Here are some common ones:
 - linux/amd64
 - darwin/amd64
 
-There are more available, consult `go tool dist list` for all of them.
+There are more available, consult `go tool dist list` for a list of them currently
+supported by Go.
 
-> While JetStream has support for all this types, sometimes your mileage may vary.
+> While JetStream has support for all these build types, your mileage may vary.
 
-Once you made your pick, let's fire up JetStream by running (Omit the ".exe" if
-you're not building for Windows and replace "<os/arch>" with your chosen target):
+Once you made your pick, let's fire up JetStream by running (Omit the **.exe** if
+you're not building for Windows and replace **<os/arch>** with the chosen target):
 
 ```bash
 python bin/jetstream -rc js.json -o bolt.exe <os/arch>
@@ -541,15 +544,14 @@ Once you completed all this! First off, congrats! Second, find a way to ship tha
 shiny new binary off to the target host you want to run on!
 
 Once you get it there, give it a kick and bring it to life by starting it. Nothing
-special will happen on screen (if you're not on a shell), but watch your Doppler
-shell that we had open earlier.
+special will happen on screen, but watch your Doppler shell that we had open earlier.
 
 ```text
  > Bolts >
-New Bolt Registered: ABCDEEF0 test @ 192.168.1.50
+New Bolt Registered: [ABCDEEF0] test @ 192.168.1.50
 ```
 
-Woo! Now, lets interact with it. On your Doppler shell, type in "ls" in the "Bolts"
+Woot! Now, lets interact with it. On your Doppler shell, type in "ls" in the "Bolts"
 menu, you should see something like this:
 
 ```text

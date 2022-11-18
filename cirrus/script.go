@@ -20,9 +20,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/PurpleSec/escape"
 	"github.com/PurpleSec/routex"
@@ -60,11 +62,15 @@ var (
 
 type script struct {
 	sync.Mutex
-	s *task.Script
-	c []string
-	r []uint64
+	last   time.Time
+	s      *task.Script
+	path   string
+	c      []string
+	r      []uint64
+	loaded bool
 }
 type scriptArgs struct {
+	_        [0]func()
 	Data     *string   `json:"data"`
 	Marks    *[]uint64 `json:"marks"`
 	Output   *bool     `json:"return_output"`
@@ -79,8 +85,85 @@ type scriptManager struct {
 	e map[string]*script
 }
 
+func ws(s val.Set) val.Set {
+	if len(s) == 0 {
+		return val.Set{val.Validator{Name: "line", Type: val.String, Rules: val.Rules{val.NoEmpty}}}
+	}
+	n := make(val.Set, len(s)+1)
+	n[copy(n, s)] = val.Validator{Name: "line", Type: val.String, Rules: val.Rules{val.NoEmpty}}
+	return n
+}
+func (s *script) unload() error {
+	if !s.loaded || s.s.Size() == 0 {
+		return nil
+	}
+	var (
+		f   *os.File
+		err error
+	)
+	if len(s.path) == 0 {
+		f, err = os.CreateTemp("", "cirrus-script-*.bin")
+	} else {
+		// 0x1241 - os.O_TRUNC|os.O_CREATE|os.O_WRONLY|os.O_SYNC
+		f, err = os.OpenFile(s.path, 0x1241, 0o600)
+	}
+	if err != nil {
+		return err
+	}
+	s.path = f.Name()
+	_, err = f.Write(s.s.Payload())
+	if f.Close(); err != nil {
+		os.Remove(s.path)
+		return err
+	}
+	s.s.Clear()
+	s.loaded = false
+	return nil
+}
+func (s *script) load() (bool, error) {
+	if s.loaded {
+		return false, nil
+	}
+	if len(s.path) > 0 {
+		b, err := os.ReadFile(s.path)
+		if err != nil {
+			return false, err
+		}
+		s.s.Replace(b)
+		os.Remove(s.path)
+		b = nil
+	}
+	s.last, s.loaded = time.Now(), true
+	return true, nil
+}
+func (c *Cirrus) pruneScripts(n time.Time) {
+	if c.scripts.Lock(); len(c.scripts.e) == 0 {
+		c.scripts.Unlock()
+		return
+	}
+	for k, v := range c.scripts.e {
+		if v.last.IsZero() {
+			v.Lock()
+			v.last = n
+			v.Unlock()
+			continue
+		}
+		if v.Lock(); v.loaded && n.Sub(v.last) > time.Minute*5 {
+			if err := v.unload(); err != nil {
+				c.log.Error(`[cirrus/script] Error freezing script "%s": %s!`, k, err.Error())
+			} else {
+				c.log.Debug(`[cirrus/script] Froze unused script "%s" to file "%s".`, k, v.path)
+			}
+		}
+		v.Unlock()
+	}
+	c.scripts.Unlock()
+}
 func (s *script) MarshalJSON() ([]byte, error) {
 	s.Lock()
+	if _, err := s.load(); err != nil {
+		return nil, err
+	}
 	b, err := json.Marshal(map[string]any{
 		"marks":         s.r,                 // Required
 		"script":        s.s.Payload(),       // Required
@@ -158,7 +241,17 @@ func (c *Cirrus) script(n string) (*script, string) {
 	v := strings.ToLower(n)
 	c.scripts.RLock()
 	x := c.scripts.e[v]
-	c.scripts.RUnlock()
+	if c.scripts.RUnlock(); x != nil {
+		x.Lock()
+		if l, err := x.load(); err == nil {
+			if x.last = time.Now(); l {
+				c.log.Debug(`[cirrus/script] Loaded frozen script "%s"!`, v)
+			}
+		} else {
+			c.log.Error(`[cirrus/script]: Script "%s" could not be loaded: %s!`, v, err.Error())
+		}
+		x.Unlock()
+	}
 	return x, v
 }
 func (s *scriptManager) MarshalJSON() ([]byte, error) {
@@ -175,11 +268,13 @@ func (s *scriptManager) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		return err
 	}
+	n := time.Now()
 	s.Lock()
 	for k, v := range m {
 		if _, ok := s.e[k]; ok {
 			continue
 		}
+		v.loaded, v.last = true, n
 		s.e[k] = v
 	}
 	s.Unlock()
@@ -238,7 +333,8 @@ func writeScript(c int, w http.ResponseWriter, q *script) {
 	w.Write([]byte(
 		`],"rollbacks":` + strconv.FormatUint(uint64(len(q.r)), 10) + `,"stop_on_error":` +
 			strconv.FormatBool(q.s.IsStopOnError()) + `,"return_output":` + strconv.FormatBool(q.s.IsOutput()) +
-			`,"channel":` + strconv.FormatBool(q.s.IsChannel()) + `,"size":` + strconv.FormatUint(uint64(q.s.Size()), 10),
+			`,"channel":` + strconv.FormatBool(q.s.IsChannel()) + `,"size":` + strconv.FormatUint(uint64(q.s.Size()), 10) +
+			`,"loaded":` + strconv.FormatBool(q.loaded),
 	))
 	w.Write([]byte{'}'})
 }
@@ -293,7 +389,7 @@ func (s *scriptManager) httpScriptDLL(_ context.Context, w http.ResponseWriter, 
 	}
 	n, err := t.Packet()
 	if err != nil {
-		writeError(http.StatusInternalServerError, "task generation failed: "+err.Error(), w, r)
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
 		return
 	}
 	q.append(t.Line, n)
@@ -331,7 +427,64 @@ func (s *scriptManager) httpScriptSpawn(_ context.Context, w http.ResponseWriter
 	}
 	n, err := t.Packet(p)
 	if err != nil {
-		writeError(http.StatusBadRequest, err.Error(), w, r)
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
+		return
+	}
+	q.append(t.Line, n)
+	w.WriteHeader(http.StatusCreated)
+	writeScriptReturn(w, q)
+}
+func (s *scriptManager) httpScriptPower(_ context.Context, w http.ResponseWriter, r *routex.Request, t taskPower) {
+	if len(t.Action) == 0 {
+		writeError(http.StatusBadRequest, `specify a non-empty "action" value`, w, r)
+		return
+	}
+	q, _ := s.script(r.Values.StringDefault("name", ""))
+	if q == nil {
+		writeError(http.StatusNotFound, msgNoScript, w, r)
+		return
+	}
+	n, err := t.Packet()
+	if err != nil {
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
+		return
+	}
+	q.append(t.Line, n)
+	w.WriteHeader(http.StatusCreated)
+	writeScriptReturn(w, q)
+}
+func (s *scriptManager) httpScriptCheck(_ context.Context, w http.ResponseWriter, r *routex.Request, t taskCheck) {
+	if len(t.DLL) == 0 {
+		writeError(http.StatusBadRequest, `specify a non-empty "dll" value`, w, r)
+		return
+	}
+	q, _ := s.script(r.Values.StringDefault("name", ""))
+	if q == nil {
+		writeError(http.StatusNotFound, msgNoScript, w, r)
+		return
+	}
+	n, err := t.Packet()
+	if err != nil {
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
+		return
+	}
+	q.append(t.Line, n)
+	w.WriteHeader(http.StatusCreated)
+	writeScriptReturn(w, q)
+}
+func (s *scriptManager) httpScriptPatch(_ context.Context, w http.ResponseWriter, r *routex.Request, t taskPatch) {
+	if len(t.DLL) == 0 {
+		writeError(http.StatusBadRequest, `specify a non-empty "dll" value`, w, r)
+		return
+	}
+	q, _ := s.script(r.Values.StringDefault("name", ""))
+	if q == nil {
+		writeError(http.StatusNotFound, msgNoScript, w, r)
+		return
+	}
+	n, err := t.Packet()
+	if err != nil {
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
 		return
 	}
 	q.append(t.Line, n)
@@ -354,7 +507,7 @@ func (s *scriptManager) httpScriptZombie(_ context.Context, w http.ResponseWrite
 	}
 	n, err := t.Packet()
 	if err != nil {
-		writeError(http.StatusInternalServerError, "task generation failed: "+err.Error(), w, r)
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
 		return
 	}
 	q.append(t.Line, n)
@@ -373,7 +526,7 @@ func (s *scriptManager) httpScriptSystem(_ context.Context, w http.ResponseWrite
 	}
 	n, err := syscallPacket(t.Command, t.Args, t.Filter)
 	if err != nil {
-		writeError(http.StatusInternalServerError, "task generation failed: "+err.Error(), w, r)
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
 		return
 	}
 	if n == nil {
@@ -382,6 +535,45 @@ func (s *scriptManager) httpScriptSystem(_ context.Context, w http.ResponseWrite
 		return
 	}
 	q.append(t.Line, n)
+	w.WriteHeader(http.StatusCreated)
+	writeScriptReturn(w, q)
+}
+func (s *scriptManager) httpScriptNetcat(_ context.Context, w http.ResponseWriter, r *routex.Request, t taskNetcat) {
+	if len(t.Host) == 0 {
+		writeError(http.StatusBadRequest, `specify a non-empty "host" value`, w, r)
+		return
+	}
+	q, _ := s.script(r.Values.StringDefault("name", ""))
+	if q == nil {
+		writeError(http.StatusNotFound, msgNoScript, w, r)
+		return
+	}
+	n, err := t.Packet()
+	if err != nil {
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
+		return
+	}
+	q.append(t.Line, n)
+	w.WriteHeader(http.StatusCreated)
+	writeScriptReturn(w, q)
+}
+func (s *scriptManager) httpScriptWTS(_ context.Context, w http.ResponseWriter, r *routex.Request, c routex.Content) {
+	a := c.StringDefault("action", "")
+	if len(a) == 0 {
+		writeError(http.StatusBadRequest, `specify a non-empty "action" value`, w, r)
+		return
+	}
+	q, _ := s.script(r.Values.StringDefault("name", ""))
+	if q == nil {
+		writeError(http.StatusNotFound, msgNoScript, w, r)
+		return
+	}
+	n, _, err := wtsPacket(c, a)
+	if err != nil {
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
+		return
+	}
+	q.append(c.StringDefault("line", ""), n)
 	w.WriteHeader(http.StatusCreated)
 	writeScriptReturn(w, q)
 }
@@ -465,7 +657,7 @@ func (s *scriptManager) httpScriptCommand(_ context.Context, w http.ResponseWrit
 	}
 	n, err := t.Packet()
 	if err != nil {
-		writeError(http.StatusInternalServerError, "task generation failed: "+err.Error(), w, r)
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
 		return
 	}
 	q.append(t.Line, n)
@@ -512,7 +704,7 @@ func (s *scriptManager) httpScriptMigrate(_ context.Context, w http.ResponseWrit
 	}
 	n, err := t.Packet(p)
 	if err != nil {
-		writeError(http.StatusBadRequest, err.Error(), w, r)
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
 		return
 	}
 	q.append(t.Line, n)
@@ -534,6 +726,45 @@ func (s *scriptManager) httpScriptNote(_ context.Context, w http.ResponseWriter,
 	w.WriteHeader(http.StatusOK)
 	writeScriptReturn(w, q)
 }
+func (s *scriptManager) httpScriptFuncmap(_ context.Context, w http.ResponseWriter, r *routex.Request, t taskFuncmap) {
+	if len(t.Action) == 0 {
+		writeError(http.StatusBadRequest, `specify a non-empty "action" value`, w, r)
+		return
+	}
+	q, _ := s.script(r.Values.StringDefault("name", ""))
+	if q == nil {
+		writeError(http.StatusNotFound, msgNoScript, w, r)
+		return
+	}
+	n, err := t.Packet()
+	if err != nil {
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
+		return
+	}
+	q.append(t.Line, n)
+	w.WriteHeader(http.StatusCreated)
+	writeScriptReturn(w, q)
+}
+func (s *scriptManager) httpScriptEvade(_ context.Context, w http.ResponseWriter, r *routex.Request, c routex.Content) {
+	a := c.StringDefault("action", "")
+	if len(a) == 0 {
+		writeError(http.StatusBadRequest, `specify a non-empty "action" value`, w, r)
+		return
+	}
+	q, _ := s.script(r.Values.StringDefault("name", ""))
+	if q == nil {
+		writeError(http.StatusNotFound, msgNoScript, w, r)
+		return
+	}
+	n, _, err := evadePacket(a)
+	if err != nil {
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
+		return
+	}
+	q.append(c.StringDefault("line", ""), n)
+	w.WriteHeader(http.StatusCreated)
+	writeScriptReturn(w, q)
+}
 func (s *scriptManager) httpScriptLogin(_ context.Context, w http.ResponseWriter, r *routex.Request, c routex.Content) {
 	u := c.StringDefault("user", "")
 	if len(u) == 0 {
@@ -546,10 +777,11 @@ func (s *scriptManager) httpScriptLogin(_ context.Context, w http.ResponseWriter
 		return
 	}
 	var (
+		i = c.BoolDefault("interactive", false)
 		p = c.StringDefault("pass", "")
 		d = c.StringDefault("domain", "")
 	)
-	q.append(c.StringDefault("line", ""), task.LoginUser(u, d, p))
+	q.append(c.StringDefault("line", ""), task.LoginUser(i, u, d, p))
 	w.WriteHeader(http.StatusCreated)
 	writeScriptReturn(w, q)
 }
@@ -565,7 +797,7 @@ func (s *scriptManager) httpScriptAssembly(_ context.Context, w http.ResponseWri
 	}
 	n, err := t.Packet()
 	if err != nil {
-		writeError(http.StatusInternalServerError, "task generation failed: "+err.Error(), w, r)
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
 		return
 	}
 	q.append(t.Line, n)
@@ -583,9 +815,9 @@ func (s *scriptManager) httpScriptUpload(_ context.Context, w http.ResponseWrite
 		writeError(http.StatusNotFound, msgNoScript, w, r)
 		return
 	}
-	b, err := readEmptyB64(c.StringDefault("data", ""))
+	b, err := c.Bytes("data")
 	if err != nil {
-		writeError(http.StatusBadRequest, err.Error(), w, r)
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
 		return
 	}
 	q.append(c.StringDefault("line", ""), task.Upload(p, b))
@@ -637,9 +869,9 @@ func (s *scriptManager) httpScriptRegistry(_ context.Context, w http.ResponseWri
 		writeError(http.StatusNotFound, msgNoScript, w, r)
 		return
 	}
-	n, err := registryPacket(c, a, k, v)
+	n, _, err := registryPacket(c, a, k, v)
 	if err != nil {
-		writeError(http.StatusBadRequest, err.Error(), w, r)
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
 		return
 	}
 	q.append(c.StringDefault("line", ""), n)
@@ -659,7 +891,7 @@ func (s *scriptManager) httpScriptSystemIo(_ context.Context, w http.ResponseWri
 	}
 	n, _, err := ioPacket(c, a)
 	if err != nil {
-		writeError(http.StatusBadRequest, err.Error(), w, r)
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
 		return
 	}
 	q.append(c.StringDefault("line", ""), n)
@@ -679,7 +911,7 @@ func (s *scriptManager) httpScriptWindowUI(_ context.Context, w http.ResponseWri
 	}
 	n, _, err := uiPacket(c, a)
 	if err != nil {
-		writeError(http.StatusBadRequest, err.Error(), w, r)
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
 		return
 	}
 	q.append(c.StringDefault("line", ""), n)
@@ -704,7 +936,7 @@ func (s *scriptManager) httpScriptRollback(_ context.Context, w http.ResponseWri
 	}
 	if err := q.s.Truncate(int(q.r[p])); err != nil {
 		q.Unlock()
-		writeError(http.StatusBadRequest, err.Error(), w, r)
+		writeError(http.StatusBadRequest, "roll back failed: "+err.Error(), w, r)
 		return
 	}
 	if q.r = q.r[:p]; uint64(len(q.c)) > p {
@@ -712,6 +944,21 @@ func (s *scriptManager) httpScriptRollback(_ context.Context, w http.ResponseWri
 	}
 	q.Unlock()
 	writeScript(http.StatusOK, w, q)
+}
+func (s *scriptManager) httpScriptWorkHours(_ context.Context, w http.ResponseWriter, r *routex.Request, t taskWorkHours) {
+	q, _ := s.script(r.Values.StringDefault("name", ""))
+	if q == nil {
+		writeError(http.StatusNotFound, msgNoScript, w, r)
+		return
+	}
+	n, err := t.Packet()
+	if err != nil {
+		writeError(http.StatusBadRequest, "task generation failed: "+err.Error(), w, r)
+		return
+	}
+	q.append(t.Line, n)
+	w.WriteHeader(http.StatusCreated)
+	writeScriptReturn(w, q)
 }
 func (s *scriptManager) httpScriptProxyDelete(_ context.Context, w http.ResponseWriter, r *routex.Request, c routex.Content) {
 	q, _ := s.script(r.Values.StringDefault("name", ""))
@@ -721,7 +968,7 @@ func (s *scriptManager) httpScriptProxyDelete(_ context.Context, w http.Response
 	}
 	n := c.StringDefault("proxy", "")
 	if !isValidName(n) {
-		writeError(http.StatusBadRequest, `value "proxy" cannot be invalid`, w, r)
+		writeError(http.StatusBadRequest, `value "proxy" is invalid`, w, r)
 		return
 	}
 	q.append(c.StringDefault("line", ""), task.ProxyRemove(n))
@@ -736,7 +983,7 @@ func (s *scriptManager) httpScriptProxyPutPost(_ context.Context, w http.Respons
 	}
 	n := r.Values.StringDefault("proxy", "")
 	if !isValidName(n) {
-		writeError(http.StatusBadRequest, `value "proxy" cannot be invalid`, w, r)
+		writeError(http.StatusBadRequest, `value "proxy" is invalid`, w, r)
 		return
 	}
 	var (

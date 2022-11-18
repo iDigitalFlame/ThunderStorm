@@ -1,5 +1,8 @@
 # The ThunderStorm Project
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Latest](https://img.shields.io/github/v/tag/iDigitalFlame/ThunderStorm)](https://github.com/iDigitalFlame/ThunderStorm/releases)
+
 ![cirrus](icons/cirrus.png) ![doppler](icons/doppler.png) ![bolt](icons/bolt.png) ![stormfront](icons/stormfront.png) ![jetstream](icons/jetstream.png) ![flurry](icons/flurry.png) ![cloudseed](icons/cloudseed.png)
 
 ---
@@ -8,7 +11,11 @@ Golang Full C2 Solution using [XMT](https://github.com/iDigitalFlame/xmt)
 
 ThunderStorm is made up of multiple components that work together.
 
-Try the new [Quickstart Guide](docs/Quickstart.md)!
+[Documentation repository](docs) is live with new stuff, including:
+
+- The [Quickstart Guide](docs/Quickstart.md)!
+- [Bolt Console Command Line Reference](docs/Commands.md) guide.
+- [Data Identifiers Reference](docs/Identifiers.md) guide.
 
 ## ![cirrus](icons/cirrus.png) Cirrus
 
@@ -68,3 +75,37 @@ websocket to get real time data on Jobs and Bolts.
 The layout of how commands works is similar to the PowerShell Empire format. (Except
 exiting the shell doesn't kill the server). Doppler will automatically manage
 filepaths for you (for downloads, uploads, shellcode) and can manage multiple Bolts
+
+Doppler can take command line arguments, environment variables or event a config file!
+
+The layout of the config file with the matching env and arguments is below:
+
+```json
+{
+    "cirrus": "http://localhost:7777", // env:DOPPLER_HOST args:[-a, --api]
+    "cirrus_password": "<password>", //env:DOPPLER_PW args:[-p, --password]
+    "default_exec": true, // env:DOPPLER_NO_EMPTY args:[-N, ==no-empty]
+    "default_asm": "<path_to_asm_file>", // env:DOPPLER_ASM args:[-A, --as,]
+    "default_dll": "<path_to_dll_file>", // env:DOPPLER_DLL args:[-D, --dll]
+    "default_pipe": "<migrate_spawn_pipe_name>" // env:DOPPLER_PIPE args:[-P, --pipe]
+}
+```
+
+Actual JSON config file:
+
+```json
+{
+    "cirrus": "http://localhost:7777",
+    "cirrus_password": "<password>",
+    "default_exec": true,
+    "default_asm": "<path_to_asm_file>",
+    "default_dll": "<path_to_dll_file>",
+    "default_pipe": "<migrate_spawn_pipe_name>"
+}
+```
+
+## TODOs:
+
+__Updated 11/18/22__
+
+- Write Cirrus API documentation

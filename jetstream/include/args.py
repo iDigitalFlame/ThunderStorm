@@ -113,7 +113,10 @@ Options Override Arguments
  Build Settings Options
    --tags             <build_tags>     Specify/Override the Go build tags used.
                                          These values may be changed by the Generator
-                                         used.
+                                         used. The first tag may be prefixed with
+                                         a "+" to indicate that the new tags should
+                                         be appended to the current ones instead of
+                                         the default action of replacing them.
    --goroot           <goroot_dir>     Specify/Override the GOROOT directory. The
                                          default or empty value will be taken from
                                          the current environment. This directory will
@@ -290,7 +293,20 @@ def insert_args_opts(a, o):
     if isinstance(a.opt_compact, bool):
         o.set("build.options.compact", a.opt_compact)
     if isinstance(a.opt_tags, list) and len(a.opt_tags) > 0:
-        o.set("build.options.tags", _split_tags(a.opt_tags))
+        # If the first tag starts with a "+", add the tags instead of replacing
+        # them.
+        t = _split_tags(a.opt_tags)
+        if nes(t[0]) and t[0][0] == "+":
+            v, t[0] = o.get("build.options.tags"), t[0][1:]
+            if v is None or len(v) == 0:
+                o.set("build.options.tags", t)
+            else:
+                v.extend(t)
+                o.set("build.options.tags", v)
+            del v
+        else:
+            o.set("build.options.tags", t)
+        del t
     if a.sup_entry:
         o.set("build.support.cgo_export", a.sup_entry)
     if isinstance(a.sup_manifest, bool):
@@ -384,11 +400,22 @@ class Parser(ArgumentParser):
         o = Options()
         # We /should/ have a config or at least a default one.
         if isinstance(a.clone, str) and a.clone:
-            o.load(a.clone)
+            try:
+                o.load(a.clone)
+            except ValueError as err:
+                raise ValueError(f'Clone file "{a.clone}" parse error: {err}') from err
         elif isinstance(a.config, str) and a.config:
-            o.load(a.config)
+            try:
+                o.load(a.config)
+            except ValueError as err:
+                raise ValueError(
+                    f'Config file "{a.config}" parse error: {err}'
+                ) from err
         else:
-            o.load(None)
+            try:
+                o.load(None)
+            except ValueError as err:
+                raise ValueError(f"Config file parse error: {err}") from err
         n = a.generator.lower()
         e = o.generators(n, a.dir_generators)
         if e is None or n not in e:

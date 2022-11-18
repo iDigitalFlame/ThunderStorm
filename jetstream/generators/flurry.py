@@ -17,12 +17,21 @@
 
 from io import StringIO
 from base64 import b64decode
+from datetime import datetime
 from secrets import token_bytes
 from include.util import nes, xor
 from argparse import BooleanOptionalAction
 from os.path import expanduser, expandvars, join
 from include.builder import go_bytes, random_chars
-from include.manager import Manager, is_int, is_str, is_file, str_lower, is_str_list
+from include.manager import (
+    is_int,
+    is_str,
+    is_file,
+    is_date,
+    Manager,
+    str_lower,
+    is_str_list,
+)
 
 _LINKERS = {
     "tcp": "t",
@@ -81,6 +90,9 @@ _HELP_TEXT = """ Generates a Flurry build based on the supplied profile and b
                                         to be stopped by users or solutions. This only
                                         takes effect on Windows devices when ran with
                                         administrative privileges.
+   -O                 <ISO8601_date>  Specify an ISO8601 formated date/time that is used
+   --killdate                           to indicate when this Flurry will cease operating.
+                                        This is similar to the Bolt KillDate Profile setting.
 
   CGO Build Arguments
    -T                 <thread_name>   Supply the thread name to be used in the
@@ -154,6 +166,7 @@ class Flurry(object):
         self._m.add(
             "critical", ("-K", "--critical"), False, action=BooleanOptionalAction
         )
+        self._m.add("killdate", ("-O", "--killdate"), "", is_date(True), str)
         # CGO Build Options
         self._m.add("func", ("-F", "--func"), "", is_str(True, ft=True), str)
         self._m.add("thread", ("-T", "--thread"), "", is_str(True, ft=True), str)
@@ -183,6 +196,8 @@ class Flurry(object):
         if cfg["service"]:
             print(f'- | = {"Service Name:":20}{cfg["service_name"]}', file=file)
         print(f'- | = {"Search Period:":20}{cfg["period"]}', file=file)
+        if cfg["killdate"]:
+            print(f'- | = {"Kill Date:":20}{cfg["killdate"]}', file=file)
         if not root.get_option("cgo"):
             return
         if nes(cfg["thread"]):
@@ -234,10 +249,14 @@ class Flurry(object):
         r = b.getvalue()
         b.close()
         del b, v
+        o = "0"
+        if nes(cfg["killdate"]):
+            o = f'{int(datetime.fromisoformat(cfg["killdate"]).timestamp())}'
         d = templates[t].substitute(
             event=e,
             paths=r,
             checks=c,
+            killdate=o,
             period=str(p),
             key=go_bytes(k),
             guard=go_bytes(g),
@@ -250,7 +269,7 @@ class Flurry(object):
             #           control how they /exactly/ handle injection so we don't
             #           want to leave systems crashing.
         )
-        del k, e, p, g, t
+        del k, e, p, g, t, o
         p = join(base, "flurry.go")
         with open(p, "w") as f:
             f.write(d)

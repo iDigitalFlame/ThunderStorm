@@ -125,7 +125,7 @@ func (l *listenerManager) UnmarshalJSON(b []byte) error {
 			err = xerr.New(`json: listener "` + k + `" does not have a valid profile`)
 			break
 		}
-		var p c2.Profile
+		var p cfg.Profile
 		if p, err = c.Build(); err != nil {
 			err = xerr.Wrap(`json: listener "`+k+`" profile build`, err)
 			break
@@ -195,6 +195,7 @@ func (l *listenerManager) httpListenerDelete(_ context.Context, w http.ResponseW
 	}
 	if err := v.l.Close(); err != nil {
 		writeError(http.StatusInternalServerError, "listener close failed: "+err.Error(), w, r)
+		l.log.Warning(`[cirrus/http] httpListenerDelete(): Error closing Listener "%s": %s!`, i, err.Error())
 		return
 	}
 	v.l, v.p = nil, nil
@@ -237,12 +238,13 @@ func (l *listenerManager) httpListenerPut(_ context.Context, w http.ResponseWrit
 	}
 	x, err := p.Build()
 	if err != nil {
-		writeError(http.StatusInternalServerError, "profile build failed: "+err.Error(), w, r)
+		writeError(http.StatusBadRequest, "profile build failed: "+err.Error(), w, r)
 		return
 	}
 	d, err := l.s.Listen(i, b, x)
 	if err != nil {
 		writeError(http.StatusInternalServerError, "listener create failed: "+err.Error(), w, r)
+		l.log.Warning(`[cirrus/http] httpListenerPut(): Error creating Listener "%s": %s!`, i, err.Error())
 		return
 	}
 	k := &listener{l: d, p: p, n: v, a: b, s: z}
@@ -275,7 +277,7 @@ func (l *listenerManager) httpListenerPost(_ context.Context, w http.ResponseWri
 		return
 	}
 	var (
-		x c2.Profile
+		x cfg.Profile
 		h bool
 	)
 	// See if script is even set, since empty is OK
@@ -297,12 +299,13 @@ func (l *listenerManager) httpListenerPost(_ context.Context, w http.ResponseWri
 	}
 	if len(p) > 0 {
 		if x, err = p.Build(); err != nil {
-			writeError(http.StatusInternalServerError, "profile build failed: "+err.Error(), w, r)
+			writeError(http.StatusBadRequest, "profile build failed: "+err.Error(), w, r)
 			return
 		}
 	}
 	if err = k.l.Replace(b, x); err != nil {
 		writeError(http.StatusInternalServerError, "listener update failed: "+err.Error(), w, r)
+		l.log.Warning(`[cirrus/http] httpListenerPost(): Error updating Listener "%s": %s!`, i, err.Error())
 		return
 	}
 	if len(p) > 0 {

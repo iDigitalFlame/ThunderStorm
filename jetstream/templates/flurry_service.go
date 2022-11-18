@@ -46,7 +46,7 @@ func main() {
 		return
 	}
 	flurry.Daemon(
-		time.Second*time.Duration($period), `$service`, $critical,
+		time.Second*time.Duration($period), `$service`, $critical, $killdate,
 		man.LinkerFromName(`$event`), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 	)
 }
@@ -58,7 +58,7 @@ func secondary() {
 		return
 	}
 	flurry.Loop(
-		time.Second*time.Duration($period), $critical,
+		time.Second*time.Duration($period), $critical, $killdate,
 		man.LinkerFromName(`$event`), crypto.UnwrapString(k[:], g[:]), x[:], z[:],
 	)
 }

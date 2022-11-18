@@ -270,16 +270,6 @@ def _sign_range(d, exp):
     return str((t - timedelta(days=randint(0, exp))).timestamp())
 
 
-def _sed(path, old, new):
-    with open(path, "r") as f:
-        d = f.read()
-    with open(path, "w") as f:
-        for x in range(0, len(old)):
-            d = d.replace(old[x], new[x])
-        f.write(d)
-    del d
-
-
 def go_bytes(v, limit=20):
     if len(v) == 0:
         return ""
@@ -379,7 +369,7 @@ def tiny_root(old, new, timeout=5):
             'return fmt.Sprintf("invalid pseudo-header %q", string(e))',
             'return fmt.Sprintf("duplicate pseudo-header %q", string(e))',
             'return fmt.Sprintf("invalid header field name %q", string(e))',
-            'return fmt.Sprintf("invalid header field value %q", string(e))',
+            'return fmt.Sprintf("invalid header field value for %q", string(e))',
             'http2errMixPseudoHeaderTypes = errors.New("mix of request and response pseudo headers")',
             'http2errPseudoAfterRegular   = errors.New("pseudo header field after regular")',
             'return fmt.Sprintf("UNKNOWN_FRAME_TYPE_%d", uint8(t))',
@@ -611,6 +601,18 @@ def tiny_root(old, new, timeout=5):
         ],
         ["switch recover().(type) {", ""],
     )
+    _sed(
+        join(new, "src", "net", "conf.go"),
+        [
+            'println("go package net: confVal.netCgo =", confVal.netCgo, " netGo =", confVal.netGo)',
+            'println("go package net: built with netgo build tag; using Go\'s DNS resolver")',
+            'println("go package net: GODEBUG setting forcing use of Go\'s resolver")',
+            'println("go package net: using cgo DNS resolver")',
+            'println("go package net: dynamic selection of DNS resolver")',
+            'print("go package net: hostLookupOrder(", hostname, ") = ", ret.String(), "\\n")',
+        ],
+        ["", "", "", "", "", ""],
+    )
     # NOTE(dij): I have this commented out since I don't necessarily want to break
     #            support for long paths and cause os.fixPath to allocate.
     #            Basically the "runtime.initLongPathSupport" function causes the
@@ -633,9 +635,32 @@ def tiny_root(old, new, timeout=5):
     for i in glob(join(new, "src", "time", "zoneinfo_*.go"), recursive=False):
         if not isfile(i):
             continue
-        _sed(i, ['runtime.GOROOT() + "/lib/time/zoneinfo.zip",'], ["runtime.GOROOT(),"])
+        _sed(
+            i,
+            [
+                'runtime.GOROOT() + "/lib/time/zoneinfo.zip",',
+                'return goroot + "/lib/time/zoneinfo.zip", true',
+            ],
+            [
+                "runtime.GOROOT()",
+                'return "zone", true',
+            ],
+            True,
+        )
     with open(join(new, "go.mod"), "w") as f:
         f.write("")
+
+
+def _sed(path, old, new, ign=False):
+    with open(path, "r") as f:
+        d = f.read()
+    with open(path, "w") as f:
+        for x in range(0, len(old)):
+            if not ign and old[x] not in d:
+                raise ValueError(f"{path}: missing {old[x]}")
+            d = d.replace(old[x], new[x])
+        f.write(d)
+    del d
 
 
 def random_chars(size, lower=False):

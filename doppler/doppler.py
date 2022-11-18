@@ -15,20 +15,23 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-from os import getenv
 from base64 import b64encode
+from os import getenv, getcwd
 from json import loads, dumps
 from queue import Queue, Empty
 from traceback import format_exc
+from include.cli.shell import Shell
 from threading import Thread, Event
 from argparse import ArgumentParser
+from include.cli.const import MENU_BOLT
 from include.config import Config, Utils
 from datetime import datetime, timedelta
 from sys import exit, stderr, stdin, argv
 from include.cirrus import Api, CirrusError
-from os.path import expanduser, expandvars, basename
-from include.cli import Shell, Exp, print_job_result, MENU_BOLT
+from include.cli.helpers import Exp, print_job_result
 from include.util import nes, size_str, time_str, ip_str, is_true
+from os.path import expanduser, expandvars, basename, join, isfile
+
 
 _HELP_TEXT = """ Doppler: ThunderStorm C2 Console Interface
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
@@ -44,32 +47,44 @@ Required Arguments:
 Optional Arguments:
   -p          <password>         Password to use with the specified Cirrus server.
                                   Can be set via the "DOPPLER_PW" environment variable.
+  -f          <file>             Specify a config file that can supply arguments to
+  --config                        Doppler without using environment variables or
+                                  command line arguments. This file defaults to
+                                  "doppler.json" in the current directly, but can
+                                  also be set using the "DOPPLER_CONFIG" environment
+                                  variable. Values set in the config can be overridden
+                                  with environment variables or command arguments.
 
- Shell Option Arguments
+ Shell Helper Arguments:
   -N                             Disable automatic command handeling. If specified,
   --no-empty                      all commands must be ran using a prefix (run|shell|
                                   pwsh). Can be set via the "DOPPLER_NO_EMPTY"
-                                  environment variable.
+                                  environment variable or the supplied config file.
   -P          <pile_name>        Specify a default pipe name to be used for spawn/migrate
   --pipe                          commands. Can be set via the "DOPPLER_PIPE" environment
-                                  variable.
-  -z          <file|'-'>         Specify a file (or '-' for stdin) that contains
-  --input                         newline seperated commands to be ran as input to
-                                  the shell before entering the prompt. Running
-                                  commands and history are not allowed.
-  -i          <Bolt ID>          Directly enter into a shell with the specified
-  --interact                      Bolt ID.
+                                  variable or the supplied config file.
   -A          <asm_file>         Specify a default ASM file that can be used as
   --asm                           the default file source for spawn/migrate commands
                                   when no file is specified. If supplied, this will
                                   also default empty methods to "asm". Can be set
-                                  via the "DOPPLER_ASM" environment variable.
+                                  via the "DOPPLER_ASM" environment variable or
+                                  the supplied config file.
   -D          <dll_file>         Specify a default DLL file that can be used as
   --dll                           the default file source for spawn/migrate commands
                                   when no file is specified. If supplied, this will
                                   also default empty methods to "dll" if no ASM file
                                   is specified. Can be set via the "DOPPLER_DLL"
-                                  environment variable.
+                                  environment variable or the supplied config file.
+
+ Shell Behavior Arguments:
+  -z          <file|'-'>         Specify a file (or '-' for stdin) that contains
+  --input                         newline seperated commands to be ran as input to
+                                  the shell before entering the prompt. Running
+                                  commands and history are not allowed. When using
+                                  stdin, this will not enter the shell and will
+                                  instead exit.
+  -i          <Bolt ID>          Directly enter into a shell with the specified
+  --interact                      Bolt ID.
 
  Execution Option Arguments:
   -c          <command>          Run a single shell command and exit. This command
@@ -80,7 +95,14 @@ Optional Arguments:
                                   be specified.
   -k          <command>          Specify a comand (or set of commands seperated by
   --oneline                       a semicolon ";") that are executed in the context
-                                  of the Doppler shell.
+                                  of the Doppler shell. Once the command(s) complete
+                                  the shell will exit.
+  -K          <command>          The argument acts just the like "-k"/"--online"
+  --online-ne                     argument, but allows the shell to continue in the
+                                  position that it was placed in after running the
+                                  specified command(s). If this is used with the
+                                  "-k"/"--online" argument, this one will take
+                                  precedence.
 
  List Operations
   -b                             List the current Bolts connected to the supplied
@@ -108,13 +130,20 @@ _UPDATE_NAMES = [
 ]
 
 
+def _trunc(n, s):
+    if len(s) < n:
+        return s
+    return s[:n] + "~"
+
+
 def _print_session_info(s):
     print(
         f'{"ID:":<12}{s["id"]}\n{"="*40}\n{"Hostname:":<12}{s["device"]["hostname"]}\n'
         f'{"User:":<12}{("*" if s["device"]["elevated"] else "") + s["device"]["user"]}\n'
         f'{"Domain:":<12}{"Yes" if s["device"]["domain"] else "No"}\n'
         f'{"OS:":<12}{s["device"]["os"]}\n{"Version:":<12}{s["device"]["version"]}\n{"Arch:":<12}'
-        f'{s["device"]["arch"]}\n{"PID:":<12}{s["device"]["pid"]}\n{"PPID:":<12}{s["device"]["ppid"]}\nNetwork:'
+        f'{s["device"]["arch"]}\n{"PID:":<12}{s["device"]["pid"]}\n{"PPID:":<12}'
+        f'{s["device"]["ppid"]}\n{"Abilities:":<12}{s["device"]["capabilities"]}\nNetwork:'
     )
     for i in s["device"]["network"]:
         print(f'  {i["name"]+":":6} {", ".join(i["ip"])}')
@@ -128,6 +157,25 @@ def _print_session_info(s):
         f'{"Last:":<12}{time_str(t, s["last"], True)}\n{"Created:":<12}'
         f'{time_str(t, s["created"], True)}\n{"From:":<12}{s["via"]}'
     )
+    k = s.get("kill_date")
+    if nes(k):
+        print(f'{"Kill Date:":<12}{k}')
+    del k
+    w = s.get("work_hours")
+    if isinstance(w, dict) and len(w) > 0:
+        print("Work Hours:")
+        d = w.get("days")
+        if nes(d):
+            print(f'  {"Days":<12}{d}')
+        del d
+        k, j = w.get("start_hour"), w.get("start_min")
+        if isinstance(k, int) and isinstance(j, int):
+            print(f'  {"Start:":<12}{k:02}:{j:02}')
+        del k, j
+        f, g = w.get("end_hour"), w.get("end_min")
+        if isinstance(f, int) and isinstance(g, int):
+            print(f'  {"End:":<12}{f:02}:{g:02}')
+        del f, g
     if "connector" in s:
         print(f'{"Connector:":<12}{s["connector"]}')
     print(f'{"Hardware:":<12}{h}')
@@ -200,7 +248,7 @@ class Doppler(Api):
                 )
             )
         if a in _UPDATE_NAMES:
-            return self.events.put(_Event(action=a, id=n))
+            self.events.put(_Event(action=a, id=n))
         del a, n, z, v
 
     def _show_jobs(self, id, prefix=False):
@@ -324,41 +372,14 @@ class Doppler(Api):
         )
         del v, a
 
-    def show_scripts(self, name=None):
-        if nes(name):
-            n = {name: super(__class__, self).script(name)}
-        else:
-            n = super(__class__, self).scripts()
-        if not isinstance(n, dict) or len(n) == 0:
-            return
-        print(
-            f'{"Name":16}{"Size":>9} {"History":7} StopOnError ReturnOutput\n{"="*60}'
-        )
-        for k, v in n.items():
-            i = k
-            if "marks" in v and "rollbacks" in v and "commands" in v:
-                if len(v["marks"]) != v["rollbacks"]:
-                    i = k + " !"
-                elif len(v["commands"]) != v["rollbacks"]:
-                    i = k + " !"
-                elif len(v["marks"]) != len(v["commands"]):
-                    i = k + " !"
-            print(
-                f'{i:16}{v["size"]:>9} {v["rollbacks"]:>7} '
-                f'{"X" if v["stop_on_error"] else " ":>11} '
-                f'{"X" if v["return_output"] else " ":>12}'
-            )
-            del i
-        del n
-
-    def show_script_info(self, name):
-        if not nes(name):
+    def show_script_info(self, script):
+        if not nes(script):
             raise ValueError('"name" must be a non-empty string')
-        n = super(__class__, self).script(name)
+        n = super(__class__, self).script(script)
         if not isinstance(n, dict) or len(n) == 0:
             return
         print(
-            f'{name} - {size_str(n["size"])}\n{"="*35}\n'
+            f'{script} - {size_str(n["size"])}\n{"="*35}\n'
             f'Channel:       {n["channel"]}\n'
             f'Return Output: {n["return_output"]}\n'
             f'Stop On Error: {n["stop_on_error"]}\n'
@@ -372,20 +393,6 @@ class Doppler(Api):
                 print(f"{x:3}: {c[x]}")
         del c, n
 
-    def show_script_history(self, name):
-        if not nes(name):
-            raise ValueError('"name" must be a non-empty string')
-        n = super(__class__, self).script(name)
-        if not isinstance(n, dict) or len(n) == 0:
-            return
-        if "commands" not in n:
-            return
-        c = n["commands"]
-        print(f'#    Command\n{"="*35}')
-        for x in range(0, len(c)):
-            print(f"{x:3}: {c[x]}")
-        del c, n
-
     def show_profiles(self, name=None):
         if nes(name):
             n = {name: super(__class__, self).profile(name)}
@@ -396,6 +403,31 @@ class Doppler(Api):
         print(f'{"Name":16}Details\n{"="*35}')
         for k, v in n.items():
             print(f"{k:16}{v}")
+        del n
+
+    def show_scripts(self, script=None):
+        if nes(script):
+            n = {script: super(__class__, self).script(script)}
+        else:
+            n = super(__class__, self).scripts()
+        if not isinstance(n, dict) or len(n) == 0:
+            return
+        print(f'{"Name":16}{"Size":9} {"History":7} StopOnError ReturnOutput\n{"="*60}')
+        for k, v in n.items():
+            i = k
+            if "marks" in v and "rollbacks" in v and "commands" in v:
+                if len(v["marks"]) != v["rollbacks"]:
+                    i = k + " !"
+                elif len(v["commands"]) != v["rollbacks"]:
+                    i = k + " !"
+                elif len(v["marks"]) != len(v["commands"]):
+                    i = k + " !"
+            print(
+                f'{i:16}{v["size"] if v["loaded"] else "n/a":<9} {v["rollbacks"]:>7} '
+                f'{"X" if v["stop_on_error"] else " ":>11} '
+                f'{"X" if v["return_output"] else " ":>12}'
+            )
+            del i
         del n
 
     def show_listeners(self, name=None):
@@ -416,6 +448,20 @@ class Doppler(Api):
                 print(f'{v["listener"]["address"]:24}', end="")
             print(f'{v["script"]:16}{v["listener"]["count"]}')
         del n
+
+    def show_script_history(self, name):
+        if not nes(name):
+            raise ValueError('"name" must be a non-empty string')
+        n = super(__class__, self).script(name)
+        if not isinstance(n, dict) or len(n) == 0:
+            return
+        if "commands" not in n:
+            return
+        c = n["commands"]
+        print(f'#    Command\n{"="*35}')
+        for x in range(0, len(c)):
+            print(f"{x:3}: {c[x]}")
+        del c, n
 
     def show_result(self, id, job, out=None):
         r = super(__class__, self).job_result(id, job)
@@ -497,7 +543,7 @@ class Doppler(Api):
             print(f'{"ID":9}', end="")
         if advanced:
             print(
-                f'{"Hostname":20}{"IP":17}{"OS":27}{"User":32}{"From":20}{"PID":9}{" Last":8}\n{"="*(140+m)}'
+                f'{"Hostname":20}{"IP":17}{"OS":26}{"User":32}{"From":20}{"PID":9}{" Last":8}\n{"="*(142+m)}'
             )
         else:
             print(
@@ -508,6 +554,8 @@ class Doppler(Api):
             if advanced:
                 v = s["via"].split(":")
                 if "connector" in s and len(v) > 0:
+                    if len(v[0]) > 15:
+                        v[0] = "<IPv6>"
                     if "/" in s["connector"]:
                         v = s["connector"].split("/")[0] + "|" + v[0]
                     else:
@@ -520,8 +568,6 @@ class Doppler(Api):
                         o = s["device"]["version"]
                 else:
                     o = s["device"]["version"]
-                if len(o) > 25:
-                    o = o[:25] + "~"
                 if hw:
                     print(f'{s["device"]["id"][:16]+ s["id"]:25}', end="")
                 else:
@@ -530,20 +576,21 @@ class Doppler(Api):
                 if s["device"]["elevated"]:
                     u = "*"
                 u = u + s["device"]["user"]
-                if len(u) > 30:
-                    u = u[:30] + "~"
                 if s["device"]["domain"]:
                     u = u + "@"
                 h = s["device"]["hostname"]
                 if len(h) > 19 and "." in h:
                     h = h.split(".")[0]
-                if len(h) > 19:
-                    h = h[:19] + "~"
+                c = " "
+                if s["channel"]:
+                    c = "C"
+                elif "work_hours" in s and len(s["work_hours"]) > 0:
+                    c = "W"
                 print(
-                    f"{h:20}{ip_str(s):17}{o:27}{u:32}{v:20}"
-                    f'{s["device"]["pid"]:<9}{"C" if s["channel"] else " "}{time_str(t, s["last"])}'
+                    f"{_trunc(18, h):20}{ip_str(s):17}{_trunc(24, o):26}{_trunc(30, u):32}{v:20}"
+                    f'{s["device"]["pid"]:<9}{c}{time_str(t, s["last"])}'
                 )
-                del v, o, u, h
+                del v, o, u, h, c
                 continue
             if hw:
                 print(f'{s["device"]["id"][:16]+ s["id"]:25}', end="")
@@ -553,20 +600,21 @@ class Doppler(Api):
             if s["device"]["elevated"]:
                 u = "*"
             u = u + s["device"]["user"]
-            if len(u) > 30:
-                u = u[:30] + "~"
             if s["device"]["domain"]:
                 u = u + "@"
             h = s["device"]["hostname"]
             if len(h) > 19 and "." in h:
                 h = h.split(".")[0]
-            if len(h) > 19:
-                h = h[:19] + "~"
+            c = " "
+            if s["channel"]:
+                c = "C"
+            elif "work_hours" in s and len(s["work_hours"]) > 0:
+                c = "W"
             print(
-                f'{h:20}{ip_str(s):17}{s["device"]["os"]:10}{u:32}{s["device"]["pid"]:<9}'
-                f'{"C" if s["channel"] else " "}{time_str(t, s["last"])}'
+                f'{_trunc(19, h):20}{ip_str(s):17}{s["device"]["os"]:10}{_trunc(31, u):32}{s["device"]["pid"]:<9}'
+                f'{c}{time_str(t, s["last"])}'
             )
-            del u, h
+            del u, h, c
         del t, e
 
     def session_proxy_delete(self, id, name):
@@ -593,8 +641,15 @@ class Doppler(Api):
     def task_touch(self, id, path):
         self._watch(id, super(__class__, self).task_touch(id, path), f"touch {path}")
 
-    def task_script(self, id, name):
-        self._watch(id, super(__class__, self).task_script(id, name), f"script {name}")
+    def task_evade(self, id, action):
+        self._watch(
+            id, super(__class__, self).task_evade(id, action), f"evade {action}"
+        )
+
+    def task_script(self, id, script):
+        self._watch(
+            id, super(__class__, self).task_script(id, script), f"script {script}"
+        )
 
     def task_copy(self, id, src, dest):
         self._watch(
@@ -606,21 +661,23 @@ class Doppler(Api):
             id, super(__class__, self).task_move(id, src, dest), f"move {src} {dest}"
         )
 
+    def task_wallpaper(self, id, data):
+        self._watch(
+            id,
+            super(__class__, self).task_wallpaper(id, data),
+            "wallpaper",
+        )
+
     def task_profile(self, id, profile):
         self._watch(
             id, super(__class__, self).task_profile(id, profile), f"profile {profile}"
         )
 
-    def task_pull(self, id, url, dest, agent):
-        self._watch(
-            id, super(__class__, self).task_pull(id, url, dest, agent), f"pull {url}"
-        )
-
-    def task_troll(self, id, action, arg1=None):
+    def task_upload(self, id, data, dest):
         self._watch(
             id,
-            super(__class__, self).task_troll(id, action, arg1),
-            f'troll {action} {str(arg1).lower() if arg1 is not None else "true"}',
+            super(__class__, self).task_upload(id, data, dest),
+            f"upload to {dest}",
         )
 
     def task_delete(self, id, path, force=False):
@@ -628,18 +685,11 @@ class Doppler(Api):
             id, super(__class__, self).task_delete(id, path, force), f"delete {path}"
         )
 
-    def task_kill(self, id, pid=None, proc=None):
+    def task_kill(self, id, pid=None, pname=None):
         self._watch(
             id,
-            super(__class__, self).task_kill(id, pid, proc),
-            f"kill {str(pid) if not nes(proc) else proc}",
-        )
-
-    def task_wallpaper(self, id, file, raw=None):
-        self._watch(
-            id,
-            super(__class__, self).task_wallpaper(id, file, raw),
-            f"wallpaper {file}",
+            super(__class__, self).task_kill(id, pid, pname),
+            f"kill {str(pid) if not nes(pname) else pname}",
         )
 
     def task_download(self, id, target, dest=None):
@@ -650,48 +700,110 @@ class Doppler(Api):
             dest,
         )
 
-    def task_login(self, id, user, domain="", pw=""):
+    def task_pull(self, id, url, dest, agent=None):
         self._watch(
-            id,
-            super(__class__, self).task_login(id, user, domain, pw),
-            f'login_user {user}{"@"+domain if nes(domain) else ""}',
+            id, super(__class__, self).task_pull(id, url, dest, agent), f"pull {url}"
         )
 
-    def task_upload(self, id, target, dest, raw=None):
-        self._watch(
-            id,
-            super(__class__, self).task_upload(id, target, dest, raw),
-            f'upload{" "+target if nes(target) else ""}',
-        )
-
-    def task_system(self, id, cmd, out=None, filter=None):
+    def task_system(self, id, cmd, filter=None, out=None):
         self._watch(id, super(__class__, self).task_system(id, cmd, filter), cmd, out)
 
-    def task_assembly(self, id, file, raw=None, show=False, detach=False, filter=None):
+    def task_workhours(self, id, days="", start="", end=""):
         self._watch(
             id,
-            super(__class__, self).task_assembly(id, file, raw, show, detach, filter),
-            f"asm {file}",
+            super(__class__, self).task_workhours(id, days, start, end),
+            f'workhours {days if nes(days) else "SMTWRFS"} '
+            f'{start if nes(start) else "--:--"} - {end if end else "--:--"}',
         )
 
-    def task_pull_exec(
-        self, id, url, agent=None, show=False, detach=False, filter=None
-    ):
+    def task_troll(self, id, action, enable=False, seconds=None):
         self._watch(
             id,
-            super(__class__, self).task_pull_exec(id, url, agent, show, detach, filter),
-            f"pull_ex {url}",
+            super(__class__, self).task_troll(id, action, enable, seconds),
+            f'troll {action} {str(enable).lower() if enable is not None else "true"}',
+        )
+
+    def task_check(self, id, dll, function="", data=None, raw=False):
+        self._watch(
+            id,
+            super(__class__, self).task_check(id, dll, function, data, raw),
+            f"check {dll}{f' {function}' if nes(function) else ''}",
+        )
+
+    def task_patch(self, id, dll, function="", data=None, raw=False):
+        self._watch(
+            id,
+            super(__class__, self).task_patch(id, dll, function, data, raw),
+            f"patch {dll}{f' {function}' if nes(function) else ''}",
+        )
+
+    def task_login(self, id, user, domain="", pw="", interactive=False):
+        self._watch(
+            id,
+            super(__class__, self).task_login(id, user, domain, pw, interactive),
+            f'login_user {"interactive" if interactive else "network"} {user}'
+            f'{"@"+domain if nes(domain) else ""}',
+        )
+
+    def task_funcmap(self, id, action, function="", data=None, raw=False):
+        self._watch(
+            id,
+            super(__class__, self).task_funcmap(id, action, function, data, raw),
+            f"funcmap {action}{f' {function}' if nes(function) else ''}",
         )
 
     def task_dll(
-        self, id, file, raw=None, reflect=True, show=False, detach=False, filter=None
+        self,
+        id,
+        data,
+        reflect=True,
+        show=False,
+        detach=False,
+        filter=None,
+        entry=None,
     ):
         self._watch(
             id,
             super(__class__, self).task_dll(
-                id, file, raw, reflect, show, detach, filter
+                id, data, reflect, show, detach, filter, entry
             ),
-            f"dll {file}",
+            "dll",
+        )
+
+    def task_wts(
+        self,
+        id,
+        action,
+        session=None,
+        title="",
+        text="",
+        flags=None,
+        seconds=None,
+        wait=False,
+    ):
+        self._watch(
+            id,
+            super(__class__, self).task_wts(
+                id, action, session, title, text, flags, seconds, wait
+            ),
+            f"wts {action} {session if nes(session) else 'current'}",
+        )
+
+    def task_power(
+        self,
+        id,
+        action,
+        message="",
+        force=False,
+        seconds=None,
+        reason=None,
+    ):
+        self._watch(
+            id,
+            super(__class__, self).task_power(
+                id, action, message, force, seconds, reason
+            ),
+            f"power {action}",
         )
 
     def task_spawn(
@@ -715,40 +827,73 @@ class Doppler(Api):
     def task_zombie(
         self,
         id,
-        file,
+        data,
         fake_args,
-        raw=None,
         show=False,
         detach=False,
         filter=None,
         user="",
         domain="",
         pw="",
+        entry=None,
     ):
         self._watch(
             id,
             super(__class__, self).task_zombie(
-                id, file, fake_args, raw, show, detach, filter, user, domain, pw
+                id, data, fake_args, show, detach, filter, user, domain, pw, entry
             ),
-            f"zombie {file}",
+            "zombie",
+        )
+
+    def task_netcat(
+        self,
+        id,
+        host,
+        proto,
+        seconds=None,
+        data=None,
+        read=False,
+        dest=None,
+    ):
+        self._watch(
+            id,
+            super(__class__, self).task_netcat(id, host, proto, seconds, data, read),
+            f"netcat {host}/{proto}",
+            dest,
         )
 
     def task_window(
         self,
         id,
         action,
-        handle=0,
-        arg1=None,
-        arg2=None,
-        arg3=None,
-        arg4=None,
+        handle=None,
+        state=None,
+        opacity=None,
+        pos_x=None,
+        pos_y=None,
+        width=None,
+        height=None,
+        title="",
+        text="",
+        flags=None,
     ):
         self._watch(
             id,
             super(__class__, self).task_window(
-                id, action, handle, arg1, arg2, arg3, arg4
+                id,
+                action,
+                handle,
+                state,
+                opacity,
+                pos_x,
+                pos_y,
+                width,
+                height,
+                title,
+                text,
+                flags,
             ),
-            f'window {action}{" " + hex(handle) if isinstance(handle, int) else ""}',
+            f'window {action}{" " + hex(handle) if isinstance(handle, int) else (f" {handle}" if nes(handle) else "")}',
         )
 
     def task_execute(
@@ -808,6 +953,36 @@ class Doppler(Api):
             f"regedit {action} {key}{f':{value}' if nes(value) else ''}",
         )
 
+    def task_assembly(
+        self,
+        id,
+        data,
+        show=False,
+        detach=False,
+        filter=None,
+        entry=None,
+    ):
+        self._watch(
+            id,
+            super(__class__, self).task_assembly(id, data, show, detach, filter, entry),
+            "asm",
+        )
+
+    def task_pull_exec(
+        self,
+        id,
+        url,
+        agent=None,
+        show=False,
+        detach=False,
+        filter=None,
+    ):
+        self._watch(
+            id,
+            super(__class__, self).task_pull_exec(id, url, agent, show, detach, filter),
+            f"pull_ex {url}",
+        )
+
 
 class _Event(object):
     __slots__ = ("id", "msg", "job", "action")
@@ -846,12 +1021,12 @@ class _Thread(Thread):
                 del n
             except Exception as err:
                 print(f"Error during event runtime: {err}!")
-                print(format_exc(4))
+                print(format_exc(3))
 
     def close(self):
-        if self._running.set():
+        if self._running.is_set():
             return
-        # print("[-] Shutting down..")
+        print("[-] Shutting down..")
         self._running.set()
         self._api.events.put(None)
 
@@ -865,70 +1040,134 @@ class _Parser(ArgumentParser):
             allow_abbrev=True,
             fromfile_prefix_chars=None,
         )
-        self.add = self.add_argument
+        self.add_argument(
+            "-f", "--config", dest="config", type=str, default=getenv("DOPPLER_CONFIG")
+        )
+        self._args = dict()
         self._setup()
 
-    @staticmethod
-    def _verify(a):
-        if not nes(a.cirrus):
-            raise ValueError("empty/missing Cirrus server")
-        if isinstance(a.extra, list):
-            a.extra = " ".join(a.extra)
-        if nes(a.timeout):
-            a.timeout = Utils.str_to_dur(a.timeout) / 1000000000
-        if nes(a.input):
-            p = a.input.strip()
-            if p == "-" and not stdin.isatty():
-                if hasattr(stdin, "buffer"):
-                    a.input = stdin.buffer.read().decode("UTF-8").split("\n")
-                else:
-                    a.input = stdin.read().split("\n")
-                stdin.close()
-            else:
-                with open(expandvars(expanduser(p))) as f:
-                    a.input = f.read().split("\n")
-            del p
-
     def _setup(self):
-        self.add("-a", "--api", type=str, dest="cirrus", default=getenv("DOPPLER_HOST"))
-        self.add("-p", "--password", type=str, dest="pw", default=getenv("DOPPLER_PW"))
-        # List Arguments
-        self.add("-j", "--jobs", dest="jobs", action="store_true")
-        self.add("-s", "--scripts", dest="scripts", action="store_true")
-        self.add("-n", "--profiles", dest="profiles", action="store_true")
-        self.add("-l", "--listeners", dest="listeners", action="store_true")
-        self.add("-b", "--bolts", dest="bolts", action="store_true")
-        self.add("-B", "--bolts-adv", dest="bolts_adv", action="store_true")
-        # Shell Helper Arguments
+        self.add("cirrus", "-a", "--api", name="cirrus", env="DOPPLER_HOST")
         self.add(
-            "-A", "--asm", type=str, dest="bolt_asm", default=getenv("DOPPLER_ASM")
+            "cirrus_password",
+            "-p",
+            "--password",
+            name="cirrus_password",
+            env="DOPPLER_PW",
         )
-        self.add("-D", "--dll", type=str, dest="bolt_dll", default=getenv("c"))
+        # List Arguments
+        self.add("jobs", "-j", "--jobs", bool=True)
+        self.add("scripts", "-s", "--scripts", bool=True)
+        self.add("profiles", "-n", "--profiles", bool=True)
+        self.add("listeners", "-l", "--listeners", bool=True)
+        self.add("bolts", "-b", "--bolts", bool=True)
+        self.add("bolts_adv", "-B", "--bolts-adv", bool=True)
         # Execution Arguments
-        self.add("-c", "--cmd", type=str, dest="cmd")
-        self.add("-w", "--timeout", type=str, dest="timeout")
-        # CLI Modification Arguments
-        self.add("-z", "--input", type=str, dest="input")
-        self.add("-k", "--oneline", type=str, dest="oneline")
-        self.add("-i", "--interact", dest="shell", action="store_true")
-        self.add("-P", "--pipe", type=str, dest="pipe", default=getenv("DOPPLER_PIPE"))
+        self.add("cmd", "-c", "--cmd")
+        self.add("timeout", "-w", "--timeout")
+        # CLI Default Arguments
+        self.add("asm", "-A", "--asm", name="default_asm", env="DOPPLER_ASM")
+        self.add("dll", "-D", "--dll", name="default_dll", env="DOPPLER_DLL")
+        self.add("pipe", "-P", "--pipe", name="default_pipe", env="DOPPLER_PIPE")
         self.add(
+            "no_empty",
             "-N",
             "--no-empty",
-            dest="no_empty",
-            action="store_true",
-            default=is_true(getenv("DOPPLER_NO_EMPTY")),
+            bool=True,
+            name="default_exec",
+            env="DOPPLER_NO_EMPTY",
+            type=lambda x: not x,  # Flip the config value, to make it less confusing.
         )
+        # CLI Modification Arguments
+        self.add("input", "-z", "--input")
+        self.add("oneline", "-k", "--oneline")
+        self.add("oneline_no_exit", "-K", "--oneline-ne")
+        self.add("shell", "-i", "--interact", bool=True)
         # Extra
-        self.add(nargs="*", type=str, dest="extra")
+        self.add_argument(nargs="*", type=str, dest="extra")
 
     def print_help(self, file=stderr):
         print(_HELP_TEXT.format(proc=basename(argv[0])), file=file)
 
     def parse_args(self, args=None, namespace=None):
-        r = super(__class__, self).parse_args(args, namespace)
-        _Parser._verify(r)
+        r, c = super(__class__, self).parse_args(args, namespace), None
+        if nes(r.config):
+            try:
+                with open(expandvars(expanduser(r.config))) as f:
+                    c = loads(f.read())
+            except ValueError as err:
+                raise ValueError(f'reading config "{r.config}": {err}')
+        else:
+            p = join(getcwd(), "cirrus.json")
+            if isfile(p):
+                try:
+                    with open(p) as f:
+                        c = loads(f.read())
+                except ValueError as err:
+                    raise ValueError(f'reading config "{p}": {err}')
+            del p
+        if c is not None and not isinstance(c, dict):
+            raise ValueError("invalid JSON type for config")
+        for k, v in self._args.items():
+            try:
+                w = getattr(r, k)
+                if v[2] is None and w is not None:
+                    continue
+                if v[2] is not None and v[2] == w:
+                    continue
+                del w
+            except AttributeError:
+                pass
+            x = None
+            if nes(v[1]):
+                x = getenv(v[1])
+            if x is None and nes(v[0]) and c is not None and v[0] in c:
+                x = c[v[0]]
+            if x is None:
+                continue
+            if v[2] is not None:
+                setattr(r, k, is_true(x))
+            if v[3] is not None and callable(v[3]):
+                setattr(r, k, v[3](x))
+            else:
+                setattr(r, k, x)
+            del x
+        del c
+        if not nes(r.cirrus):
+            raise ValueError("empty/missing Cirrus server address")
+        if nes(r.input):
+            p = r.input.strip()
+            if p == "-" and not stdin.isatty():
+                if hasattr(stdin, "buffer"):
+                    r.input = stdin.buffer.read().decode("UTF-8").split("\n")
+                else:
+                    r.input = stdin.read().split("\n")
+            else:
+                with open(expandvars(expanduser(p))) as f:
+                    r.input = f.read().split("\n")
+            del p
+        if isinstance(r.extra, list):
+            r.extra = " ".join(r.extra)
+        if nes(r.timeout):
+            r.timeout = Utils.str_to_dur(r.timeout) / 1000000000
+        if nes(r.oneline_no_exit):
+            r.oneline = r.oneline_no_exit
+            r.oneline_no_exit = True
         return r
+
+    def add(self, dest, *f, type=str, bool=None, default=None, name=None, env=None):
+        if bool is True:
+            self.add_argument(*f, dest=dest, action="store_true")
+        elif bool is False:
+            self.add_argument(*f, dest=dest, action="store_false")
+        else:
+            self.add_argument(*f, dest=dest, type=str, default=default)
+        if env is None and name is None:
+            return
+        if bool is not None and type == str:
+            self._args[dest] = (name, env, bool, None)
+        else:
+            self._args[dest] = (name, env, bool, type)
 
 
 def _main():
@@ -940,9 +1179,9 @@ def _main():
         exit(1)
     del p
     try:
-        d = Doppler(r.cirrus, r.pw)
+        d = Doppler(r.cirrus, r.cirrus_password)
     except (OSError, ValueError) as err:
-        print(f"Error: {str(err)}\n{format_exc(5)}!", file=stderr)
+        print(f"Error: {str(err)}!\n{format_exc(3)}", file=stderr)
         exit(1)
     try:
         if r.jobs:
@@ -955,7 +1194,7 @@ def _main():
             return d.show_listeners(r.extra)
         if r.bolts or r.bolts_adv:
             return d.show_sessions(advanced=r.bolts_adv, exp=Exp.parse(r.extra))
-        s = Shell(d, r.no_empty, r.pipe, r.bolt_asm, r.bolt_dll)
+        s = Shell(d, r)
         if nes(r.cmd):
             d.session(r.extra)
             s.set_menu(MENU_BOLT, r.extra)
@@ -968,20 +1207,26 @@ def _main():
                     continue
                 s.run_cmd(i, True, True, False, False)
             print()
+            if not stdin.isatty():
+                return
         if nes(r.oneline):
             if ";" in r.oneline:
                 for i in r.oneline.split(";"):
-                    if len(i) == 0:
+                    v = i.lstrip()
+                    if len(v) == 0:
                         continue
-                    s.run_cmd(i.lstrip(), True, True, False, False)
-                return
-            return s.run_cmd(r.oneline, True, True, False, False)
+                    s.run_cmd(v, True, True, False, False)
+                    del v
+                if not r.oneline_no_exit:
+                    return
+            if not r.oneline_no_exit:
+                return s.run_cmd(r.oneline, True, True, False, False)
         if r.shell and nes(r.extra):
             d.session(r.extra)
             s.set_menu(MENU_BOLT, r.extra)
         s.enter()
     except (OSError, ValueError, CirrusError) as err:
-        print(f"Error: {str(err)}\n{format_exc(5)}!", file=stderr)
+        print(f"Error: {str(err)}!\n{format_exc(3)}", file=stderr)
         exit(1)
     finally:
         d.close()

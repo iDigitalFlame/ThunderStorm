@@ -44,6 +44,7 @@ const (
 )
 
 type stats struct {
+	_ [0]func()
 	sync.Mutex
 	f, t *os.File
 	ch   chan struct{}
@@ -54,6 +55,7 @@ type stats struct {
 	j, s uint64
 }
 type statJobEvent struct {
+	_       [0]func()
 	Time    time.Time
 	Data    string
 	Session string
@@ -62,12 +64,14 @@ type statJobEvent struct {
 	Status  uint8
 }
 type statPacketEvent struct {
+	_       [0]func()
 	Time    time.Time
 	Session string
 	Data    string
 	ID      uint8
 }
 type statSessionEvent struct {
+	_       [0]func()
 	Time    time.Time
 	Session string
 	Addr    string

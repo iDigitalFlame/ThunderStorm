@@ -17,12 +17,26 @@
 
 from string import digits
 from base64 import b64decode
+from datetime import datetime
 from argparse import BooleanOptionalAction
 from os.path import expanduser, expandvars, isfile
 
 
 def str_lower(v):
     return str(v).lower()
+
+
+def is_date(empty=False):
+    def _check_func(v):
+        if not isinstance(v, str):
+            raise ValueError("value is not a string")
+        if not empty and len(v) == 0:
+            raise ValueError("value cannot be empty")
+        if empty:
+            return
+        datetime.fromisoformat(v)
+
+    return _check_func
 
 
 def is_int(min=None, max=None):

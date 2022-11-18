@@ -58,32 +58,45 @@ Optional Arguments:
                                   and state during startup/shutdown for Scripts,
                                   Profiles and Listeners. This defaults to "${pwd}/cirrus.json"
                                   if omitted.
-  -l <log_file>                 Path to a log file to write to. If no path is
-                                  specified or this argument is ignored, stdout will
-                                  be used instead.
-  -n <log_level [0-5]>          Specify the log level to be used when logging. By
-                                  default, or if unspecified, this will default to
-                                  Informational (2). Values 0-5 are valid, anything
-                                  else will default to Informational (2). Values are
-                                  0: Trace, 1:Debug, 2:Informational, 3:Warning,
-                                  4: Error, 5:Fatal.
+
+ Tracking/Event Arguments:
   -c <csv_output>               Specify a file path for a CSV file to capture/log
                                   all C2 events. If the file already exists, it will
                                   be appended to.
   -t <tracker>                  Specify a file path to be used for tracking updates.
                                   This file will be cleared and rewritten with
                                   statistics every minute.
+
+ Logging Arguments:
+  -l <log_file>                 Path to a log file to write to for the C2 log. If
+                                  no path is specified or this argument is ignored,
+                                  stdout will be used instead.
+  -n <log_level [0-5]>          Specify the log level to be used when logging for
+                                  the C2 log. By default, or if unspecified, this
+                                  will default ton Informational (2). Values 0-5
+                                  are valid, anything else will default to
+                                  Informational (2). Values are 0: Trace, 1:Debug,
+                                  2:Informational, 3:Warning, 4: Error, 5:Fatal.
+  -o <log_file>                 Path to a log file to write to for the CIRRUS log.
+                                  If no path is specified or this argument is ignored,
+                                  stdout will be used instead.
+  -k <log_level [0-5]>          Specify the log level to be used when logging for
+                                  the CIRRUS log. By default, or if unspecified, this
+                                  will default ton Informational (2). Values 0-5
+                                  are valid, anything else will default to
+                                  Warning (3). Values are 0: Trace, 1:Debug,
+                                  2:Informational, 3:Warning, 4: Error, 5:Fatal.
 `
 
 // Cmdline will attempt to build and run a Cirrus instance. This function
 // will block until completion.
 func Cmdline() {
 	var (
-		p, b, l, c, t, d string
-		n                bool
-		e                int
-		err              error
-		f                = flag.NewFlagSet("", flag.ContinueOnError)
+		p, b, l, c, t, d, y string
+		n                   bool
+		e, k                int
+		err                 error
+		f                   = flag.NewFlagSet("", flag.ContinueOnError)
 	)
 	f.Usage = func() {
 		os.Stdout.WriteString(usage)
@@ -95,11 +108,15 @@ func Cmdline() {
 	f.StringVar(&c, "c", "", "")
 	f.StringVar(&t, "t", "", "")
 	f.StringVar(&d, "f", "", "")
+	f.StringVar(&y, "o", "", "")
 	f.BoolVar(&n, "no-auth", false, "")
 	f.IntVar(&e, "n", int(logx.Info), "")
-
+	f.IntVar(&k, "k", int(logx.Warning), "")
 	switch err = f.Parse(os.Args[1:]); err {
 	case nil:
+		if len(b) == 0 {
+			f.Usage()
+		}
 	case flag.ErrHelp:
 		f.Usage()
 	default:
@@ -107,26 +124,33 @@ func Cmdline() {
 		os.Exit(1)
 	}
 
-	if len(b) == 0 {
-		f.Usage()
-	}
-
-	var log logx.Log
+	var logC2, logCirrus logx.Log
 	if len(l) > 0 {
-		if log, err = logx.File(l, logx.Normal(e, logx.Info), logx.Append); err != nil {
+		if logC2, err = logx.File(l, logx.Normal(e, logx.Info), logx.Append); err != nil {
 			os.Stderr.WriteString("Error " + err.Error() + "!\n")
 			os.Exit(1)
 		}
 	} else {
-		log = logx.Console(logx.Normal(e, logx.Info))
+		logC2 = logx.Console(logx.Normal(e, logx.Info))
+	}
+	if len(y) > 0 {
+		if logCirrus, err = logx.File(y, logx.Normal(k, logx.Warning), logx.Append); err != nil {
+			os.Stderr.WriteString("Error " + err.Error() + "!\n")
+			os.Exit(1)
+		}
+	} else {
+		if k == int(logx.Warning) {
+			logCirrus = logC2
+		} else {
+			logCirrus = logx.Console(logx.Normal(k, logx.Warning))
+		}
 	}
 
 	var (
 		x, q = context.WithCancel(context.Background())
-		i    = c2.NewServerContext(x, log)
-		a    = NewContext(x, i, "")
+		i    = c2.NewServerContext(x, logC2)
+		a    = NewContext(x, i, logCirrus, "")
 	)
-
 	if len(d) == 0 {
 		if d, err = os.Getwd(); err != nil {
 			d = "cirrus.json"
@@ -135,10 +159,12 @@ func Cmdline() {
 		}
 	}
 
+	logCirrus.Info(`[cirrus] Loading config from "%s"..`, d)
 	if err = a.Load(d); err != nil {
+		q()
 		a.Close()
 		i.Close()
-		os.Stderr.WriteString("Error " + err.Error() + "!\n")
+		logCirrus.Error(`[cirrus] Load from "%s" error: %s!`, d, err.Error())
 		os.Exit(1)
 	}
 
@@ -154,33 +180,49 @@ func Cmdline() {
 	if err = a.TrackStats(c, t); err != nil {
 		a.Close()
 		i.Close()
-		os.Stderr.WriteString("Error " + err.Error() + "!\n")
+		logCirrus.Error(`[cirrus] TrackStats error: %s!`, err.Error())
 		os.Exit(1)
 	}
 
-	log.Info("Cirrus started on %q!", b)
+	logCirrus.Info(`[cirrus] Started on "%s"!`, b)
 	go func() {
 		if err = a.Listen(b); err != http.ErrServerClosed && err != nil {
-			os.Stderr.WriteString("Error during start up: " + err.Error() + "!\n")
+			logCirrus.Error(`[cirrus] Error durring startup: %s!`, err.Error())
 		}
 		q()
 	}()
 
-	w := make(chan os.Signal, 1)
+	var (
+		w = make(chan os.Signal, 1)
+		v = make(chan os.Signal, 1)
+	)
 	limits.MemorySweep(x)
-	limits.Notify(w, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGSTOP)
-	select {
-	case <-w:
-	case <-x.Done():
-	case <-i.Done():
-	}
-	if len(d) > 0 {
-		if err = a.Save(d); err != nil {
-			os.Stderr.WriteString("Warning, save failed: " + err.Error() + "!\n")
+	limits.Notify(v, syscall.SIGHUP)
+	limits.Notify(w, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+loop:
+	for {
+		select {
+		case <-v:
+			logCirrus.Info(`[cirrus] SIGHUP Received, saving to %q.`, d)
+			if err = a.Save(d); err != nil {
+				logCirrus.Error(`[cirrus] Save to "%s" failed: %s!`, d, err.Error())
+			}
+		case <-w:
+			break loop
+		case <-x.Done():
+			break loop
+		case <-i.Done():
+			break loop
 		}
 	}
+	if q(); len(d) > 0 {
+		if err = a.Save(d); err != nil {
+			logCirrus.Error(`[cirrus] Save to "%s" failed: %s!`, d, err.Error())
+		}
+	}
+	logCirrus.Info("[cirrus] Shutting down!")
 	a.Close()
 	i.Close()
-	q()
 	close(w)
+	close(v)
 }
