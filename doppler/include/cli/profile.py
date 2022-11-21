@@ -93,7 +93,7 @@ class MenuProfile(object):
 
     def do_edit(self, _):
         # TODO(dij): Work on
-        print("Come back later...")
+        print("Come back later..")
 
     def do_delete(self, _):
         self.shell.cirrus.profile_remove(self.name)
@@ -156,7 +156,7 @@ class MenuProfiles(object):
         #    return print("new <name>")
         # TODO(dij): Work on
         #            Could probably pipe the args into this from cfg-builder?
-        print("Come back later...")
+        print("Come back later..")
         # self.shell.cache._profiles = None
 
     def default(self, n):
@@ -173,7 +173,7 @@ class MenuProfiles(object):
         #    return print("edit <name>")
         # TODO(dij): Work on
         #            Could probally pipe the args into this from cfg-builder?
-        print("Come back later...")
+        print("Come back later..")
 
     def do_json(self, n):
         if len(n) == 0:

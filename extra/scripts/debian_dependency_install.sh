@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-echo "Installing ThunderStorm Dependencies..."
+echo "Installing ThunderStorm Dependencies.."
 apt-get install -y python3 python3-websocket python3-requests golang gcc openssl osslsigncode upx binutils-mingw-w64 gcc-mingw-w64-x86-64-win32-runtime gcc-mingw-w64 gcc-mingw-w64-base gcc-mingw-w64-i686 mingw-w64 mingw-w64-tools
 
 echo "Done!"

@@ -15,10 +15,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-echo "Installing ThunderStorm Dependencies..."
+echo "Installing ThunderStorm Dependencies.."
 pacman -S python make cmake python-websocket-client python-requests go gcc openssl upx mingw-w64-binutils mingw-w64-crt mingw-w64-gcc mingw-w64-headers mingw-w64-winpthreads --noconfirm
 
-echo "Building osslsigncode..."
+echo "Building osslsigncode.."
 git clone https://github.com/mtrojnar/osslsigncode "/tmp/osslsigncode"
 cd "/tmp/osslsigncode"
 mkdir "build"
