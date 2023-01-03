@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2022 iDigitalFlame
+// Copyright (C) 2020 - 2023 iDigitalFlame
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -30,9 +30,11 @@ import (
 	"github.com/iDigitalFlame/xmt/util/text"
 )
 
+var version = "unknown"
+
 const usage = ` Cirrus: ThunderStorm C2/Rest Engine
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
-(c) 2019 - 2022 iDigitalFlame
+(c) 2019 - 2023 iDigitalFlame
 
 Usage: cirrus -b <bind_address:port> [-p password] [-no-auth] [-f data_file] [-l log_file] [-n log_level] [-c csv_output] [-t tracker]
 
@@ -58,6 +60,7 @@ Optional Arguments:
                                   and state during startup/shutdown for Scripts,
                                   Profiles and Listeners. This defaults to "${pwd}/cirrus.json"
                                   if omitted.
+  -V                            Print version string and exit.
 
  Tracking/Event Arguments:
   -c <csv_output>               Specify a file path for a CSV file to capture/log
@@ -93,7 +96,7 @@ Optional Arguments:
 func Cmdline() {
 	var (
 		p, b, l, c, t, d, y string
-		n                   bool
+		n, h                bool
 		e, k                int
 		err                 error
 		f                   = flag.NewFlagSet("", flag.ContinueOnError)
@@ -109,11 +112,16 @@ func Cmdline() {
 	f.StringVar(&t, "t", "", "")
 	f.StringVar(&d, "f", "", "")
 	f.StringVar(&y, "o", "", "")
+	f.BoolVar(&h, "V", false, "")
 	f.BoolVar(&n, "no-auth", false, "")
 	f.IntVar(&e, "n", int(logx.Info), "")
 	f.IntVar(&k, "k", int(logx.Warning), "")
 	switch err = f.Parse(os.Args[1:]); err {
 	case nil:
+		if h {
+			os.Stdout.WriteString("Cirrus: " + version + "\n")
+			os.Exit(0)
+		}
 		if len(b) == 0 {
 			f.Usage()
 		}

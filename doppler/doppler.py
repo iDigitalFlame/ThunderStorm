@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2020 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2023 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@ from os.path import expanduser, expandvars, basename, join, isfile
 
 _HELP_TEXT = """ Doppler: ThunderStorm C2 Console Interface
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
-(c) 2019 - 2022 iDigitalFlame
+(c) 2019 - 2023 iDigitalFlame
 
 Usage: {proc} -a <cirrus> [-p password] [-A] [-D] [-b] [-B] [-j] [-l] [-x] [-s] [-i] [-c cmd] [...]
 

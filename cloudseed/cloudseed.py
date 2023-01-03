@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2020 - 2022 iDigitalFlame
+# Copyright (C) 2020 - 2023 iDigitalFlame
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@ from include.options import LEVELS, Logger, Options, vet_list_strs, vet_str_exis
 
 _HELP_TEXT = """ CloudSeed: ThunderStorm Deployment Pipeline
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
-(c) 2019 - 2022 iDigitalFlame
+(c) 2019 - 2023 iDigitalFlame
 
 {proc} [-c config] [-g generator] [-o output] [various options] target
 
