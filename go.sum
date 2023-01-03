@@ -14,6 +14,8 @@ github.com/PurpleSec/routex v1.2.3 h1:qh3gojGoqsLAiczc1cjNsGVRXhekwbkmDF4yhjHZMQ
 github.com/PurpleSec/routex v1.2.3/go.mod h1:YeeIVHnkAVY5iuyQfPh1HPczAs/tB1tC94ktzq66b9Y=
 github.com/PurpleSec/routex v1.2.4 h1:CloWj/UNDCW/mYTfC3sCAVy3CFz0+ObiSqh1domciZE=
 github.com/PurpleSec/routex v1.2.4/go.mod h1:YeeIVHnkAVY5iuyQfPh1HPczAs/tB1tC94ktzq66b9Y=
+github.com/PurpleSec/routex v1.2.5 h1:on7pdRBHLYDbO26Rxfa6zGKrkcLsvE/krITSUQ2olFQ=
+github.com/PurpleSec/routex v1.2.5/go.mod h1:YeeIVHnkAVY5iuyQfPh1HPczAs/tB1tC94ktzq66b9Y=
 github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWmnc=
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/iDigitalFlame/xmt v0.4.0-b4 h1:YKGPJ7W69JorZoJNbSH3Zvt++YMHWKptIJJiPo3NcUY=
@@ -24,6 +26,8 @@ github.com/iDigitalFlame/xmt v0.4.1 h1:ExPrHO1p2uTOvdlgDFvYloARl9Hlw1r5d412dLv2i
 github.com/iDigitalFlame/xmt v0.4.1/go.mod h1:7j9sZ/h9rcB7hoCqHhPYGwv5sRJYlYDV30660eFGoKk=
 github.com/iDigitalFlame/xmt v0.4.4 h1:HJSoK/WSBG+5TKhxow4H8KFGM7hYlIyx3WPxYwamoRA=
 github.com/iDigitalFlame/xmt v0.4.4/go.mod h1:UZYj/8DxglFcZvsnPtaqyL9qByK91crfTtlCw3kAiu8=
+github.com/iDigitalFlame/xmt v0.4.5 h1:Ez9FyoilSKT7ocpPsCdPvEmk+BBZG6WAE/5Mck9c5iA=
+github.com/iDigitalFlame/xmt v0.4.5/go.mod h1:1D/w3Kp/VkMSa5aqwRz2Y2XoQVMGnrNIUeQKxmt7OnU=
 golang.org/x/sys v0.0.0-20220823224334-20c2bfdbfe24 h1:TyKJRhyo17yWxOMCTHKWrc5rddHORMlnZ/j57umaUd8=
 golang.org/x/sys v0.0.0-20220823224334-20c2bfdbfe24/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.0.0-20220825204002-c680a09ffe64 h1:UiNENfZ8gDvpiWw7IpOMQ27spWmThO1RwwdQVbJahJM=
@@ -36,3 +40,5 @@ golang.org/x/sys v0.0.0-20221013171732-95e765b1cc43 h1:OK7RB6t2WQX54srQQYSXMW8dF
 golang.org/x/sys v0.0.0-20221013171732-95e765b1cc43/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.2.0 h1:ljd4t30dBnAvMZaQCevtY0xLLD0A+bRZXbgLMLU1F/A=
 golang.org/x/sys v0.2.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.3.0 h1:w8ZOecv6NaNa/zC8944JTU3vz4u6Lagfk4RPQxv92NQ=
+golang.org/x/sys v0.3.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
