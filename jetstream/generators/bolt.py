@@ -179,7 +179,6 @@ class Bolt(object):
         if cfg["load"]:
             print(f'- | = {"Pipe:":20}{cfg["pipe"]}', file=file)
         print(f'- | = {"Ignore:":20}{cfg["ignore"]}', file=file)
-        # if not cfg["ignore"]:
         print(f'- | = {"Linker:":20}{cfg["linker"].title()}', file=file)
         print(f'- | = {"Guardian:":20}{cfg["guardian"]}', file=file)
         print(f'- | = {"Guard First:":20}{cfg["guard_first"]}', file=file)

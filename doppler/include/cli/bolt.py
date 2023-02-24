@@ -2995,7 +2995,6 @@ class MenuBolt(object):
             troll hc false
             troll block_input
         """
-        print(_is_help(a))
         if _is_help(a):
             return self.do_help("troll")
         if not nes(a):

@@ -759,11 +759,9 @@ def _empty(path, names, ret=None, ign=False):
     with open(path, "w") as f:
         for i in range(0, len(names)):
             x = d.find(f"func {names[i]}(")
-            # print("find", path, ":", names[i])
             if x <= 0:
                 continue
             s, e = _find_func(d, x)
-            # print("find", s, e, len(d), d[s:e])
             if s <= x:
                 continue
             if isinstance(ret, list) and len(ret) > i:
