@@ -23,10 +23,19 @@ from sys import exit, stderr
 from include.options import Rc
 from include.args import Parser
 from shutil import copy, which, rmtree
-from subprocess import run, CalledProcessError
 from include.crypt import generate_crypt, strip_binary
-from os import getcwd, makedirs, symlink, remove, environ, readlink, chmod
-from include.builder import OS, ARCH, MANIFEST, upx, sign, random_chars, tiny_root
+from os import getcwd, makedirs, symlink, remove, environ, readlink, chmod, walk
+from include.builder import (
+    OS,
+    ARCH,
+    MANIFEST,
+    upx,
+    sign,
+    execute,
+    tiny_root,
+    random_chars,
+    pull_in_deps,
+)
 from os.path import (
     join,
     isabs,
@@ -61,25 +70,6 @@ _CGO_SECONDARY_REPLACE = "\n//export {export}\nfunc {export}() {{\n"
 
 _CGO_IMPORT_STD = "package main\n\n"
 _CGO_IMPORT_REPLACE = 'package main\n\nimport "C"\n\n'
-
-
-def _get_stdout(r):
-    if r is None:
-        return ""
-    o, e = "", ""
-    if nes(r.stdout) and len(r.stdout) > 1 and r.stdout != "\n":
-        o = r.stdout.replace("\n", "; ").strip()
-        if o[-1] == ";":
-            o = o[:-1]
-    if nes(r.stderr) and len(r.stderr) > 1 and r.stderr != "\n":
-        e = r.stderr.replace("\n", "; ").strip()
-        if e[-1] == ";":
-            e = e[:-1]
-    if len(o) > 0 and len(e) > 0:
-        return o + "|" + e
-    if len(o) > 0:
-        return o
-    return e
 
 
 def _sign_check(o):
@@ -191,19 +181,6 @@ def _print_sign_config(o, file):
     print(f'- | = {"Spoof Name":20}{o.get_sign("generate_name")}', file=file)
 
 
-def _print_cmd(v, trunc, ns=False):
-    if not trunc:
-        return " ".join(v)
-    o = v.copy()
-    for x in range(0, len(v)):
-        if len(v[x]) > 200:
-            o.remove(v[x])
-            o.insert(x, "[trunc]")
-    if ns:
-        return o
-    return " ".join(o)
-
-
 class JetStream(object):
     __slots__ = ("log", "opts", "templates", "prefix")
 
@@ -242,10 +219,12 @@ class JetStream(object):
         self.log.debug(f'Saving configuration at "{config}".')
         self.opts.save(config)
 
-    def protect(self, strip, base, file):
-        if self.opts.get_option("strip") and strip:
+    def protect(self, workspace, base, file):
+        if self.opts.get_option("strip") and workspace.get("strip", True):
             self.log.debug("Sanitizing and stripping binary..")
-            strip_binary(file, self.log.debug)
+            strip_binary(
+                file, self.log.debug, workspace.get("goroot"), workspace.get("gopath")
+            )
         if self.opts.get_option("upx"):
             upx(self, file)
         if self.opts.get_sign("enabled"):
@@ -330,13 +309,23 @@ class JetStream(object):
         r = self.opts.get_option("goroot")
         if "GOROOT" not in e and not nes(r):
             raise ValueError("build: GOROOT is not in current ENV and not in build")
+        v = self.opts.get_option("gopath")
+        if "GOPATH" not in e and not nes(v):
+            raise ValueError("build: GOPATH is not in current ENV and not in build")
         if nes(r):
             r = expandvars(expanduser(r))
             e["GOROOT"] = r
         else:
             r = e["GOROOT"]
+        if nes(v):
+            v = expandvars(expanduser(v))
+            e["GOPATH"] = v
+        else:
+            v = e["GOPATH"]
         if not isdir(r):
             raise ValueError(f'build: GOROOT path "{r}" is not a directory')
+        if not isdir(v):
+            raise ValueError(f'build: GOPATH path "{v}" is not a directory')
         self.log.debug(f'Using GOROOT path "{r}".')
         if self.opts.get_option("compact"):
             c = join(base, "root")
@@ -347,9 +336,13 @@ class JetStream(object):
             del c
         del r
         self.log.debug(
-            f'GOOS="{e["GOOS"]}", GOARCH="{e["GOARCH"]}", GOROOT="{e["GOROOT"]}"..'
+            f'GOOS="{e["GOOS"]}", GOARCH="{e["GOARCH"]}", GOROOT="{e["GOROOT"]}" GOPATH="{e["GOPATH"]}"..'
         )
-        n = basename(out)
+        n, workspace["goroot"], workspace["gopath"] = (
+            basename(out),
+            e["GOROOT"],
+            e["GOPATH"],
+        )
         if self.opts.get_option("cgo"):
             self.log.debug("Starting CGO build..")
             o = self._step_build_cgo(
@@ -409,6 +402,7 @@ class JetStream(object):
         print(f'- | = {"Garble:":20}{self.opts.get_option("garble")}', file=file)
         print(f'- | = {"Compact:":20}{self.opts.get_option("compact")}', file=file)
         print(f'- | = {"GOROOT:":20}{self.opts.get_option("goroot")}', file=file)
+        print(f'- | = {"GOPATH:":20}{self.opts.get_option("gopath")}', file=file)
         print(
             f'- | = {"Build Tags:":20}{",".join(self.opts.get_option("tags"))}',
             file=file,
@@ -476,6 +470,8 @@ class JetStream(object):
                 )
             if self.opts.get_option("cgo"):
                 raise ValueError("check: can only use CGO with Windows")
+        if library and not self.opts.get_option("cgo"):
+            raise ValueError("check: cannot use -D/--library without CGO")
         if self.opts.get_option("upx") and not nes(self.opts.get_bin("upx")):
             raise ValueError('check: "upx" is enabled but "upx" binary is missing')
         if self.opts.get_option("garble") and not nes(self.opts.get_bin("garble")):
@@ -497,17 +493,32 @@ class JetStream(object):
                 )
         if gen is not None:
             gen.check(self.opts)
+        self.opts.vet(check_go=True)
         return o, a
 
     def _step_build_go(self, workspace, env, ld, extra, file, out):
         b, x = self.opts.get_bin("go"), list()
+        if not self.opts._trim and self.opts.get_option("garble"):
+            self.log.warning(
+                "Disabling Garble as is does not support this Golang version!"
+            )
+            self.opts.set("build.options.garble", False)
         if self.opts.get_option("garble"):
             b = self.opts.get_bin("garble")
             x += ["-tiny", "-seed=random"]
-            x.append("-literals")  # NOTE(dij) I think this makes the file bigger.
+        else:
+            t = which("go")
+            if t != b:
+                self.log.debug(f'Adding alternate Go binary "{b}" to $PATH..')
+                env["PATH"] = b + ":" + env["PATH"]
+            del t
         x.insert(0, b)
         del b
-        x += ["build", "-o", out, "-buildvcs=false", "-trimpath"]
+        x += ["build", "-o", out]
+        if self.opts._vcs:
+            x.append("-buildvcs=false")
+        if self.opts._trim:
+            x.append("-trimpath")
         t = self.opts.get_option("tags")
         if not isinstance(t, list):
             t = list()
@@ -557,7 +568,11 @@ class JetStream(object):
                 t.append("crypt")
             del k, v
         if len(t) > 0:
-            x += ["-tags", ",".join(t)]
+            x.append("-tags")
+            if self.opts._trim:
+                x.append(",".join(t))
+            else:
+                x.append(" ".join(t))
         del t
         x += ["-ldflags", f.strip()]
         del f
@@ -588,139 +603,8 @@ class JetStream(object):
         del x, w, g
         return out
 
-    def run(self, osv, arch, gen, library, output, no_clean, dest=None):
-        if not nes(output):
-            raise ValueError('run: "output" is not valid')
-        if isabs(output):
-            output = join(getcwd(), output)
-        if self.prefix:
-            self.log.prefix("PRE")
-        d, m = self.opts.get_build("dir"), False
-        if not nes(d):
-            d, m = mkdtemp(prefix="jetstream-build-"), True
-            self.opts.set("build.dir", d)
-            self.log.debug(f'Made temp working directory "{d}".')
-        else:
-            d = expanduser(expandvars(d))
-            if not isdir(d):
-                makedirs(d, exist_ok=True)
-            self.log.info(f'Using the non-temp working diretory "{d}".')
-        v, k = self.opts.get_build("dir_link"), None
-        if nes(v):
-            v, n = expanduser(expandvars(v)), basename(d)
-            k = join(v, n)
-            symlink(d, k)
-            self.log.info(
-                f'Linking the working directory "{d}" into the target directory "{v}" as "{n}".'
-            )
-        workspace = {
-            "os": osv,
-            "cgo": self.opts.get_option("cgo"),
-            "dir": d,
-            "out": output,
-            "tags": [],
-            "main": "",
-            "arch": arch,
-            "link": v,
-            "flags": "",
-            "export": self.opts.get_support("cgo_export"),
-            "go_args": list(),
-            "gcc_args": list(),
-            "no_clean": no_clean,
-            "library": library,
-            "main_cgo": "",
-            "work_dir": d,
-            "secondary": self.opts.get_support("cgo_secondary"),
-        }
-        del v
-        if nes(k):
-            workspace["work_dir"] = k
-        if library:
-            workspace["tags"].append("svcdll")
-        r = None
-        if self.opts.get_rc("enabled"):
-            r = Rc(self.opts.get_support("rc"))
-        self.log.debug(f"Workspace built: {dumps(workspace)}")
-        workspace["log"] = self.log
-        try:
-            with self("SP1"):
-                self.log.info("Starting the Generate step..")
-                f = self.generate(gen, d, workspace)
-                self.log.debug("Completed the Generate step!")
-            with self("SP2"):
-                self.log.info("Starting the Build step..")
-                o = self.build(d, workspace, r, f, output)
-                self.log.debug("Completed the Build step!")
-            with self("SP3"):
-                self.log.info("Starting the Protect step..")
-                self.protect(workspace.get("strip", True), d, o)
-                self.log.debug("Completed the Protect step!")
-            if nes(dest):
-                b = dirname(dest)
-                if len(b) > 0:
-                    makedirs(b, exist_ok=True)
-                del b
-                copy(o, dest)
-            else:
-                b = dirname(output)
-                if len(b) > 0:
-                    makedirs(b, exist_ok=True)
-                del b
-                copy(o, output)
-            del o, f
-        except KeyboardInterrupt as err:
-            self.log.error("Interrupted!")
-            raise err
-        except Exception as err:
-            self.log.error(f"Error during operation: {err}", err=err)
-            raise err
-        finally:
-            if self.prefix:
-                self.log.prefix(None)
-            del r, workspace
-            if nes(k):
-                self.log.debug(f'Removing link directory "{k}".')
-                remove(k)
-            if not no_clean and m:
-                self.log.debug(f'Removing working directory "{d}".')
-                rmtree(d)
-        try:
-            chmod(output, 0o755, follow_symlinks=False)
-        except OSError:
-            pass
-        self.log.info(f'Output result file "{output}".')
-        return output
-
     def _exec(self, cmd, env=None, trunc=False, out=True, wd=None, dout=True):
-        self.log.debug(f'Running "{_print_cmd(cmd, trunc)}"..')
-        e = env
-        if env is None:
-            e = environ
-        try:
-            r = run(
-                cmd,
-                env=e,
-                cwd=wd,
-                text=True,
-                check=True,
-                shell=False,
-                capture_output=out,
-            )
-        except CalledProcessError as err:
-            self.log.error(
-                f'Error running command (exit {err.returncode}) "{_print_cmd(cmd, trunc)}": {_get_stdout(err)}'
-            )
-            if trunc:
-                err.cmd = _print_cmd(cmd, trunc, True)
-            raise err
-        finally:
-            del e
-        if out and dout:
-            o = _get_stdout(r)
-            if nes(o):
-                self.log.debug(f"Command output: {o}")
-            del o
-        del r
+        return execute(self.log, cmd, env, trunc, out, wd, dout)
 
     def _step_build_cgo(self, base, workspace, env, rc, x64, lib, src, file, out):
         if workspace["os"] != "windows":
@@ -819,7 +703,6 @@ class JetStream(object):
                     "-Wa,--strip-local-absolute",
                     "-Wp,-femit-struct-debug-reduced,-O2",
                     "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",
-                    # "-Wl,-x,-s,-nostdlib"
                     src,
                     i,
                 ]
@@ -846,7 +729,6 @@ class JetStream(object):
                     "-Wa,--strip-local-absolute",
                     "-Wp,-femit-struct-debug-reduced,-O2",
                     "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",
-                    # "-Wl,-x,-s,-nostdlib"
                     src,
                 ],
                 env=env,
@@ -869,7 +751,6 @@ class JetStream(object):
                     "-Wa,--strip-local-absolute",
                     "-Wp,-femit-struct-debug-reduced,-O2",
                     "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",
-                    # "-Wl,-x,-s,-nostdlib"
                     f"{o}.o",
                     i,
                 ]
@@ -879,6 +760,128 @@ class JetStream(object):
             )
         del c, i, z
         return o
+
+    def run(self, osv, arch, gen, library, output, no_clean, dest=None, auto=False):
+        if not nes(output):
+            raise ValueError('run: "output" is not valid')
+        if isabs(output):
+            output = join(getcwd(), output)
+        if self.prefix:
+            self.log.prefix("PRE")
+        d, m = self.opts.get_build("dir"), False
+        if not nes(d):
+            d, m = mkdtemp(prefix="jetstream-build-"), True
+            self.opts.set("build.dir", d)
+            self.log.debug(f'Made temp working directory "{d}".')
+        else:
+            d = expanduser(expandvars(d))
+            if not isdir(d):
+                makedirs(d, exist_ok=True)
+            self.log.info(f'Using the non-temp working diretory "{d}".')
+        v, k = self.opts.get_build("dir_link"), None
+        if nes(v):
+            v, n = expanduser(expandvars(v)), basename(d)
+            k = join(v, n)
+            symlink(d, k)
+            self.log.info(
+                f'Linking the working directory "{d}" into the target directory "{v}" as "{n}".'
+            )
+        workspace = {
+            "os": osv,
+            "cgo": self.opts.get_option("cgo"),
+            "dir": d,
+            "out": output,
+            "tags": [],
+            "main": "",
+            "arch": arch,
+            "link": v,
+            "flags": "",
+            "export": self.opts.get_support("cgo_export"),
+            "go_args": list(),
+            "gcc_args": list(),
+            "no_clean": no_clean,
+            "library": library,
+            "main_cgo": "",
+            "work_dir": d,
+            "secondary": self.opts.get_support("cgo_secondary"),
+        }
+        del v
+        if nes(k):
+            workspace["work_dir"] = k
+        if library:
+            workspace["tags"].append("svcdll")
+        r = None
+        if self.opts.get_rc("enabled"):
+            r = Rc(self.opts.get_support("rc"))
+        self.log.debug(f"Workspace built: {dumps(workspace)}")
+        workspace["log"] = self.log
+        if not auto and not self.opts._mod:
+            p = self.opts.get_option("gopath")
+            if not isinstance(p, str) or len(p) == 0:
+                p = join(d, "deps")
+                pull_in_deps(self.log, p)
+                self.opts.set("build.options.gopath", p)
+                self.log.debug(f'Setting generated GOPATH to "{p}".')
+            else:
+                self.log.warning(
+                    "Ensure the the Golang modules used are in a localized directory "
+                    "as this version does NOT support Go Modules!"
+                )
+            del p
+        try:
+            with self("SP1"):
+                self.log.info("Starting the Generate step..")
+                f = self.generate(gen, d, workspace)
+                self.log.debug("Completed the Generate step!")
+            with self("SP2"):
+                self.log.info("Starting the Build step..")
+                o = self.build(d, workspace, r, f, output)
+                self.log.debug("Completed the Build step!")
+            with self("SP3"):
+                self.log.info("Starting the Protect step..")
+                self.protect(workspace, d, o)
+                self.log.debug("Completed the Protect step!")
+            if nes(dest):
+                b = dirname(dest)
+                if len(b) > 0:
+                    makedirs(b, exist_ok=True)
+                del b
+                copy(o, dest)
+            else:
+                b = dirname(output)
+                if len(b) > 0:
+                    makedirs(b, exist_ok=True)
+                del b
+                copy(o, output)
+            del o, f
+        except KeyboardInterrupt as err:
+            self.log.error("Interrupted!")
+            raise err
+        except Exception as err:
+            self.log.error(f"Error during operation: {err}", err=err)
+            raise err
+        finally:
+            if self.prefix:
+                self.log.prefix(None)
+            del r, workspace
+            if nes(k):
+                self.log.debug(f'Removing link directory "{k}".')
+                remove(k)
+            if not no_clean and m:
+                self.log.debug(f'Removing working directory "{d}".')
+                # NOTE(dij): Fix for when download deps have weirdly set permissions.
+                for x, y, z in walk(d):
+                    for k in y:
+                        chmod(join(x, k), 0o777)
+                    for k in z:
+                        chmod(join(x, k), 0o777)
+                rmtree(d)
+        try:
+            chmod(output, 0o755, follow_symlinks=False)
+        except OSError:
+            pass
+        self.log.info(f'Output result file "{output}".')
+        return output
 
 
 if __name__ == "__main__":

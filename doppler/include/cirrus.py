@@ -270,16 +270,17 @@ def _pkg_kill(pid=None, pname=None, line=None):
     return p
 
 
-def _pkg_pull(url, dest, agent=None, line=None):
+def _pkg_pull(url, path="", agent=None, line=None):
     if not nes(url):
         raise ValueError('"url" must be a non-empty string')
-    if not nes(dest):
-        raise ValueError('"dest" must be a non-empty string')
-    p = {"path": dest, "url": url}
+    p = {"url": url}
+    if nes(path):
+        p["path"] = path
     if nes(agent):
         p["agent"] = agent
     if nes(line):
         p["line"] = line
+    print(p)
     return p
 
 
@@ -986,6 +987,16 @@ class Api(object):
         except AttributeError:
             pass
 
+    def server_public_key(self):
+        r = self._req("server", 200, "get")
+        if not isinstance(r, dict) or "public_key" not in r:
+            raise ValueError(f'"{self._base}/server" returned an invalid result')
+        v, h = r["public_key"], r.get("public_key_hash", 0)
+        del r
+        if len(v) == 0:
+            return None, None
+        return v, h
+
     def start_events(self, on_msg, on_close=None):
         self._ws.on_close = on_close
         self._ws.on_message = on_msg
@@ -1340,13 +1351,13 @@ class Api(object):
             f"script/{name}/io", 201, "put", json=_pkg_kill(pid, pname, line)
         )
 
-    def script_pull(self, name, line, url, dest, agent=None):
+    def script_pull(self, name, line, url, path="", agent=None):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
         if not nes(line):
             raise ValueError('"line" must be a non-empty string')
         return self._req(
-            f"script/{name}/pull", 201, "put", json=_pkg_pull(url, dest, agent, line)
+            f"script/{name}/pull", 201, "put", json=_pkg_pull(url, path, agent, line)
         )
 
     def script_workhours(self, name, line, days="", start="", end=""):
@@ -2097,11 +2108,11 @@ class Api(object):
             )
         return int(r["id"])
 
-    def task_pull(self, id, url, dest, agent=None):
+    def task_pull(self, id, url, path="", agent=None):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
         r = self._req(
-            f"session/{id}/pull", 201, "put", json=_pkg_pull(url, dest, agent)
+            f"session/{id}/pull", 201, "put", json=_pkg_pull(url, path, agent)
         )
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
@@ -2609,7 +2620,6 @@ class _Events(Thread):
             self._select.close()
         except Exception:
             pass
-        # print("[-] Closing socket..")
         try:
             if self._sock.sock:
                 self._sock.sock.shutdown()
@@ -2633,7 +2643,6 @@ class _Events(Thread):
                 self._select.close()
             except Exception:
                 pass
-            del self._select, self._handle
 
     def signal(self, a, _):
         if a == 2:

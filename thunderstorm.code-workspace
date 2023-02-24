@@ -2,6 +2,9 @@
     "folders": [
         {
             "path": "."
+        },
+        {
+            "path": "../XMT"
         }
     ],
     "settings": {
@@ -18,6 +21,7 @@
             "dllsvc",
             "dout",
             "endidx",
+            "femit",
             "FILEOS",
             "gcflags",
             "GOARCH",
@@ -52,11 +56,14 @@
             "precmd",
             "Protos",
             "pthread",
+            "putenv",
             "riscv",
             "runas",
             "SMTWRFS",
             "spammy",
             "svcdll",
+            "syscall",
+            "Uitoa",
             "wgcc",
             "wres",
             "wtfmode",

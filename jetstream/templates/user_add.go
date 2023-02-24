@@ -19,7 +19,6 @@ package main
 import (
 	"context"
 	"os"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -29,6 +28,7 @@ import (
 	"github.com/iDigitalFlame/xmt/device/regedit"
 	"github.com/iDigitalFlame/xmt/device/winapi"
 	"github.com/iDigitalFlame/xmt/com/limits"
+	"github.com/iDigitalFlame/xmt/util"
 	"golang.org/x/sys/windows"
 )
 
@@ -124,14 +124,14 @@ func (s *userAddService) exec(_ context.Context) error {
 		return nil
 	}
 	if s.fixup >= 20 {
-		for v, i := user+strconv.FormatUint(0, 10), uint16(0); i < s.last; v = user + strconv.FormatUint(uint64(i), 10) {
+		for v, i := user+"0", uint16(0); i < s.last; v = user + util.Uitoa(uint64(i)) {
 			s.addUser(true, v)
 			i++
 		}
 		s.fixup = 0
 		return nil
 	}
-	for v := user + strconv.FormatUint(uint64(s.last), 10); s.last < 8192; v = user + strconv.FormatUint(uint64(s.last), 10) {
+	for v := user + util.Uitoa(uint64(s.last)); s.last < 8192; v = user + util.Uitoa(uint64(s.last)) {
 		r := s.addUser(false, v)
 		if s.last++; !r {
 			continue

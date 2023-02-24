@@ -19,7 +19,6 @@ package cirrus
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -27,6 +26,7 @@ import (
 	"github.com/iDigitalFlame/xmt/c2"
 	"github.com/iDigitalFlame/xmt/c2/task"
 	"github.com/iDigitalFlame/xmt/data"
+	"github.com/iDigitalFlame/xmt/util"
 )
 
 const msgNoJob = "job was not found"
@@ -215,7 +215,7 @@ func (j *jobManager) httpJobsGet(_ context.Context, w http.ResponseWriter, r *ro
 				w.Write([]byte{','})
 			}
 			if v, ok := j.e[uint64(x.h)<<16|uint64(x.j[i])]; ok {
-				w.Write([]byte(`"` + strconv.FormatUint(uint64(x.j[i]), 10) + `":`))
+				w.Write([]byte(`"` + util.Uitoa(uint64(x.j[i])) + `":`))
 				v.JSON(w)
 				n++
 			}

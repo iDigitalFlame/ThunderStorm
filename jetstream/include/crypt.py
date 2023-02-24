@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+from re import compile
 from json import loads
 from io import BytesIO
 from random import choice
@@ -23,26 +24,242 @@ from secrets import token_bytes
 from string import ascii_letters
 from base64 import urlsafe_b64encode
 
-CRUMB = b"\x00\x00\x00\x00\x06crypto\x00"
-CRUMBS = [
-    b"\x00\x00\x00\x00\x0Ecompress",
-    b"\x00\x00'github.com",
-    b"\x00\x00\x00\x00+github.com",
-    b"\x00\x00\x00\x003github.com",
-    b"\x00\x00sync/a",
-    b"\x00\x00\x00\x00\x00#github.com",
-    b"\x00\x00\x00\x00_cgo_",
-    b"\x00\x00internal/",
-    b"\x2E\x08\x00'github",
-    b"\x0D\x00internal/",
+
+PACKAGES = [
+    b"\x00bufio",
+    b"\x00bytes",
+    b"\x00compress",
+    b"\x00container",
+    b"\x00context",
+    b"\x00crypto",
+    b"\x00debug",
+    b"\x00encoding",
+    b"\x00errors",
+    b"\x00expvar",
+    b"\x00flag",
+    b"\x00fmt",
+    b"\x00go",
+    b"\x00hash",
+    b"\x00image",
+    b"\x00index",
+    b"\x00internal",
+    b"\x00io",
+    b"\x00log",
+    b"\x00math",
+    b"\x00mime",
+    b"\x00net",
+    b"\x00os",
+    b"\x00path",
+    b"\x00reflect",
+    b"\x00regexp",
+    b"\x00runtime",
+    b"\x00sort",
+    b"\x00strconv",
+    b"\x00strings",
+    b"\x00sync",
+    b"\x00syscall",
+    b"\x00text",
+    b"\x00time",
+    b"\x00unicode",
+    b"\x00unsafe",
 ]
+
+CRUMB_ID = b' Go build ID: "'
+CRUMB_VER = b"go1."
 CRUMB_INF = b"\xFF Go buildinf:"
+CRUMB_TAIL = b"/src/runtime/runtime.go\x00\x00"
+CRUMB_DEPS = b"command-line-arguments"
+CRUMB_FILE = b".go\x00"
+CRUMB_STACK = [
+    b"\x00github.com/",
+    b"github.com/",
+    b"\x00type..eq.",
+    b"\x00type..hash.",
+    b"\x00type:.eq.",
+    b"\x00type:.hash.",
+    b"\x00go.buildid",
+    b"vendor/",
+    b"\x00vendor/",
+    b"struct {",
+    b"map[",
+    b"*map.",
+    b"*func(",
+    b"func(",
+    b"\x00main.",
+    b'asn1:"',
+]
+CRUMB_CLEANUP = [
+    b"crypto/internal/",
+    b"internal/syscall/",
+    b"Mingw-w64 runtime failure:",
+]
+CRUMB_HEADERS = [
+    b"\x00\x00\x00\x00\x05bufio",
+    b"\x00\x00\x00\x00\x05bytes",
+    b"\x00\x00\x00\x00\x06crypto",
+    b"\x00\x00\x00\x00\x06crypto",
+    b"\x00\x00\x00\x00\x06error",
+    b"\x00\x00\x00\x00\x0Dcrypto/",
+    b"\x00\x00\x00\x00\x0Dcompress/",
+    b"\x00\x00\x00\x00\x0Ecompress/",
+    b"\x00\x00\x00\x00\x0Econtainer/",
+]
+
+TABLE_IMPORTS = compile(
+    b"([\x01-\x05]{0,1})([\x01-\x50]{1})([a-zA-Z0-9/\\-\\*]{2,50})\x00"
+)
+TABLE_STRINGS = compile(
+    b"([\x01-\x50]{1})([a-zA-Z0-9/\\-\\*]{2,50})\\.([a-zA-Z0-9\\./\\[\\]\\]\\*]{4,50})([\x00-\x01]{1})"
+)
 
 
-def _is_abc(c):
-    if c >= ord("A") and c <= ord("Z"):
-        return True
-    return c >= ord("a") and c <= ord("z")
+def _is_valid(c):
+    return (
+        (c >= 0x41 and c <= 0x5A)
+        or (c >= 0x61 and c <= 0x7A)
+        or (c >= 0x30 and c <= 0x39)
+        or (c >= 0x2C and c <= 0x2F)
+        or c == 0x7B
+        or c == 0x7D
+        or c == 0x5B
+        or c == 0x5D
+        or c == 0x5F
+        or c == 0x3B
+        or c == 0x20
+        or c == 0x28
+        or c == 0x29
+        or c == 0x2A
+    )
+
+
+def _is_ext(b, i):
+    # Ignore anything that isn't "fmt.fmt"
+    return (
+        b[i - 5] == 0x2E and b[i - 4] != 0x66 and b[i - 3] != 0x6D and b[i - 2] != 0x74
+    )
+
+
+def _find_header(b):
+    for i in CRUMB_HEADERS:
+        x = b.find(i)
+        if x > 0:
+            return x
+    return -1
+
+
+def _mask_cleanup(b):
+    x = 0
+    while True:
+        m = TABLE_STRINGS.search(b, x)
+        if m is None:
+            break
+        if _is_ext(b, m.end()):
+            x = m.end()
+            continue
+        for x in range(m.start() + 2, m.end() - 1):
+            b[x] = ord(choice(ascii_letters))
+        x = m.end()
+    x = 0
+    for i in CRUMB_CLEANUP:
+        p, x = 0, 0
+        if i[0] == 0:
+            p += 1
+        while x < len(b):
+            x = b.find(i)
+            if x <= 0:
+                break
+            _fill_non_zero(b, x + p)
+        del p, x
+
+
+def _mask_build_id(b):
+    x = b.find(CRUMB_ID)
+    if x <= 0:
+        return
+    for i in range(x + 1, x + 128):
+        if b[i] == 0x22 and b[i + 1] < 0x31:
+            b[i] = 0
+            break
+        b[i] = 0
+    del x
+
+
+def _mask_build_inf(b):
+    x = b.find(CRUMB_INF)
+    if x > 0:
+        for i in range(x + 2, x + 14):
+            b[i] = 0
+    x = 0
+    while x < len(b):
+        x = b.find(CRUMB_FILE, x + 1)
+        if x <= 0 or b[x - 1] == 0:
+            break
+        s = x
+        while s > x - 128:
+            if b[s] == 0:
+                break
+            s -= 1
+        if x - s < 64 and x - s > 0:
+            for i in range(s, x):
+                b[i] = 0
+        del s
+    del x
+
+
+def _mask_tail(b, log):
+    for i in CRUMB_STACK:
+        p, x = 0, 0
+        if i[0] == 0:
+            p += 1
+        while x < len(b):
+            x = b.find(i)
+            if x <= 0:
+                break
+            _fill_non_zero(b, x + p, real=True)
+        del p, x
+    if callable(log):
+        log("Removing unused package names..")
+    for i in range(0, len(PACKAGES)):
+        x = 0
+        if callable(log) and i % 10 == 0:
+            log(f"Checking package {i+1} out of {len(PACKAGES)}..")
+        while x < len(b):
+            x = b.find(PACKAGES[i], x)
+            if x <= 0:
+                break
+            if b[x + 3] == 0:
+                x += 2
+                continue
+            _fill_non_zero(b, x + 1)
+        del x
+    if callable(log):
+        log("Looking for path values..")
+    x = b.find(CRUMB_TAIL)
+    if x <= 0:
+        return
+    while x > 0:
+        if b[x] == 0 and b[x - 1] != 0 and b[x - 1] < 0x21 and b[x - 2] != 0:
+            if callable(log):
+                log(f"Found start of paths at 0x{x:X}")
+            break
+        x -= 1
+    if x <= 0:
+        return
+    c = 0
+    while x < len(b):
+        if b[x] == 0:
+            c += 1
+            x += 1
+            continue
+        if c > 3:
+            break
+        x, c = _fill_non_zero(b, x), 0
+    del x, c
+
+
+def _mask_tables(b, log):
+    for _ in range(0, 2):
+        _mask_tables_inner(b, log)
 
 
 def _use_tag(tags, values):
@@ -61,87 +278,173 @@ def _use_tag(tags, values):
     return r
 
 
+def _mask_deps(b, start, log):
+    x = start
+    for r in range(0, 2):
+        if callable(log):
+            log(f"Searching for command line args (round {r+1})..")
+        x = b.find(CRUMB_DEPS, start)
+        if x <= 0:
+            continue
+        x -= 5
+        while x < len(b):
+            if b[x] < 0x21 and b[x + 1] > 0x7E:
+                break
+            if b[x] > 0x21:
+                b[x] = 0
+            x += 1
+    del x
+
+
+def _mask_tables_inner(b, log):
+    x = -1
+    for i in CRUMB_HEADERS:
+        x = b.find(i)
+        if x > 0:
+            break
+    if x <= 0:
+        return
+    c = 0
+    while True:
+        s, e = _find_next_vtr(b, x)
+        if s == -1:
+            break
+        if (e - s) > 3:
+            for i in range(s, e):
+                # NOTE(dij): These MUST be random chars or the program will CRASH!!
+                b[i] = ord(choice(ascii_letters))
+        x = e
+        c += 1
+    del x
+    if callable(log):
+        log(f"Masked {c} stack trace strings!")
+    del c
+
+
 def generate_crypt(tags, file):
     b = _CryptBuilder(tags, file)
     return b.key(), b.out()
 
 
-def strip_binary(file, log=None):
+def _fill_non_zero(b, start, max=256, real=False):
+    for i in range(start, start + max):
+        if b[i] == 0 or (real and b[i] < 32):
+            return i
+        b[i] = 0
+    return start + max
+
+
+def _mask_version(b, start, root=None, path=None):
+    if root is not None and len(root) > 0:
+        m = root.encode("UTF-8")
+        x = start + 1
+        while x > start:
+            x = b.find(m, x)
+            if x == -1:
+                break
+            _fill_non_zero(b, x)
+        del x
+    if path is not None and len(path) > 0:
+        m = path.encode("UTF-8")
+        x = start + 1
+        while x > start:
+            x = b.find(m, x)
+            if x == -1:
+                break
+            _fill_non_zero(b, x)
+        del x
+    x = b.find(CRUMB_VER, start)
+    while x > start and x < len(b):
+        b[x], b[x + 1], b[x + 2] = 0, 0, 0
+        x += 3
+        for i in range(0, 16):
+            x += len(CRUMB_VER) + i
+            if b[x] < 0x2E or b[x] < 0x39:
+                break
+            b[x] = 0
+        x = b.find(CRUMB_VER)
+    del x
+
+
+def _find_next_vtr(b, start, zeros=32, max_len=128):
+    # Golang string identifiers are usually BB<str>.
+    # Two bytes, the first one idk what it means, it's usually 1|0 (but not always)
+    # and then a byte that specifies how long the following string is.
+    #
+    # We use this to our advantage by reading this identifier and discounting anything
+    # that A). doesn't fit Go name conventions and anything that doesn't equal the
+    # supplied length. This allows us to scroll through the virtual string table
+    # (vtr).
+    i, z, c, s = 0, 0, 0, 0
+    for i in range(start, start + max_len):
+        if z > zeros:
+            break
+        if s > start:
+            if c > 0 and (i - s) > c:
+                s, c = 0, 0
+                continue
+            if b[i] == 0 or not _is_valid(b[i]):
+                if (b[i] == 0x3A and b[i + 1] == 0x22) or (
+                    b[i] == 0x22 and b[i - 1] == 0x3A
+                ):  # Find usage of :"
+                    continue
+                if b[i] == 0x22:  # Scroll back to find the missing "
+                    q = i - 1
+                    while q > start and q > q - 64:
+                        if b[q] == 0x22:
+                            break
+                        q -= 1
+                    if b[q] == 0x22:
+                        continue
+                    del q
+                if (
+                    b[i] == 0x3C
+                    and b[i + 1] == 0x2D
+                    and (b[i - 1] == 0x6E or b[i + 2] == 0x63)
+                ):  # Check for <-chan or chan<-
+                    continue
+                if i - s != c:
+                    s, c = 0, 0
+                    continue
+                return i - (i - s), i
+            continue
+        if b[i] == 0:
+            z += 1
+            continue
+        else:
+            z = 0
+        if s == 0 and b[i] >= 0x30 and b[i] <= 0x39:
+            # No valid identifiers start with a number.
+            continue
+        if s == 0 and _is_valid(b[i]) and b[i - 1] != 0:
+            s, c = i, b[i - 1]
+    del z, c, s
+    return -1, i
+
+
+def strip_binary(file, log=None, root=None, path=None):
     with open(file, "rb") as f:
         b = bytearray(f.read())
-    x = b.find(CRUMB)
+    x = _find_header(b)
     if x <= 0:
-        raise RuntimeError()
-    v, n = dict(), dict()
-    x = _next_block(b, x + 4, v, n, log)
-    for _ in range(0, 5):
-        for i in CRUMBS:
-            _find_next_push(b, x, i, v, n, log)
-    del v, n, x
-    x = b.find(CRUMB_INF)
-    if x > 0:
-        for i in range(x + 2, x + 14):
-            b[i] = ord("_")
+        if callable(log):
+            log("Could not find header (are you using Garble?)")
+        return
+    _mask_tables(b, log)
+    _mask_tail(b, log)
+    _mask_deps(b, x, log)
+    if callable(log):
+        log("Removing version info..")
+    _mask_version(b, x, root, path)
+    _mask_build_id(b)
+    _mask_build_inf(b)
+    if callable(log):
+        log("Cleaning up..")
+    _mask_cleanup(b)
+    del x
     with open(file, "wb") as f:
         f.write(b)
-
-
-def _next_block(b, start, v, n, log):
-    s, e, c = start, start, 0
-    while e < len(b):
-        if b[e] == 0:
-            c += 1
-        else:
-            if e + 2 < len(b) and b[e + 1] == 0:
-                c += 1
-            else:
-                c = 0
-        if c > 5:
-            break
-        e += 1
-    _map_swap(b, s, e, v, n)
-    if callable(log):
-        log(f"Strip remapped {s:X} => {e:X}")
-    return e
-
-
-def _find_next_push(b, x, c, v, n, log):
-    i = b.find(c, x)
-    if i > 0 and i < x:
-        raise IOError(f"strip: invalid next offset {x:X} => {i:X}")
-    if i == -1:
-        return
-    _next_block(b, i + 2, v, n, log)
-
-
-def _map_swap(b, start, end, vars, names):
-    n = start
-    while n < len(b) and n < end:
-        while not _is_abc(b[n]):
-            n += 1
-            if n > end:
-                return
-        e = n + 1
-        while _is_abc(b[e]):
-            e += 1
-            if e >= end:
-                break
-        if e - n >= 2:
-            v = b[n:e].decode("UTF-8")
-            if v not in vars:
-                d = ""
-                while True:
-                    d = "".join(choice(ascii_letters) for _ in range(e - n))
-                    if d not in names:
-                        names[d] = True
-                        break
-                vars[v] = d
-            h = vars[v]
-            i = 0
-            for x in range(n, e):
-                b[x] = ord(h[i])
-                i += 1
-        n = e + 1
+    del b
 
 
 class _CryptBuilder(BytesIO):

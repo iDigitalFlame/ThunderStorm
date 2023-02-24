@@ -161,6 +161,17 @@ def _eq_quotes(v):
     return v[1:-1]
 
 
+def print_hash(k, h):
+    v = k.split(":")
+    print(f"Server Public Key: (Hash: {h})\n    ", end="")
+    for x in range(0, len(v)):
+        if x > 0 and x % 10 == 0:
+            print("\n    ", end="")
+        print(v[x], end=":" if (x + 1) % 10 != 0 and x + 1 < len(v) else "")
+    print()
+    del v
+
+
 def split_user_domain(u, d):
     if not nes(u):
         if nes(d):
@@ -219,9 +230,24 @@ def do_ask(m, default=False):
 def time_str(n, s, exact=False):
     if len(s) == 0:
         return ""
-    v = datetime.fromisoformat(s.replace("Z", "")).replace(tzinfo=None)
+    if s.startswith("0000-"):
+        # NOTE(dij): This would fix improper ("0000-*") ISO time formats, but
+        #            any improper values should be considered "now" instead.
+        #
+        # v = datetime.fromisoformat(str(n.year) + s[4:].replace("Z", "")).replace(
+        #     tzinfo=None
+        # )
+        # if v > n:
+        #     v = datetime.fromisoformat(
+        #         str(n.year - 1) + s[4:].replace("Z", "")
+        #     ).replace(tzinfo=None)
+        v = n
+    else:
+        v = datetime.fromisoformat(s.replace("Z", "")).replace(tzinfo=None)
     if v.year < 1971:
         return ""
+    if n == v:
+        return "0s"
     if (n - v).days > 0:
         if exact:
             return v.strftime("%H:%M %m/%d/%y")
@@ -239,7 +265,15 @@ def time_str(n, s, exact=False):
 
 
 def bytes_from_src(
-    v, path=True, b64=True, cb64=False, raw=True, ext=False, empty=False, explicit=False
+    v,
+    path=True,
+    b64=True,
+    cb64=False,
+    raw=True,
+    ext=False,
+    empty=False,
+    explicit=False,
+    no_err=False,
 ):
     if v is None or len(v) == 0:
         if not empty:
@@ -297,6 +331,8 @@ def bytes_from_src(
         except ValueError:
             pass
     if not raw:
+        if no_err:
+            return None, False
         raise ValueError(
             "explicit data identifier or valid local file path is required"
         )

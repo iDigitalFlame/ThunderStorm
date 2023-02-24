@@ -69,7 +69,6 @@ var (
 	}
 	valTaskPull = val.Set{
 		val.Validator{Name: "url", Type: val.String, Rules: val.Rules{val.NoEmpty}},
-		val.Validator{Name: "path", Type: val.String, Rules: val.Rules{val.NoEmpty}},
 	}
 	valTaskSpawn = val.Set{
 		val.Validator{Name: "payload", Type: val.Any, Optional: true},

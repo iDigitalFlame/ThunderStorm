@@ -74,6 +74,7 @@ For the output of `help strval` see the [String-Var Dynamic Values](StringValues
 - [set_hide](#set_hide)
 - [shell](#shell)
 - [shutdown](#shutdown)
+- [show_window](#show_window)
 - [sleep](#sleep)
 - [spawn](#spawn)
 - [steal](#steal)
@@ -81,6 +82,7 @@ For the output of `help strval` see the [String-Var Dynamic Values](StringValues
 - [troll](#troll)
 - [untrust](#untrust)
 - [upload](#upload)
+- [whoami](#whoami)
 - [wallpaper](#wallpaper)
 - [window](#window)
 - [workhours](#workhours)
@@ -129,6 +131,20 @@ after DLLMain (if the file is a DLL or DLL bytes).
 asm /home/hackerman/gibson.bin
 asm /tmp/malware.dll
 ```
+
+## back
+
+```text
+back
+```
+
+|       |     |
+| ----- | --- |
+| OS    | n/a |
+| OPsec | n/a |
+| Admin | n/a |
+
+Go back to the Bolts menu.
 
 ## cat
 
@@ -639,6 +655,28 @@ processes for elevation:
 
 For more fine grain control of the target(s), use the `elevate` or `steal`
 commands.
+
+## help
+
+```text
+help <command>
+```
+
+|       |     |
+| ----- | --- |
+| OS    | n/a |
+| OPsec | n/a |
+| Admin | n/a |
+
+Get the helptext for the supplied command.
+
+### Examples:
+
+```shell
+help hup
+help zombie
+help migrate
+```
 
 ## hup
 
@@ -1701,17 +1739,20 @@ Retrieves a list of running processes on the client.
 ## pull
 
 ```text
-pull [-a|--agent user-agent] <url> <remote_path>
+pull [-a|--agent agent] [-o|--output local_path] [-r|--redirect] <url> [remote_path]
 ```
 
-|       |                             |
-| ----- | --------------------------- |
-| OS    | Any                         |
-| OPsec | **Not Safe! Disk Write**    |
-| Admin | Maybe _(depends on target)_ |
+|       |                                                     |
+| ----- | --------------------------------------------------- |
+| OS    | Any                                                 |
+| OPsec | **Not Safe! Disk Write (If a remote path is used)** |
+| Admin | Maybe _(depends on target)_                         |
 
 Downloads the file at the supplied URL (as the client) and save it to
-the specified remote path.
+the specified remote path. If a remote path is not used and the "-r" or
+"--redirect" argument is used, the results will be returned instead. If
+the "-o" argument is used, it will be saved to the supplied local file path.
+Otherwise, the basename of the file will be used instead.
 
 The `-a` or `--agent` argument may be specified to change the User-Agent
 the client uses to connect to the server. String-Var Dynamic Values are
@@ -2192,6 +2233,32 @@ Pass the `-f` or `--force` to force shutdown and do not ask for confirmation.
 
 **THIS DOES NOT SHUTDOWN THE CLIENT DEVICE, USE `poweroff` INSTEAD.**
 
+## show_window
+
+```text
+show_window [boolean]
+```
+
+|       |     |
+| ----- | --- |
+| OS    | n/a |
+| OPsec | n/a |
+| Admin | n/a |
+
+Enable/Disable global shell command visibility. If no option is specified,
+command windows are hidden. Can take multiple types of boolean values
+(`true`, `T`, `t`, `yes`, `y`, `enable`, `e`, `1`).
+
+Alias of `set_hide`.
+
+### Examples:
+
+```shell
+show_window
+show_window no
+show_window true
+```
+
 ## sleep
 
 ```text
@@ -2465,7 +2532,7 @@ untrust taskmgr.exe
 ## upload
 
 ```text
-upload <data> <remote_path>
+upload <data> [remote_path]
 ```
 
 |       |                             |
@@ -2475,6 +2542,10 @@ upload <data> <remote_path>
 | Admin | Maybe _(depends on target)_ |
 
 Upload a local file to the client at the supplied remote_path.
+
+If the remote file path is omitted or empty, the basename of the current
+file will be used and it will be placed in the client's current working
+directory.
 
 Environment variables are processed on the client (for the remote_path).
 
@@ -2486,9 +2557,25 @@ See [`help data`](Identifiers.md) for more info on Data Specification Identifier
 ### Examples:
 
 ```shell
+upload ~/file
 upload ~/hacker_file.txt C:/file.txt
 upload note.txt $USERPROFILE/Desktop/note.txt
 ```
+
+## whoami
+
+```text
+whoami
+```
+
+|       |      |
+| ----- | ---- |
+| OS    | Any  |
+| OPsec | Safe |
+| Admin | No   |
+
+Returns the current up-to-date username of the client without triggering
+a refresh.
 
 ## wallpaper
 
@@ -2526,7 +2613,7 @@ wallpaper x$C:/Windows/web/web1.jpg
 ## window
 
 ```text
-window <ls|close|disable|enable|focus|msgbox|move|show|trans>
+window <ls|close|disable|enable|focus|input|msgbox|move|show|trans>
 |      [handle|all|*|0
 |      [args..]
 ```
@@ -2567,6 +2654,10 @@ The following are valid actions:
 - **fg** or **focus**:
   Focuses the window and brings user input to it. This command requires
   a handle and can only be used on a single window at a time.
+- **in**, **input** or **type**:
+  Simulates keystrokes in order to type the message after the action. Capital
+  and spaces are preserved. If a valid window handle is specified, this will
+  force focus of the specified window before typing.
 - **mb**, **msg**, **msgbox**, **message** or **messagebox**:
   Show a MessagBox prompt as a child of the supplied window handle. A
   handle of 0 (or using `all`) will make a standalone MessageBox.

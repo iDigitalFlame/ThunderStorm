@@ -85,7 +85,7 @@ class MenuBolts(object):
             return self.shell.cirrus.show_jobs(id, all=False)
         if len(id) > 0:
             return
-        return self.shell.cirrus.show_jobs(all=True)
+        self.shell.cirrus.show_jobs(all=True)
 
     def do_delete(self, n):
         if len(n) == 0:
@@ -190,7 +190,7 @@ class MenuBoltAll(MenuBolt):
         print("Not available inside ALL Bolts.")
 
     def do_jobs(self, _):
-        print("Not available inside ALL Bolts.")
+        self.shell.cirrus.show_jobs(all=True, exp=self.matcher)
 
     def do_last(self, _):
         print("Not available inside ALL Bolts")
@@ -216,6 +216,15 @@ class MenuBoltAll(MenuBolt):
                 f(v["id"], **a)
         except (ValueError, TypeError) as err:
             print(f"[!] {err}!")
+
+    def do_shutdown(self, f):
+        if (not nes(f) or "-f" not in f) and not do_ask(
+            "Confirm shutdown of these Bolt(s)"
+        ):
+            return print("[-] Aborting shutdown!")
+        self._exec(self.shell.cirrus.session_remove, shutdown=True)
+        print("[+] Triggered Bolt(s) shutdown.")
+        self.shell.cache._bolts = None
 
     def do_nodisplay(self, _):
         if not self.results:

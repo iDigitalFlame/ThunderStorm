@@ -33,6 +33,7 @@ import (
 	"github.com/iDigitalFlame/xmt/c2/cfg"
 	"github.com/iDigitalFlame/xmt/com"
 	"github.com/iDigitalFlame/xmt/device"
+	"github.com/iDigitalFlame/xmt/util"
 )
 
 const (
@@ -100,7 +101,11 @@ func (c *Cirrus) Close() error {
 // occur during the operation.
 func (c *Cirrus) Save(s string) error {
 	b, err := json.MarshalIndent(map[string]any{
-		"auth":      c.Auth,
+		"auth": c.Auth,
+		"keys": map[string]string{
+			"public":  c.s.Keys.Public.String(),
+			"private": c.s.Keys.Private.String(),
+		},
 		"timeout":   c.Timeout,
 		"scripts":   c.scripts,
 		"profiles":  c.profiles,
@@ -148,13 +153,31 @@ func (c *Cirrus) Load(s string) error {
 			return err
 		}
 	}
-	if t, ok := m["auth"]; ok && len(t) > 2 {
-		if err = json.Unmarshal(t, &c.Auth); err != nil {
+	if t, ok := m["timeout"]; ok {
+		if err = json.Unmarshal(t, &c.Timeout); err != nil {
 			return err
 		}
 	}
-	if t, ok := m["timeout"]; ok {
-		if err = json.Unmarshal(t, &c.Timeout); err != nil {
+	if t, ok := m["keys"]; ok {
+		var v map[string]string
+		if err = json.Unmarshal(t, &v); err != nil {
+			return err
+		}
+		var (
+			h, ok1 = v["public"]
+			j, ok2 = v["private"]
+		)
+		if ok1 && ok2 && len(h) > 0 && len(j) > 0 {
+			if err = c.s.Keys.Public.Parse(h); err != nil {
+				return err
+			}
+			if err = c.s.Keys.Private.Parse(j); err != nil {
+				return err
+			}
+		}
+	}
+	if t, ok := m["auth"]; ok && len(t) > 2 {
+		if err = json.Unmarshal(t, &c.Auth); err != nil {
 			return err
 		}
 	}
@@ -167,6 +190,7 @@ func (c *Cirrus) Listen(addr string) error {
 	return c.ListenTLS(addr, "", "")
 }
 func configureRoutes(c *Cirrus, m *routex.Mux) {
+	m.Must(prefix+`/server$`, routex.Func(c.httpServerInfoGet), http.MethodGet)
 	m.Must(prefix+`/script$`, routex.Func(c.scripts.httpScriptsGet), http.MethodGet)
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Func(c.scripts.httpScriptGet), http.MethodGet)
 	m.Must(prefix+`/script/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Func(c.scripts.httpScriptDelete), http.MethodDelete)
@@ -326,7 +350,7 @@ func (c *Cirrus) ListenTLS(addr, cert, key string) error {
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 		},
-		CurvePreferences: []tls.CurveID{tls.CurveP256, tls.X25519},
+		CurvePreferences: []tls.CurveID{tls.CurveP521, tls.CurveP256, tls.X25519},
 	}
 	if err := c.srv.ListenAndServeTLS(cert, key); err != http.ErrServerClosed {
 		c.Close()
@@ -425,4 +449,7 @@ func NewContext(x context.Context, s *c2.Server, log logx.Log, key string) *Cirr
 // This function allows specifying a Context to aid in cancellation.
 func ListenContext(x context.Context, s *c2.Server, log logx.Log, key, addr string) error {
 	return NewContext(x, s, log, key).Listen(addr)
+}
+func (c *Cirrus) httpServerInfoGet(_ context.Context, w http.ResponseWriter, _ *routex.Request) {
+	w.Write([]byte(`{"public_key":"` + c.s.Keys.Public.String() + `","public_key_hash":"` + util.Uitoa16(uint64(c.s.Keys.Public.Hash())) + `"}`))
 }

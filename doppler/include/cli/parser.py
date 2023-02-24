@@ -135,6 +135,8 @@ def __parsers():
     # eq    = True
     p[PARSER_PULL] = Parser()
     p[PARSER_PULL].add("-a", "--agent", type=str, dest="agent")
+    p[PARSER_PULL].add("-o", "--output", type=str, dest="output")
+    p[PARSER_PULL].add("-r", "--redirect", dest="redirect", action=Boolean)
     p[PARSER_PULL].add(nargs=1, type=str, dest="url")
     p[PARSER_PULL].add(nargs=1, type=str, dest="file")
     # regedit

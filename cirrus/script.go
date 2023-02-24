@@ -31,6 +31,7 @@ import (
 	"github.com/PurpleSec/routex/val"
 	"github.com/iDigitalFlame/xmt/c2/task"
 	"github.com/iDigitalFlame/xmt/com"
+	"github.com/iDigitalFlame/xmt/util"
 	"github.com/iDigitalFlame/xmt/util/xerr"
 )
 
@@ -206,7 +207,7 @@ func (s *script) UnmarshalJSON(b []byte) error {
 		if s.r[i] <= uint64(s.s.Size()) {
 			continue
 		}
-		return xerr.New(`json: script mark "` + strconv.FormatUint(s.r[i], 10) + "` is larger than the script size")
+		return xerr.New(`json: script mark "` + util.Uitoa(s.r[i]) + "` is larger than the script size")
 	}
 	if t, ok = m["commands"]; !ok {
 		return xerr.New(`json: script is missing "commands"`)
@@ -303,10 +304,10 @@ func writeScriptReturn(w http.ResponseWriter, q *script) {
 			if i > 0 {
 				w.Write([]byte{','})
 			}
-			w.Write([]byte(strconv.FormatUint(q.r[i], 10)))
+			w.Write([]byte(util.Uitoa(q.r[i])))
 		}
 	}
-	w.Write([]byte(`],"rollbacks":` + strconv.FormatUint(uint64(len(q.r)), 10) + `}`))
+	w.Write([]byte(`],"rollbacks":` + util.Uitoa(uint64(len(q.r))) + `}`))
 }
 func writeScript(c int, w http.ResponseWriter, q *script) {
 	if c > 0 {
@@ -327,13 +328,13 @@ func writeScript(c int, w http.ResponseWriter, q *script) {
 			if i > 0 {
 				w.Write([]byte{','})
 			}
-			w.Write([]byte(strconv.FormatUint(q.r[i], 10)))
+			w.Write([]byte(util.Uitoa(q.r[i])))
 		}
 	}
 	w.Write([]byte(
-		`],"rollbacks":` + strconv.FormatUint(uint64(len(q.r)), 10) + `,"stop_on_error":` +
+		`],"rollbacks":` + util.Uitoa(uint64(len(q.r))) + `,"stop_on_error":` +
 			strconv.FormatBool(q.s.IsStopOnError()) + `,"return_output":` + strconv.FormatBool(q.s.IsOutput()) +
-			`,"channel":` + strconv.FormatBool(q.s.IsChannel()) + `,"size":` + strconv.FormatUint(uint64(q.s.Size()), 10) +
+			`,"channel":` + strconv.FormatBool(q.s.IsChannel()) + `,"size":` + util.Uitoa(uint64(q.s.Size())) +
 			`,"loaded":` + strconv.FormatBool(q.loaded),
 	))
 	w.Write([]byte{'}'})
@@ -607,7 +608,7 @@ func (s *scriptManager) httpScriptPutPost(_ context.Context, w http.ResponseWrit
 			if v <= uint64(len(b)) {
 				continue
 			}
-			writeError(http.StatusBadRequest, `"marks" value "`+strconv.FormatUint(v, 10)+`" is larger than supplied data size`, w, r)
+			writeError(http.StatusBadRequest, `"marks" value "`+util.Uitoa(v)+`" is larger than supplied data size`, w, r)
 			return
 		}
 		m = make([]uint64, len(*a.Marks))

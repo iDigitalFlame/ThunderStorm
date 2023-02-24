@@ -186,6 +186,28 @@ class Shell(Cmd):
     def default(self, cmd):
         return None
 
+    def complete(self, text, s):
+        if s == 0:
+            v = get_line_buffer()
+            o = v.lstrip()
+            i = len(v) - len(o)
+            del v
+            x = get_begidx() - i
+            e = get_endidx() - i
+            del i
+            if x <= 0:
+                f = self._complete_func(x, "")
+            else:
+                c, _, _ = self.parseline(o)
+                f = self._complete_func(x, c)
+                del c
+            self.completion_matches = f(text, o, x, e)
+            del f, o, x, e
+        try:
+            return self.completion_matches[s]
+        except IndexError:
+            return None
+
     def init(self, single=False):
         if self._init:
             return
@@ -229,28 +251,6 @@ class Shell(Cmd):
             )
         self._init = True
 
-    def complete(self, text, s):
-        if s == 0:
-            v = get_line_buffer()
-            o = v.lstrip()
-            i = len(v) - len(o)
-            del v
-            x = get_begidx() - i
-            e = get_endidx() - i
-            del i
-            if x <= 0:
-                f = self._complete_func(x, "")
-            else:
-                c, _, _ = self.parseline(o)
-                f = self._complete_func(x, c)
-                del c
-            self.completion_matches = f(text, o, x, e)
-            del f, o, x, e
-        try:
-            return self.completion_matches[s]
-        except IndexError:
-            return None
-
     def completedefault(self, *_):
         return EMPTY
 
@@ -267,6 +267,14 @@ class Shell(Cmd):
                 self.intro = intro
             if self.intro and self._state == 0:
                 self.stdout.write(str(self.intro) + "\n")
+            if nes(self.asm) or nes(self.dll) or nes(self.pipe):
+                self.stdout.write("Configured with the following options:\n")
+                if nes(self.pipe):
+                    self.stdout.write(f'{"Pipe:":>9} {self.pipe}\n')
+                if nes(self.asm):
+                    self.stdout.write(f'{"ASM File:":>9} {self.asm}\n')
+                if nes(self.dll):
+                    self.stdout.write(f'{"DLL File:":>9} {self.dll}\n')
             s, o = None, False
             while not s:
                 try:

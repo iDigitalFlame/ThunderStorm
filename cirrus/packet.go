@@ -19,13 +19,13 @@ package cirrus
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/PurpleSec/routex"
 	"github.com/iDigitalFlame/xmt/com"
+	"github.com/iDigitalFlame/xmt/util"
 	"github.com/iDigitalFlame/xmt/util/text"
 )
 
@@ -92,7 +92,7 @@ func (p *packetManager) httpPacketsGet(_ context.Context, w http.ResponseWriter,
 				w.Write([]byte{','})
 			}
 			w.Write([]byte(
-				`"` + k + `": {"id":` + strconv.FormatUint(uint64(v.ID), 10) + `,"flags":"` + v.Flags.String() + `","device":"` + v.Device.String() +
+				`"` + k + `": {"id":` + util.Uitoa(uint64(v.ID)) + `,"flags":"` + v.Flags.String() + `","device":"` + v.Device.String() +
 					`","sig":"` + v.Device.Full() + `","time":"` + v.Time.Format(time.RFC3339) + `"}`,
 			))
 			n++
@@ -116,7 +116,7 @@ func (p *packetManager) httpPacketGetDelete(_ context.Context, w http.ResponseWr
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(
-		`{"id":` + strconv.FormatUint(uint64(v.ID), 10) + `,"flags":"` + v.Flags.String() + `","device":"` + v.Device.String() +
+		`{"id":` + util.Uitoa(uint64(v.ID)) + `,"flags":"` + v.Flags.String() + `","device":"` + v.Device.String() +
 			`","sig":"` + v.Device.Full() + `","hardware":"` + v.Device.Signature() + `","time":"` + v.Time.Format(time.RFC3339) + `","data":"`,
 	))
 	writeBase64(w, v.Payload())

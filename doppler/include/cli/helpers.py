@@ -150,6 +150,15 @@ def make_menu(v, menu, inv=False):
         return menu
     r = list()
     for e in menu:
+        # Make it so that "all" is only matched when there is more than one
+        # character in inverted menus.
+        #
+        # This helps with Bolt IDs that start with "A" not autocompleting to "all".
+        #
+        # "A"  == no all
+        # "Al" == has all
+        if e == "all" and inv and (s[0] == "A" and len(s) == 1):
+            continue
         if inv and e.upper().startswith(s):
             r.append(e)
         elif not inv and e.startswith(s):
@@ -180,6 +189,27 @@ def _print_job_result(id, job, type, res, out, script):
         return print("done.")
     if type == "pwd":
         return print(f'returned: {res["path"]}')
+    if type == "pull":
+        print("returned.")
+        if not nes(out) and not script:
+            try:
+                return print(
+                    _strip_rn(b64decode(res["data"], validate=True).decode("UTF-8"))
+                )
+            except UnicodeDecodeError:
+                pass  # Save to a file if it looks like binary.
+        if nes(out) and not script:
+            p = expanduser(expandvars(out))
+        else:
+            p = join(
+                getcwd(), f'{id}-{job}-{datetime.now().strftime("%m%d%y-%H%M")}.out'
+            )
+        with open(p, "wb") as f:
+            f.write(b64decode(res["data"], validate=True))
+            f.flush()
+        print(f'[+] Saved to "{p}".')
+        del p
+        return
     if type == "list":
         if "entries" not in res or len(res["entries"]) == 0:
             return print("returned: 0 entries")
@@ -212,6 +242,8 @@ def _print_job_result(id, job, type, res, out, script):
             del m
         except ValueError:
             pass
+        if "\n" in v:
+            v = v.replace("\n", " ")
         return print(f"error: {v}")
     if type == "spawn":
         return print(f'spawned PID: {res.get("pid", 0)}.')
@@ -272,6 +304,8 @@ def _print_job_result(id, job, type, res, out, script):
         return
     if type == "upload":
         return print(f'wrote {size_str(res.get("size", 0))} to {res["path"]}')
+    if type == "whoami":
+        return print(f'returned.\nUser: {res["user"]}\nPath: {res["path"]}')
     if type == "execute":
         return print(
             f'returned.\n[+] PID: {res.get("pid", "n/a")}, Exit Result: {res.get("exit", 0)}\n'
@@ -303,13 +337,12 @@ def _print_job_result(id, job, type, res, out, script):
                 f'[!] Path {res.get("path")} was a directory and not downloaded!\n'
             )
         if not nes(out) and not script:
-            return print(
-                _strip_rn(
-                    b64decode(res["data"], validate=True).decode(
-                        "UTF-8", errors="replace"
-                    )
+            try:
+                return print(
+                    _strip_rn(b64decode(res["data"], validate=True).decode("UTF-8"))
                 )
-            )
+            except UnicodeDecodeError:
+                pass  # Save to a file if it looks like binary.
         if nes(out) and not script:
             p = expanduser(expandvars(out))
         else:
@@ -337,10 +370,10 @@ def _print_job_result(id, job, type, res, out, script):
             return print("returned: 0 entries")
         print(f'returned: {len(res["entries"])} entries.')
         print(
-            f'{"Handle":8}{"Name":40}Min Max {"Width":8}{"Height":8}{"X":>8}{"Y":>8}\n{"="*90}'
+            f'{"Handle":10}{"Name":40}Min Max {"Width":8}{"Height":8}{"X":>8}{"Y":>8}\n{"="*92}'
         )
         for i in res["entries"]:
-            print(f'{i["handle"]:<8X}', end="")
+            print(f'{(0xFFFFFFFF&i["handle"]):<10X}', end="")
             if len(i["name"]) > 40:
                 print(f'{i["name"][:39]:40}', end="")
             else:
@@ -401,7 +434,7 @@ def _print_job_result(id, job, type, res, out, script):
             else:
                 print(f'{i["user"]:35}')
         return
-    return print(f'returned an unknown result type: "{type}"!')
+    print(f'returned an unknown result type: "{type}"!')
 
 
 def print_job_result(id, job, res, arg, out, multi=False):
@@ -419,6 +452,8 @@ def print_job_result(id, job, res, arg, out, multi=False):
             del m
         except ValueError:
             pass
+        if "\n" in v:
+            v = v.replace("\n", " ")
         return print(f"error: {v}")
     if res["type"] != "script":
         return _print_job_result(id, job, res["type"], res, out, multi)

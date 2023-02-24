@@ -18,7 +18,7 @@
 from json import dumps
 from base64 import b64decode
 from include.config import Config
-from include.util import nes, do_ask
+from include.util import nes, do_ask, print_hash
 from include.cli.parser import PARSERS, PARSER_LISTENER
 from include.cli.helpers import is_valid_name, complete_with_all, make_menu
 from include.cli.const import (
@@ -40,6 +40,8 @@ _MENU_LISTENER = [
     "main",
     "noscript",
     "profile",
+    "pubkey",
+    "pubkey_full",
     "replace",
     "script",
     "update",
@@ -56,6 +58,8 @@ _MENU_LISTENERS = [
     "new",
     "profile",
     "profiles",
+    "pubkey",
+    "pubkey_full",
     "replace",
     "scripts",
     "update",
@@ -101,8 +105,7 @@ class MenuListener(object):
             return
         if n == "-c":
             self.shell.cirrus.listener_update_script(self.name, "")
-            print(f'[+] Cleared Connect Script for "{self.name}".')
-            return
+            return print(f'[+] Cleared Connect Script for "{self.name}".')
         self.shell.cirrus.listener_update_script(self.name, n)
         print(f'[+] Set Connect Script for "{self.name}" to "{n}".')
 
@@ -113,6 +116,19 @@ class MenuListener(object):
         self.shell.cache._listeners = None
         print(f'[+] Deleted Listener "{self.name}".')
         self.shell.set_menu(MENU_LISTENERS)
+
+    def do_pubkey(self, a):
+        try:
+            k, h = self.shell.cirrus.server_public_key()
+            if k is None:
+                return print("The Server has no associated Public Key.")
+            if len(a) > 0:
+                del h
+                return print(k)
+            print_hash(k, h)
+            del k, h
+        except (ValueError, TypeError) as err:
+            print(f"[!] {err}!")
 
     def do_profile(self, _):
         r = self.shell.cirrus.listener(self.name)
@@ -130,6 +146,9 @@ class MenuListener(object):
             print(f'[+] Cleared Connect Script for "{self.name}".')
         except ValueError as err:
             print(f"[!] {err}!")
+
+    def do_pubkey_full(self, _):
+        self.do_pubkey(".")
 
     def prompt(self, args=None):
         self.name = args
@@ -209,6 +228,19 @@ class MenuListeners(object):
     def do_bolts(self, _):
         self.shell.set_menu(MENU_BOLTS)
 
+    def do_pubkey(self, a):
+        try:
+            k, h = self.shell.cirrus.server_public_key()
+            if k is None:
+                return print("The Server has no associated Public Key.")
+            if len(a) > 0:
+                del h
+                return print(k)
+            print_hash(k, h)
+            del k, h
+        except (ValueError, TypeError) as err:
+            print(f"[!] {err}!")
+
     def do_delete(self, n):
         if len(n) == 0:
             return print("delete <name|all>")
@@ -246,6 +278,9 @@ class MenuListeners(object):
 
     def do_replace(self, *a):
         self._upgrade("replace", a)
+
+    def do_pubkey_full(self, _):
+        self.do_pubkey(".")
 
     def prompt(self, args=None):
         return " > Listeners > "

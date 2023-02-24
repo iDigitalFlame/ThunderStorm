@@ -218,6 +218,8 @@ func syscallSinglePacket(c string, f *filter.Filter) (*com.Packet, error) {
 		return task.Pwd(), nil
 	case "chan":
 		return nil, nil
+	case "whoami":
+		return task.Whoami(), nil
 	case "mounts":
 		return task.Mounts(), nil
 	case "elevate":

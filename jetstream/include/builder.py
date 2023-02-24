@@ -18,16 +18,16 @@
 from glob import glob
 from re import compile
 from io import StringIO
-from requests import get
 from random import choice
 from random import randint
-from shutil import copytree
 from base64 import b64decode
 from include.util import nes
-from os import remove, rename
-from os.path import isfile, join
 from datetime import datetime, timedelta
-from string import ascii_letters, Template, ascii_lowercase
+from subprocess import run, CalledProcessError
+from shutil import copytree, copy, move, rmtree
+from string import ascii_letters, ascii_lowercase
+from os.path import isfile, join, islink, normpath, dirname, isdir
+from os import makedirs, remove, rename, readlink, getcwd, symlink, environ, chmod
 
 OS = [
     "aix",
@@ -38,6 +38,7 @@ OS = [
     "illumos",
     "ios",
     "js",
+    "loong64",
     "linux",
     "netbsd",
     "openbsd",
@@ -72,6 +73,7 @@ ARCH = {
         "openbsd",
         "windows",
     ],
+    "loong64": ["linux"],
     "mips": ["linux"],
     "mips64": ["linux", "openbsd"],
     "mips64le": ["linux"],
@@ -128,113 +130,9 @@ MANIFEST = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     </compatibility>
 </assembly>
 """
-CERT_GEN = """package main
-
-import (
-    "bytes"
-    "crypto/rand"
-    "crypto/rsa"
-    "crypto/tls"
-    "crypto/x509"
-    "crypto/x509/pkix"
-    "encoding/pem"
-    "errors"
-    "io"
-    "net"
-    "os"
-    "time"
-)
-
-func main() {
-    if len(os.Args) != 2 {
-        os.Stderr.WriteString(os.Args[0] + " <target_name>\\n")
-        os.Exit(2)
-    }
-    if err := generate(os.Args[1]); err != nil {
-        os.Exit(1)
-    }
-}
-func certs() ([]byte, error) {
-    c, err := tls.DialWithDialer(
-        &net.Dialer{Timeout: time.Second * 10, KeepAlive: time.Second * 10},
-        "tcp", "$target:443", &tls.Config{InsecureSkipVerify: true},
-    )
-    if err != nil {
-        return nil, err
-    }
-    var b bytes.Buffer
-    for _, x := range c.ConnectionState().PeerCertificates {
-        if err := pem.Encode(&b, &pem.Block{Type: "CERTIFICATE", Bytes: x.Raw}); err == nil {
-            break
-        }
-    }
-    if c.Close(); b.Len() == 0 {
-        return nil, io.EOF
-    }
-    return b.Bytes(), nil
-}
-func generate(p string) error {
-    d, err := certs()
-    if err != nil {
-        return err
-    }
-    var (
-        v, _ = pem.Decode(d)
-        c, _ = x509.ParseCertificate(v.Bytes)
-        t    = x509.Certificate{
-            IsCA:                  true,
-            Subject:               pkix.Name{CommonName: $rename},
-            NotAfter:              c.NotAfter,
-            KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-            NotBefore:             c.NotBefore,
-            ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-            SerialNumber:          c.SerialNumber,
-            PublicKeyAlgorithm:    x509.RSA,
-            SignatureAlgorithm:    x509.SHA256WithRSA,
-            BasicConstraintsValid: true,
-        }
-        i = x509.Certificate{
-            Subject:            pkix.Name{CommonName: c.Issuer.CommonName},
-            NotAfter:           c.NotAfter,
-            NotBefore:          c.NotBefore,
-            SerialNumber:       c.SerialNumber,
-            SignatureAlgorithm: x509.SHA256WithRSA,
-        }
-    )
-    k, err := rsa.GenerateKey(rand.Reader, 4096)
-    if err != nil {
-        return errors.New("cannot generate RSA key: " + err.Error())
-    }
-    b, err := x509.CreateCertificate(rand.Reader, &t, &i, &k.PublicKey, k)
-    if err != nil {
-        return errors.New("cannot generate certificate: " + err.Error())
-    }
-    f, err := os.Create(p + ".pem")
-    if err != nil {
-        return errors.New(`cannot create file "` + p + `.pem": ` + err.Error())
-    }
-    var o []byte
-    if o, err = x509.MarshalPKCS8PrivateKey(k); err == nil {
-        err = pem.Encode(f, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: o})
-    }
-    if f.Close(); err != nil {
-        return errors.New("cannot marshal RSA key: " + err.Error())
-    }
-    if f, err = os.Create(p + ".crt"); err != nil {
-        return errors.New(`cannot create file "` + p + `.crt": ` + err.Error())
-    }
-    err = pem.Encode(f, &pem.Block{Type: "CERTIFICATE", Bytes: b})
-    if f.Close(); err != nil {
-        return errors.New("cannot marshal certificate: " + err.Error())
-    }
-    return nil
-}
-"""
 
 _THROW = compile(r"throw\(")
 _PANIC = compile(r"panic\(")
-
-_REPO_URL = "https://raw.githubusercontent.com/iDigitalFlame/TinyPatchedGo/main"
 
 
 def upx(js, file):
@@ -257,6 +155,45 @@ def upx(js, file):
     )
 
 
+def _get_stdout(r):
+    if r is None:
+        return ""
+    o, e = "", ""
+    if nes(r.stdout) and len(r.stdout) > 1 and r.stdout != "\n":
+        o = r.stdout.replace("\n", "; ").strip()
+        if o[-1] == ";":
+            o = o[:-1]
+    if nes(r.stderr) and len(r.stderr) > 1 and r.stderr != "\n":
+        e = r.stderr.replace("\n", "; ").strip()
+        if e[-1] == ";":
+            e = e[:-1]
+    if len(o) > 0 and len(e) > 0:
+        return o + "|" + e
+    if len(o) > 0:
+        return o
+    return e
+
+
+def _find_func(s, x):
+    i = -1
+    for i in range(x, x + 256):
+        if s[i] == "{" and s[i - 1] != "e":  # Ignore interface{}
+            break
+    if i == -1:
+        return -1, -1
+    i += 1
+    c, e = 0, i + 1
+    while e < len(s):
+        if s[e] == "}":
+            if c == 0:
+                break
+            c -= 1
+        elif s[e] == "{":
+            c += 1
+        e += 1
+    return i, e
+
+
 def _sign_range(d, exp):
     if nes(d):
         t = datetime.fromisoformat(d.replace("Z", ""))
@@ -270,53 +207,7 @@ def _sign_range(d, exp):
     return str((t - timedelta(days=randint(0, exp))).timestamp())
 
 
-def go_bytes(v, limit=20):
-    if len(v) == 0:
-        return ""
-    b = StringIO()
-    c = 0
-    for x in v:
-        if limit > 0 and c > 0 and c % limit == 0:
-            b.write("\n\t")
-        b.write(f"0x{hex(x)[2:].upper().zfill(2)}, ")
-        c += 1
-    r = b.getvalue()
-    b.close()
-    if limit == 0 and len(r) > 2:
-        r = r[:-2]
-    del b
-    del c
-    return r
-
-
-def _find_next_token(s, i):
-    e, c = i, 0
-    while True:
-        if e >= len(s):
-            print(i, e, len(s), s[e:i])
-        if s[e] == ")":
-            if c == 0:
-                if e < 3 or s[e - 3 : e + 1] != "no )":
-                    break
-            else:
-                c -= 1
-        if s[e] == "(" and not s[i : i + 15].startswith('"panicwrap: no '):
-            c += 1
-        e += 1
-    del c
-    return e + 1
-
-
-def _wget(url, path, timeout=5):
-    r = get(url, timeout=timeout, allow_redirects=True)
-    r.raise_for_status()
-    with open(path, "wb") as f:
-        f.write(r.content)
-    r.close()
-    del r
-
-
-def tiny_root(old, new, timeout=5):
+def tiny_root(old, new):
     try:
         copytree(old, new)
     except OSError as err:
@@ -325,18 +216,55 @@ def tiny_root(old, new, timeout=5):
         remove(i)
     for i in glob(join(new, "src", "unicode", "*.go"), recursive=False):
         remove(i)
-    _wget(f"{_REPO_URL}/fmt/scan.go", join(new, "src", "fmt", "scan.go"), timeout)
-    _wget(f"{_REPO_URL}/fmt/print.go", join(new, "src", "fmt", "print.go"), timeout)
-    _wget(f"{_REPO_URL}/fmt/quick.go", join(new, "src", "fmt", "quick.go"), timeout)
-    _wget(
-        f"{_REPO_URL}/runtime/print.go",
-        join(new, "src", "runtime", "print.go"),
-        timeout,
+    if islink(__file__):
+        r = join(
+            dirname(normpath(join(dirname(__file__), normpath(readlink(__file__))))),
+            "data",
+            "tinygo",
+        )
+    else:
+        r = join(dirname(dirname(__file__)), "data", "tinygo")
+    if not isdir(r):
+        raise ValueError(f'sign: could not find "tinygo" at "{r}"')
+    copy(join(r, "fmt", "scan.go"), join(new, "src", "fmt", "scan.go"))
+    copy(join(r, "fmt", "print.go"), join(new, "src", "fmt", "print.go"))
+    copy(join(r, "fmt", "quick.go"), join(new, "src", "fmt", "quick.go"))
+    copy(join(r, "runtime", "print.go"), join(new, "src", "runtime", "print.go"))
+    copy(join(r, "unicode", "unicode.go"), join(new, "src", "unicode", "unicode.go"))
+    del r
+    # Help with this comes from the Garble project (runtime_patch.go)
+    _empty(
+        join(new, "src", "runtime", "error.go"),
+        ["printany", "printanycustomtype"],
     )
-    _wget(
-        f"{_REPO_URL}/unicode/unicode.go",
-        join(new, "src", "unicode", "unicode.go"),
-        timeout,
+    _empty(join(new, "src", "runtime", "mgcscavenge.go"), ["printScavTrace"], ign=True)
+    _empty(
+        join(new, "src", "runtime", "mprof.go"), ["tracealloc", "tracefree", "tracegc"]
+    )
+    _empty(join(new, "src", "runtime", "panic.go"), ["preprintpanics", "printpanics"])
+    _empty(join(new, "src", "runtime", "proc.go"), ["schedtrace"])
+    _empty(join(new, "src", "runtime", "runtime1.go"), ["setTraceback"])
+    _empty(
+        join(new, "src", "runtime", "traceback.go"),
+        [
+            "printOneCgoTraceback",
+            "printcreatedby",
+            "printcreatedby1",
+            "traceback",
+            "tracebacktrap",
+            "traceback1",
+            "printAncestorTraceback",
+            "printAncestorTracebackFuncInfo",
+            "goroutineheader",
+            "tracebackothers",
+            "tracebackHexdump",
+            "printCgoTraceback",
+            "printArgs",
+        ],
+        ["return 0"],
+    )
+    _sed(
+        join(new, "src", "runtime", "traceback.go"), ['"runtime/internal/atomic"'], [""]
     )
     _sed(
         join(new, "src", "net", "http", "transport.go"),
@@ -350,12 +278,14 @@ def tiny_root(old, new, timeout=5):
             "envProxyFuncValue = nil",
             "",
         ],
+        ign=True,
     )
     _sed(
         join(new, "src", "net", "http", "h2_bundle.go"),
         [
             "if a, err := idna.ToASCII(host); err == nil {",
             '"golang.org/x/net/idna"',
+            '"golang_org/x/net/idna"',
             'var http2errReadEmpty = errors.New("read from empty dataBuffer")',
             'var http2DebugGoroutines = os.Getenv("DEBUG_HTTP2_GOROUTINES") == "1"',
             'panic(fmt.Sprintf("unexpected buffer len=%v", len(p)))',
@@ -369,18 +299,20 @@ def tiny_root(old, new, timeout=5):
             'return fmt.Sprintf("invalid pseudo-header %q", string(e))',
             'return fmt.Sprintf("duplicate pseudo-header %q", string(e))',
             'return fmt.Sprintf("invalid header field name %q", string(e))',
+            'return fmt.Sprintf("invalid header field value %q", string(e))',
             'return fmt.Sprintf("invalid header field value for %q", string(e))',
             'http2errMixPseudoHeaderTypes = errors.New("mix of request and response pseudo headers")',
             'http2errPseudoAfterRegular   = errors.New("pseudo header field after regular")',
             'return fmt.Sprintf("UNKNOWN_FRAME_TYPE_%d", uint8(t))',
             'var http2ErrFrameTooLarge = errors.New("http2: frame too large")',
-            "\nfunc init() {\n",
+            'func init() {\n\te := os.Getenv("GODEBUG")',
             "\n\t\thttp2logFrameReads = true\n\t}\n}",
             "\nvar (\n\thttp2VerboseLogs    bool\n\thttp2logFrameWrites bool\n\t"
             "http2logFrameReads  bool\n\thttp2inTests        bool\n)\n",
         ],
         [
             'if a := ""; len(a) > 0 {',
+            "",
             "",
             'var http2errReadEmpty = errors.New("empty")',
             "const http2DebugGoroutines = false",
@@ -396,26 +328,31 @@ def tiny_root(old, new, timeout=5):
             'return "duplicate"',
             'return "invalid"',
             'return "invalid"',
+            'return "invalid"',
             'http2errMixPseudoHeaderTypes = errors.New("headers")',
             'http2errPseudoAfterRegular   = errors.New("after regular")',
             'return "UNKNOWN_FRAME_TYPE"',
             'var http2ErrFrameTooLarge = errors.New("too large")',
-            "/*\nfunc init() {\n",
+            '/*\nfunc init() {\n\te := os.Getenv("GODEBUG")',
             "\n\t\thttp2logFrameReads = true\n\t}\n}\n*/",
             "\nconst (\n\thttp2VerboseLogs    = false\n\thttp2logFrameWrites = false\n\t"
             "http2logFrameReads  = false\n\thttp2inTests        = false\n)\n",
         ],
+        ign=True,
     )
     _sed(
         join(new, "src", "net", "http", "request.go"),
         [
             "return idna.Lookup.ToASCII(v)",
             '"golang.org/x/net/idna"',
+            '"golang_org/x/net/idna"',
         ],
         [
             "return v, nil",
             "",
+            "",
         ],
+        ign=True,
     )
     _sed(
         join(
@@ -437,6 +374,7 @@ def tiny_root(old, new, timeout=5):
             "host, err = host, nil",
             "",
         ],
+        ign=True,
     )
     _sed(
         join(new, "src", "runtime", "proc.go"),
@@ -454,9 +392,16 @@ def tiny_root(old, new, timeout=5):
         ['for p := gogetenv(""); p != ""; {', 'setTraceback("none")'],
     )
     _sed(
+        join(new, "src", "runtime", "mgc.go"),
+        ['p := gogetenv("GOGC")'],
+        ['p := ""'],
+        ign=True,
+    )
+    _sed(
         join(new, "src", "runtime", "mgcpacer.go"),
         ['p := gogetenv("GOGC")'],
         ['p := ""'],
+        ign=True,
     )
     _sed(
         join(new, "src", "runtime", "extern.go"),
@@ -503,16 +448,19 @@ def tiny_root(old, new, timeout=5):
         join(new, "src", "cmd", "link", "internal", "ld", "data.go"),
         ['const prefix = "\\xff Go buildinf:"'],
         ['const prefix = "\\xff __ _________"'],
+        ign=True,
     )
     _sed(
         join(new, "src", "debug", "buildinfo", "buildinfo.go"),
         ['buildInfoMagic = []byte("\\xff Go buildinf:")'],
         ['buildInfoMagic = []byte("\\xff __ _________")'],
+        ign=True,
     )
     _sed(
         join(new, "src", "runtime", "cgo", "gcc_libinit_windows.c"),
         ["__declspec(dllexport) int _cgo_dummy_export;"],
         [f"__declspec(dllexport) int _{random_chars(12, True)};"],
+        ign=True,
     )
     _sed(
         join(new, "src", "runtime", "proc.go"),
@@ -530,28 +478,34 @@ def tiny_root(old, new, timeout=5):
         join(new, "src", "vendor", "golang.org", "x", "sys", "cpu", "cpu.go"),
         ["\tprocessOptions()\n"],
         ["\t// processOptions()\n"],
+        ign=True,
     )
     _sed(
         join(new, "src", "internal", "cpu", "cpu.go"),
         ["\tprocessOptions(env)\n"],
         ["\t// processOptions(env)\n"],
+        ign=True,
     )
     _sed(
         join(new, "src", "internal", "godebug", "godebug.go"),
         ['return get(os.Getenv("GODEBUG"), key)'],
         ['return get(os.Getenv(""), key)'],
+        ign=True,
     )
     _sed(
         join(new, "src", "crypto", "x509", "x509.go"),
         ['override = " (temporarily override with GODEBUG=x509sha1=1)"'],
         ['override = ""'],
+        ign=True,
     )
     _sed(
         join(new, "src", "runtime", "stubs.go"),
         [
             'var badsystemstackMsg = "fatal: systemstack called from unexpected goroutine"'
+            'throw("systemstack called from unexpected goroutine")'
         ],
-        ['var badsystemstackMsg = "bad"'],
+        ['var badsystemstackMsg = "bad"', 'throw(bad")'],
+        ign=True,
     )
     _sed(
         join(new, "src", "encoding", "asn1", "asn1.go"),
@@ -587,19 +541,23 @@ def tiny_root(old, new, timeout=5):
             '\n*/\nfunc (waitReason) String() string {\n\treturn "wait"\n}\n/*\n',
             "\n\treturn waitReasonStrings[w]\n}*/",
         ],
+        ign=True,
     )
     _sed(
         join(new, "src", "runtime", "debug.go"),
-        ['stopTheWorldGC("GOMAXPROCS")'],
-        ['stopTheWorldGC("GMP")'],
+        ['stopTheWorldGC("GOMAXPROCS")', 'stopTheWorld("GOMAXPROCS")'],
+        ['stopTheWorldGC("GMP")', 'stopTheWorld("GMP")'],
+        ign=True,
     )
     _sed(
         join(new, "src", "runtime", "panic.go"),
         [
             "switch r := recover().(type) {",
             'text := "panic while printing panic value"',
+            'throw("panic while printing panic value")',
         ],
-        ["switch recover().(type) {", ""],
+        ["switch recover().(type) {", "", 'throw("bad")'],
+        ign=True,
     )
     _sed(
         join(new, "src", "net", "conf.go"),
@@ -612,7 +570,13 @@ def tiny_root(old, new, timeout=5):
             'print("go package net: hostLookupOrder(", hostname, ") = ", ret.String(), "\\n")',
         ],
         ["", "", "", "", "", ""],
+        ign=True,
     )
+    # _sed(
+    #    join(new, "src", "runtime", "symtab.go"),
+    #    ['print("runtime: invalid pc-encoded table'],
+    #    ['return -1\n\nprint("runtime: invalid pc-encoded table'],
+    # )
     # NOTE(dij): I have this commented out since I don't necessarily want to break
     #            support for long paths and cause os.fixPath to allocate.
     #            Basically the "runtime.initLongPathSupport" function causes the
@@ -642,7 +606,7 @@ def tiny_root(old, new, timeout=5):
                 'return goroot + "/lib/time/zoneinfo.zip", true',
             ],
             [
-                "runtime.GOROOT()",
+                "runtime.GOROOT(),",
                 'return "zone", true',
             ],
             True,
@@ -651,13 +615,104 @@ def tiny_root(old, new, timeout=5):
         f.write("")
 
 
+def go_bytes(v, limit=20):
+    if len(v) == 0:
+        return ""
+    b = StringIO()
+    c = 0
+    for x in v:
+        if limit > 0 and c > 0 and c % limit == 0:
+            b.write("\n\t")
+        b.write(f"0x{hex(x)[2:].upper().zfill(2)}, ")
+        c += 1
+    r = b.getvalue()
+    b.close()
+    if limit == 0 and len(r) > 2:
+        r = r[:-2]
+    del b
+    del c
+    return r
+
+
+def _find_next_token(s, i):
+    e, c = i, 0
+    while True:
+        if s[e] == ")":
+            if c == 0:
+                if e < 3 or s[e - 3 : e + 1] != "no )":
+                    break
+            else:
+                c -= 1
+        if s[e] == "(" and not s[i : i + 15].startswith('"panicwrap: no '):
+            c += 1
+        e += 1
+    del c
+    return e + 1
+
+
+def pull_in_deps(log, path):
+    # NOTE(dij): Don't use the suggested Golang version, as it might not support
+    #            "vendor".
+    if islink(__file__):
+        r = dirname(
+            dirname(normpath(join(dirname(__file__), normpath(readlink(__file__)))))
+        )
+    else:
+        r = dirname(dirname(dirname(__file__)))
+    if not isdir(r):
+        raise ValueError(
+            f'deps: could not find the root "ThunderStorm" directory at "{r}"'
+        )
+    if not isdir(join(r, "bolt")):
+        raise ValueError(f'deps: could not find the root "ThunderStorm/bolt" at "{r}"')
+    if not isdir(join(r, "flurry")):
+        raise ValueError(
+            f'deps: could not find the root "ThunderStorm/flurry" at "{r}"'
+        )
+    d = join(getcwd(), "vendor")
+    p = join(path, "src")
+    try:
+        makedirs(path)
+        execute(log, ["go", "mod", "vendor"])
+        if not isdir(d):
+            raise OSError(f'vendor directory "{d}" was not created')
+        move(d, p)
+        chmod(p, 0o750, follow_symlinks=False)
+        symlink(r, join(p, "github.com/iDigitalFlame/ThunderStorm"))
+    except OSError as err:
+        remove(join(p, "github.com/iDigitalFlame/ThunderStorm"))
+        rmtree(d, ignore_errors=True)
+        rmtree(p, ignore_errors=True)
+        raise err
+    finally:
+        del d, p, r
+
+
+def _print_cmd(v, trunc, ns=False):
+    if not trunc:
+        return " ".join(v)
+    o = v.copy()
+    for x in range(0, len(v)):
+        if len(v[x]) > 200:
+            o.remove(v[x])
+            o.insert(x, "[trunc]")
+    if ns:
+        return o
+    return " ".join(o)
+
+
 def _sed(path, old, new, ign=False):
+    if not isfile(path) and ign:
+        return
     with open(path, "r") as f:
         d = f.read()
     with open(path, "w") as f:
         for x in range(0, len(old)):
             if not ign and old[x] not in d:
                 raise ValueError(f"{path}: missing {old[x]}")
+            if old[x] not in d:
+                # print(f"{path} missing {old[x]}")
+                continue
             d = d.replace(old[x], new[x])
         f.write(d)
     del d
@@ -696,33 +751,28 @@ def _remap_file(p, regexp, no_concat, repl):
     del r, c, b
 
 
-def make_cert_target(js, base, target, name):
-    r = join(base, "grab.go")
-    n = f'"{name}"'
-    if not nes(name):
-        n = "c.Issuer.CommonName"
-    v = target
-    if v.startswith("http://"):
-        v = v[7:]
-    elif v.startswith("https://"):
-        v = v[8:]
-    if "/" in v:
-        v = v[: v.find("/")]
-    if len(v) == 0:
-        raise ValueError(f'sign: spoof target "{v}" (initial "{target}") is invalid')
-    with open(r, "w") as f:
-        f.write(Template(CERT_GEN).substitute(target=v, rename=n))
-    del n, v
-    js.log.debug(f'Wrote cert grabbing script to "{r}".')
-    t = join(base, "gens")
-    js._exec([js.opts.get_bin("go"), "run", r, t])
-    remove(r)
-    del r
-    c, p = t + ".crt", t + ".pem"
-    del t
-    if not isfile(p) or not isfile(c):
-        raise ValueError("sign: certificate script did not result in any valid output")
-    return c, p
+def _empty(path, names, ret=None, ign=False):
+    if not isfile(path) and ign:
+        return
+    with open(path, "r") as f:
+        d = f.read()
+    with open(path, "w") as f:
+        for i in range(0, len(names)):
+            x = d.find(f"func {names[i]}(")
+            # print("find", path, ":", names[i])
+            if x <= 0:
+                continue
+            s, e = _find_func(d, x)
+            # print("find", s, e, len(d), d[s:e])
+            if s <= x:
+                continue
+            if isinstance(ret, list) and len(ret) > i:
+                d = d[:s] + ret[i] + d[e:]
+            else:
+                d = d[:s] + d[e:]
+            del s, e, x
+        f.write(d)
+    del d
 
 
 def sign(js, o, date, date_range, base, file):
@@ -789,6 +839,37 @@ def sign(js, o, date, date_range, base, file):
         )
 
 
+def make_cert_target(log, base, target, name):
+    v = target
+    if v.startswith("http://"):
+        v = v[7:]
+    elif v.startswith("https://"):
+        v = v[8:]
+    if "/" in v:
+        v = v[: v.find("/")]
+    if len(v) == 0:
+        raise ValueError(f'sign: spoof target "{v}" (initial "{target}") is invalid')
+    if islink(__file__):
+        r = join(
+            dirname(normpath(join(dirname(__file__), normpath(readlink(__file__))))),
+            "data",
+            "generate.go",
+        )
+    else:
+        r = join(dirname(dirname(__file__)), "data", "generate.go")
+    if not isfile(r):
+        raise ValueError(f'sign: could not find "generate.go" at "{r}"')
+    t = join(base, "gens")
+    # NOTE(dij): Use system native go version if we can.
+    execute(log, ["go", "run", r, v, name, t])
+    del r, v
+    c, p = t + ".crt", t + ".pem"
+    del t
+    if not isfile(p) or not isfile(c):
+        raise ValueError("sign: certificate script did not result in any valid output")
+    return c, p
+
+
 def sign_with_pfx(js, when, file, pfx, pfx_pw):
     x = [
         js.opts.get_bin("osslsigncode"),
@@ -838,8 +919,40 @@ def sign_with_certs(js, when, file, cert, pem):
 
 
 def sign_with_target(js, when, file, base, target, name):
-    c, p = make_cert_target(js, base, target, name)
+    c, p = make_cert_target(js.log, base, target, name)
     sign_with_certs(js, when, file, c, p)
     remove(c)
     remove(p)
     del c, p
+
+
+def execute(log, cmd, env=None, trunc=False, out=True, wd=None, dout=True):
+    log.debug(f'Running "{_print_cmd(cmd, trunc)}"..')
+    e = env
+    if env is None:
+        e = environ
+    try:
+        r = run(
+            cmd,
+            env=e,
+            cwd=wd,
+            text=True,
+            check=True,
+            shell=False,
+            capture_output=out,
+        )
+    except CalledProcessError as err:
+        log.error(
+            f'Error running command (exit {err.returncode}) "{_print_cmd(cmd, trunc)}": {_get_stdout(err)}'
+        )
+        if trunc:
+            err.cmd = _print_cmd(cmd, trunc, True)
+        raise err
+    finally:
+        del e
+    if out and dout:
+        o = _get_stdout(r)
+        if nes(o):
+            log.debug(f"Command output: {o}")
+        del o
+    del r

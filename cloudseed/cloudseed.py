@@ -35,7 +35,7 @@ from include.args import insert_args_opts
 from os import environ, makedirs, listdir, getcwd
 from datetime import datetime, timedelta, timezone
 from include.jetstream import JetStream, which_empty
-from include.builder import tiny_root, make_cert_target
+from include.builder import tiny_root, make_cert_target, pull_in_deps
 from argparse import ArgumentParser, BooleanOptionalAction, Namespace
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
 from os.path import isdir, join, isfile, expanduser, expandvars, basename
@@ -364,6 +364,19 @@ class CloudSeed(object):
             self._opts.set("build.options.compact", False)
             del d
         self._opts.vet()
+        if not self._opts._mod:
+            p = self.opts.get_option("gopath")
+            if not isinstance(p, str) or len(p) == 0:
+                p = join(self._tmp, "deps")
+                pull_in_deps(self.log, p)
+                self.opts.set("build.options.gopath", p)
+                self.log.debug(f'Setting generated GOPATH to "{p}".')
+            else:
+                self.log.warning(
+                    "Ensure the the Golang modules used are in a localized directory "
+                    "as this version does NOT support Go Modules!"
+                )
+            del p
         self._opts.generators(None)
         which_empty(self._opts)
         self._build_prep_sign()
@@ -631,15 +644,13 @@ class CloudSeed(object):
         self.log.info(
             f'Generating a CA pair with Signer "{self._pki.name}" and CA "{self._pki.ca}"..'
         )
-        j = JetStream(self._opts, self.log)
         c = make_pki(
-            j,
+            self.log,
             self._tmp,
             self._pki.ca,
             self._pki.name,
             start=_parse_date(self._pki.date, self._opts),
         )
-        del j
         self._output["certs"] = dict()
         self._opts.set("build.support.sign.cert", c.signer)
         self._opts.set("build.support.sign.pem", c.signer_key)
@@ -815,9 +826,7 @@ class CloudSeed(object):
         self.log.info(
             f'Generating a spoofed Signing cert from "{target}" as "{name}"..'
         )
-        j = JetStream(self._opts, self.log)
-        c, p = make_cert_target(j, self._tmp, target, name)
-        del j
+        c, p = make_cert_target(self.log, self._tmp, target, name)
         self._output["certs"] = dict()
         self._opts.set("build.support.sign.cert", c)
         self._opts.set("build.support.sign.pem", p)
@@ -927,7 +936,7 @@ class CloudSeed(object):
             )
             o.set(k, d)
             del d
-        o.vet()
+        o.vet(check_go=self._opts.get_bin("go") != o.get_bin("go"))
         g = o.generators(None)
         if x.builder.generator not in g:
             raise ValueError(
@@ -977,7 +986,7 @@ class CloudSeed(object):
         e = JetStream(opts, self.log, False)
         n = f"{randint(0, 100)}-{n}"
         try:
-            e.run(osv, arch, gen, builder.lib, join(out, n), False)
+            e.run(osv, arch, gen, builder.lib, join(out, n), False, auto=True)
         except BaseException as err:
             # NOTE(dij): Don't delete files on failure.
             raise err

@@ -8,25 +8,25 @@ cirrus.json
 js.json
 
 cloudseed.conf
-
 cloudseed/resources
 cloudseed/resources/*
-
 cloudseed/templates/_*
 cloudseed/templates/_**
 cloudseed/generators/_*
 cloudseed/generators/_**
-
 jetstream/templates/_*
 jetstream/templates/_**
 jetstream/generators/_*
 jetstream/generators/_**
-
 .bolt-cfg
 .bolt-cfg.bak
 .bolt-cfg.old
-
 bin/cirrus
+bin/cirrus*
+bin/cirrus*.upx
+GOPATH
+GOPATH/*
+GOPATH/**
 
 # Binaries for programs and plugins
 *.exe

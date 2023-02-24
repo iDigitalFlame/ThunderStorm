@@ -28,7 +28,7 @@ from include.config import Config, Utils
 from datetime import datetime, timedelta
 from sys import exit, stderr, stdin, argv
 from include.cirrus import Api, CirrusError
-from include.cli.helpers import Exp, print_job_result
+from include.cli.helpers import Exp, print_job_result, parse_exp
 from include.util import nes, size_str, time_str, ip_str, is_true
 from os.path import expanduser, expandvars, basename, join, isfile
 
@@ -37,7 +37,7 @@ _HELP_TEXT = """ Doppler: ThunderStorm C2 Console Interface
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
 (c) 2019 - 2023 iDigitalFlame
 
-Usage: {proc} -a <cirrus> [-p password] [-A] [-D] [-b] [-B] [-j] [-l] [-x] [-s] [-i] [-c cmd] [...]
+Usage: {proc} -a <cirrus> [-p password] [-A] [-D] [-b] [-B] [-f] [-j] [-l] [-x] [-s] [-i] [-c cmd] [...]
 
 Required Arguments:
   -a          <cirrus_address>   Name/IP and port of the Cirrus server. This
@@ -251,6 +251,15 @@ class Doppler(Api):
             self.events.put(_Event(action=a, id=n))
         del a, n, z, v
 
+    def _sessions(self, exp=None):
+        r = super(__class__, self).sessions()
+        if not isinstance(r, list) or len(r) == 0:
+            return list()
+        r.sort(key=lambda x: x["device"]["id"], reverse=True)
+        if isinstance(exp, Exp):
+            return exp.matches(r)
+        return r
+
     def _show_jobs(self, id, prefix=False):
         d = super(__class__, self).jobs(id)
         if not isinstance(d, dict) and len(d) > 0:
@@ -286,21 +295,9 @@ class Doppler(Api):
             if "result" in j and isinstance(j["result"], int) and j["result"] > 0:
                 print(size_str(j["result"], True), end="")
             if "error" in j and len("error") > 0:
-                print(" " + j["error"], end="")
+                print(" " + j["error"].replace("\n", " "), end="")
             print()
         del t, e
-
-    def _sessions(self, exp=None, hw=False):
-        r = super(__class__, self).sessions()
-        if not isinstance(r, list) or len(r) == 0:
-            return list()
-        if hw:
-            r.sort(key=lambda x: x["device"]["id"], reverse=True)
-        else:
-            r.sort(key=lambda x: x["id"], reverse=True)
-        if isinstance(exp, Exp):
-            return exp.matches(r)
-        return r
 
     def _watch(self, id, job, args, out=None):
         if job is None:
@@ -506,10 +503,10 @@ class Doppler(Api):
         print(f'\n{55*"="}\nBase64: {b64encode(p).decode("UTF-8")}')
         del p, n
 
-    def show_info(self, id=None, all=False, exp=None, hw=False):
+    def show_info(self, id=None, all=False, exp=None):
         if not all:
             return _print_session_info(super(__class__, self).session(id))
-        r = self._sessions(exp=exp, hw=hw)
+        r = self._sessions(exp=exp)
         if not isinstance(r, list) or len(r) == 0:
             return
         for s in r:
@@ -517,10 +514,10 @@ class Doppler(Api):
             print()
         del r
 
-    def show_jobs(self, id=None, all=False, exp=None, hw=False):
+    def show_jobs(self, id=None, all=False, exp=None):
         if not all:
             return self._show_jobs(id, False)
-        r = self._sessions(exp=exp, hw=hw)
+        r = self._sessions(exp=exp)
         if not isinstance(r, list) or len(r) == 0:
             return
         print(
@@ -531,7 +528,7 @@ class Doppler(Api):
         del r
 
     def show_sessions(self, exp=None, advanced=False, hw=False):
-        e = self._sessions(exp=exp, hw=hw)
+        e = self._sessions(exp=exp)
         if not isinstance(e, list) or len(e) == 0:
             return
         t = datetime.now()
@@ -543,7 +540,7 @@ class Doppler(Api):
             print(f'{"ID":9}', end="")
         if advanced:
             print(
-                f'{"Hostname":20}{"IP":17}{"OS":26}{"User":32}{"From":20}{"PID":9}{" Last":8}\n{"="*(142+m)}'
+                f'{"Hostname":20}{"IP":17}{"OS":26}{"Arch":8}{"User":32}{"From":20}{"PID":9}{" Last":8}\n{"="*(150+m)}'
             )
         else:
             print(
@@ -552,14 +549,30 @@ class Doppler(Api):
         del m
         for s in e:
             if advanced:
-                v = s["via"].split(":")
-                if "connector" in s and len(v) > 0:
-                    if len(v[0]) > 15:
-                        v[0] = "<IPv6>"
-                    if "/" in s["connector"]:
-                        v = s["connector"].split("/")[0] + "|" + v[0]
+                # Handle IPv6 encoded IPv4 addresses
+                if s["via"].lower().startswith("[::ffff:"):
+                    i = s["via"].rfind("]")
+                    if i > 8:
+                        v = s["via"][8:i]
                     else:
-                        v = s["connector"] + "|" + v[0]
+                        v = s["via"]
+                    del i
+                elif ":" in s["via"]:
+                    i = s["via"].rfind(":")
+                    if i > 1:
+                        v = s["via"][:i]
+                    else:
+                        v = s["via"]
+                    del i
+                else:
+                    v = s["via"]
+                if "connector" in s and len(v) > 0:
+                    if len(v) > 15:
+                        v = "<IPv6>"
+                    if "/" in s["connector"]:
+                        v = s["connector"].split("/")[0] + "|" + v
+                    else:
+                        v = s["connector"] + "|" + v
                 if "(" in s["device"]["version"]:
                     n = s["device"]["version"].index("(")
                     if n > 0:
@@ -568,6 +581,8 @@ class Doppler(Api):
                         o = s["device"]["version"]
                 else:
                     o = s["device"]["version"]
+                if o.startswith("Microsoft Windows"):
+                    o = o[10:]
                 if hw:
                     print(f'{s["device"]["id"][:16]+ s["id"]:25}', end="")
                 else:
@@ -586,11 +601,14 @@ class Doppler(Api):
                     c = "C"
                 elif "work_hours" in s and len(s["work_hours"]) > 0:
                     c = "W"
+                a = "x" + s["device"]["arch"].replace("bit", "")
+                if "[" in a:
+                    a = a[: a.find("[")].strip() + "*"
                 print(
-                    f"{_trunc(18, h):20}{ip_str(s):17}{_trunc(24, o):26}{_trunc(30, u):32}{v:20}"
-                    f'{s["device"]["pid"]:<9}{c}{time_str(t, s["last"])}'
+                    f"{_trunc(18, h):20}{ip_str(s):17}{_trunc(24, o):26}{a:8}{_trunc(30, u):32}"
+                    f'{v:20}{s["device"]["pid"]:<9}{c}{time_str(t, s["last"])}'
                 )
-                del v, o, u, h, c
+                del v, o, u, h, c, a
                 continue
             if hw:
                 print(f'{s["device"]["id"][:16]+ s["id"]:25}', end="")
@@ -700,11 +718,6 @@ class Doppler(Api):
             dest,
         )
 
-    def task_pull(self, id, url, dest, agent=None):
-        self._watch(
-            id, super(__class__, self).task_pull(id, url, dest, agent), f"pull {url}"
-        )
-
     def task_system(self, id, cmd, filter=None, out=None):
         self._watch(id, super(__class__, self).task_system(id, cmd, filter), cmd, out)
 
@@ -721,6 +734,14 @@ class Doppler(Api):
             id,
             super(__class__, self).task_troll(id, action, enable, seconds),
             f'troll {action} {str(enable).lower() if enable is not None else "true"}',
+        )
+
+    def task_pull(self, id, url, path="", agent=None, dest=None):
+        self._watch(
+            id,
+            super(__class__, self).task_pull(id, url, path, agent),
+            f"pull {url}",
+            dest,
         )
 
     def task_check(self, id, dll, function="", data=None, raw=False):
@@ -1062,6 +1083,7 @@ class _Parser(ArgumentParser):
         self.add("listeners", "-l", "--listeners", bool=True)
         self.add("bolts", "-b", "--bolts", bool=True)
         self.add("bolts_adv", "-B", "--bolts-adv", bool=True)
+        self.add("info", "-I", bool=True)
         # Execution Arguments
         self.add("cmd", "-c", "--cmd")
         self.add("timeout", "-w", "--timeout")
@@ -1185,7 +1207,7 @@ def _main():
         exit(1)
     try:
         if r.jobs:
-            return d.show_jobs(all=True, exp=Exp.parse(r.extra))
+            return d.show_jobs(all=True, exp=parse_exp(r.extra))
         if r.scripts:
             return d.show_scripts(r.extra)
         if r.profiles:
@@ -1193,7 +1215,11 @@ def _main():
         if r.listeners:
             return d.show_listeners(r.extra)
         if r.bolts or r.bolts_adv:
-            return d.show_sessions(advanced=r.bolts_adv, exp=Exp.parse(r.extra))
+            return d.show_sessions(advanced=r.bolts_adv, exp=parse_exp(r.extra))
+        if r.info:
+            if len(r.extra) == 0:
+                return d.show_info(all=True)
+            return d.show_info(id=r.extra)
         s = Shell(d, r)
         if nes(r.cmd):
             d.session(r.extra)

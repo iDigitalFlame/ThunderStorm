@@ -25,6 +25,7 @@ from include.builder import RC
 from traceback import format_exc
 from random import choice, randint
 from os import listdir, makedirs, chmod
+from subprocess import run, CalledProcessError
 from include.generators import load_generators
 from logging import getLogger, Formatter, StreamHandler, FileHandler
 from os.path import expanduser, expandvars, isfile, isdir, isabs, join, dirname
@@ -251,6 +252,7 @@ def _cfg_options(cfg, b):
         cfg["crypt"] = True
         cfg["strip"] = True
         cfg["goroot"] = ""
+        cfg["gopath"] = ""
         cfg["garble"] = True
         cfg["compact"] = True
         return
@@ -259,6 +261,7 @@ def _cfg_options(cfg, b):
     cfg["crypt"] = b.get("crypt", True)
     cfg["strip"] = b.get("strip", True)
     cfg["goroot"] = b.get("goroot", "")
+    cfg["gopath"] = b.get("gopath", "")
     cfg["garble"] = b.get("garble", True)
     cfg["compact"] = b.get("compact", True)
     cfg["tags"] = b.get("tags", _DEFAULT_TAGS)
@@ -270,6 +273,7 @@ def _cfg_options(cfg, b):
     vet_bool("build.options.compact", cfg["compact"])
     vet_list_strs("build.options.tags", cfg["tags"], null=True)
     vet_str_exists("build.options.goroot", cfg["goroot"], f=isdir)
+    vet_str_exists("build.options.gopath", cfg["gopath"], f=isdir)
 
 
 def _cfg_support(cfg, b):
@@ -617,7 +621,7 @@ class Logger(object):
     def error(self, message, err=None):
         if self._prefix is None:
             if err is not None:
-                return self._log.error(f"{message} ({str(err)})\n{format_exc(3)}")
+                return self._log.error(f"{message} ({str(err)})\n{format_exc(13)}")
             self._log.error(message)
         else:
             if err is not None:
@@ -640,29 +644,18 @@ class Logger(object):
 
 
 class Options(object):
-    __slots__ = ("lock", "_gens", "_temps", "_config")
+    __slots__ = ("lock", "_gens", "_temps", "_config", "_vcs", "_trim", "_mod")
 
     def __init__(self, d=None):
+        self._vcs = True
+        self._mod = False
         self.lock = False
+        self._trim = True
         self._gens = None
         self._temps = None
         self._config = None
         if isinstance(d, dict):
             self.load_from(d)
-
-    def vet(self):
-        d = {
-            "build": {
-                "bins": dict(),
-                "options": dict(),
-                "generators": dict(),
-                "support": {"rc": dict(), "sign": dict()},
-            },
-            "config": {"log": dict()},
-        }
-        _cfg_build(d["build"], self._config["build"])
-        _cfg_base(d["config"], self._config["config"])
-        del d
 
     def logger(self):
         if self._config is None:
@@ -764,6 +757,50 @@ class Options(object):
         }
         _cfg_build(self._config["build"], d.get("build"))
         _cfg_base(self._config["config"], d.get("config"))
+
+    def vet(self, check_go=False):
+        d = {
+            "build": {
+                "bins": dict(),
+                "options": dict(),
+                "generators": dict(),
+                "support": {"rc": dict(), "sign": dict()},
+            },
+            "config": {"log": dict()},
+        }
+        _cfg_build(d["build"], self._config["build"])
+        _cfg_base(d["config"], self._config["config"])
+        del d
+        if not check_go:
+            return
+        # Check Golang version
+        # We need to determine if we can use "-trimpath" and "-buildvcs"
+        try:
+            r = run(
+                [self.get("build.bins.go"), "version"],
+                text=True,
+                check=True,
+                shell=False,
+                capture_output=True,
+            )
+        except CalledProcessError:
+            return
+        v = r.stdout[13:]
+        v = v[: v.find(" ")]
+        n = v.strip().split(".")
+        del r
+        if len(n) != 3:
+            return
+        try:
+            a, b = int(n[0]), int(n[1])
+        except ValueError:
+            return
+        del n
+        if a > 1 or a < 1 or b < 10:
+            raise RuntimeError(f"Unsupported Go version: {v}")
+        del a, v
+        self._vcs, self._trim, self._mod = b > 17, b > 12, b > 10
+        del b
 
     def get(self, n, default=None):
         if self._config is None:

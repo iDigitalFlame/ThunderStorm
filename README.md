@@ -106,6 +106,12 @@ Actual JSON config file:
 
 ## TODOs:
 
-__Updated 11/18/22__
+*Updated 02/24/23*
 
 - Write Cirrus API documentation
+- WC2 Setup / Config API
+- Interactive way to create Profiles
+
+__DISCLAIMER: Please use for legal reasons only. I'm not responsible if you get__
+__in trouble for using this improperly or if someone owns your environment and is__
+__using ThunderStorm (or a derivative of it).__

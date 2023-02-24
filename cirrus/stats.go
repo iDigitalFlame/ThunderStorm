@@ -20,13 +20,12 @@ import (
 	"context"
 	"encoding/base64"
 	"os"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/iDigitalFlame/xmt/c2"
 	"github.com/iDigitalFlame/xmt/com"
+	"github.com/iDigitalFlame/xmt/util"
 )
 
 const (
@@ -84,8 +83,8 @@ func (s *stats) writeTacker() {
 	}
 	s.t.Truncate(0)
 	s.t.Seek(0, 0)
-	s.t.WriteString("Sessions:\t" + strconv.FormatUint(s.s, 10) + "\n\n")
-	s.t.WriteString("Jobs:\t" + strconv.FormatUint(s.j, 10) + "\n")
+	s.t.WriteString("Sessions:\t" + util.Uitoa(s.s) + "\n\n")
+	s.t.WriteString("Jobs:\t" + util.Uitoa(s.j) + "\n")
 	s.Lock()
 	for i := range s.e {
 		if s.e[i] == 0 {
@@ -96,7 +95,7 @@ func (s *stats) writeTacker() {
 		} else {
 			s.t.WriteString("  ")
 		}
-		s.t.WriteString(strings.ToUpper(strconv.FormatUint(uint64(i), 16)) + ":\t" + strconv.FormatUint(s.e[i], 10) + "\n")
+		s.t.WriteString(util.Uitoa16(uint64(i)) + ":\t" + util.Uitoa(s.e[i]) + "\n")
 	}
 	s.Unlock()
 	s.t.Sync()
@@ -182,19 +181,14 @@ func (s *stats) writeJobEvent(e statJobEvent) {
 	default:
 		s.f.WriteString("INVALID,")
 	}
-	s.f.WriteString(
-		strconv.FormatUint(uint64(e.Job), 10) + "," + strconv.FormatUint(uint64(e.Type), 10) + "," + e.Data + ",\r\n",
-	)
+	s.f.WriteString(util.Uitoa(uint64(e.Job)) + "," + util.Uitoa(uint64(e.Type)) + "," + e.Data + ",\r\n")
 	s.f.Sync()
 }
 func (s *stats) writePacketEvent(e statPacketEvent) {
 	if s.f == nil {
 		return
 	}
-	s.f.WriteString(
-		e.Time.Format(time.RFC3339) + "," + e.Session + ",,ONESHOT," +
-			strconv.FormatUint(uint64(e.ID), 10) + ",," + e.Data + ",\r\n",
-	)
+	s.f.WriteString(e.Time.Format(time.RFC3339) + "," + e.Session + ",,ONESHOT," + util.Uitoa(uint64(e.ID)) + ",," + e.Data + ",\r\n")
 	s.f.Sync()
 }
 func (s *stats) writeSessionEvent(e statSessionEvent) {

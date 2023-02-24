@@ -1,4 +1,5 @@
 //go:build !log
+// +build !log
 
 // Copyright (C) 2020 - 2023 iDigitalFlame
 //

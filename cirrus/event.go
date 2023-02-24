@@ -19,13 +19,13 @@ package cirrus
 import (
 	"context"
 	"io"
-	"strconv"
 	"sync"
 	"sync/atomic"
 
 	"github.com/PurpleSec/escape"
 	"github.com/gorilla/websocket"
 	"github.com/iDigitalFlame/xmt/data"
+	"github.com/iDigitalFlame/xmt/util"
 )
 
 var bufs = sync.Pool{
@@ -49,13 +49,13 @@ type eventManager struct {
 
 func (e event) write(b io.Writer) {
 	if b.Write([]byte(`{"name":` + escape.JSON(e.Name) + `,"action":"` + e.Action + `"`)); e.Value > 0 {
-		b.Write([]byte(`,"value":` + strconv.FormatUint(uint64(e.Value), 10)))
+		b.Write([]byte(`,"value":` + util.Uitoa(uint64(e.Value))))
 	}
 	if e.Count > 0 {
-		b.Write([]byte(`,"count":` + strconv.FormatUint(uint64(e.Count), 10)))
+		b.Write([]byte(`,"count":` + util.Uitoa(uint64(e.Count))))
 	}
 	if e.Total > 0 {
-		b.Write([]byte(`,"total":` + strconv.FormatUint(uint64(e.Total), 10)))
+		b.Write([]byte(`,"total":` + util.Uitoa(uint64(e.Total))))
 	}
 	b.Write([]byte{'}'})
 }

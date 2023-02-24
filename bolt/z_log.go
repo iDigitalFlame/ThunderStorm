@@ -1,4 +1,5 @@
 //go:build log
+// +build log
 
 // Copyright (C) 2020 - 2023 iDigitalFlame
 //
@@ -18,6 +19,19 @@
 
 package bolt
 
-import "github.com/PurpleSec/logx"
+import (
+	"os"
 
-var logger = logx.Console(logx.Trace)
+	"github.com/PurpleSec/logx"
+	"github.com/iDigitalFlame/xmt/util"
+)
+
+var logger = initLog()
+
+func initLog() logx.Log {
+	f, err := logx.File(os.TempDir()+"\\log-"+util.Uitoa(uint64(os.Getpid()))+".log", logx.Trace)
+	if err != nil {
+		return logx.Console(logx.Trace)
+	}
+	return logx.Multiple(f, logx.Console(logx.Trace))
+}

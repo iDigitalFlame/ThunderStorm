@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-from include.util import nes
+from include.util import nes, print_hash
 from include.cli.helpers import is_valid_name, make_menu, complete_with_all
 from include.cli.const import (
     EMPTY,
@@ -42,6 +42,8 @@ _MENU = [
     "listeners",
     "profile",
     "profiles",
+    "pubkey",
+    "pubkey_full",
     "script",
     "scripts",
 ]
@@ -61,7 +63,7 @@ class MenuMain(object):
             return self.shell.cirrus.show_jobs(id, all=False)
         if len(id) > 0:
             return
-        return self.shell.cirrus.show_jobs(all=True)
+        self.shell.cirrus.show_jobs(all=True)
 
     def do_bolts(self, _):
         self.shell.set_menu(MENU_BOLTS)
@@ -76,6 +78,19 @@ class MenuMain(object):
         except ValueError:
             return print(f'[!] Script "{n}" does not exist!')
         self.shell.set_menu(MENU_SCRIPT, n.lower())
+
+    def do_pubkey(self, a):
+        try:
+            k, h = self.shell.cirrus.server_public_key()
+            if k is None:
+                return print("The Server has no associated Public Key.")
+            if len(a) > 0:
+                del h
+                return print(k)
+            print_hash(k, h)
+            del k, h
+        except (ValueError, TypeError) as err:
+            print(f"[!] {err}!")
 
     def do_scripts(self, _):
         self.shell.set_menu(MENU_SCRIPTS)
@@ -136,6 +151,9 @@ class MenuMain(object):
             if not is_valid_name(job):
                 return print(f'[!] Bolt "{id}" does not exist!')
             print(f'[!] Job "{id}:{job}" does not exist!')
+
+    def do_pubkey_full(self, _):
+        self.do_pubkey(".")
 
     def prompt(self, args=None):
         return " > "

@@ -552,6 +552,11 @@ class MenuScript(MenuBolt):
             return
         self._add_note(line)
 
+    def do_show_window(self, v, line=None):
+        if not super(__class__, self).do_show_window(v):
+            return
+        self._add_note(line)
+
     def do_parent_name(self, v, line=None):
         if not super(__class__, self).do_parent_name(v):
             return

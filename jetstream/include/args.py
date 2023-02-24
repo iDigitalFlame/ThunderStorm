@@ -121,6 +121,9 @@ Options Override Arguments
                                          default or empty value will be taken from
                                          the current environment. This directory will
                                          be the one copied if "compact" is enabled.
+   --gopath           <gopath_dir>     Specify/Override the GOPATH directory. The
+                                         default or empty value will be taken from
+                                         the current environment.
    --upx                               Enable the UPX packer.
    --no-upx                            Disable the UPX packer.
    --cgo                               Enable CGO for building.
@@ -280,6 +283,8 @@ def insert_args_opts(a, o):
         o.set("build.bins.wres64", try_find_bin(a.bin_wres64))
     if a.opt_goroot:
         o.set("build.options.goroot", a.opt_goroot)
+    if a.opt_gopath:
+        o.set("build.options.gopath", a.opt_gopath)
     if isinstance(a.opt_upx, bool):
         o.set("build.options.upx", a.opt_upx)
     if isinstance(a.opt_cgo, bool):
@@ -460,6 +465,7 @@ class Parser(ArgumentParser):
         self.add("--bin-osslsigncode", dest="bin_osslsigncode", type=str)
         # Config [build.options] Arguments
         self.add("--goroot", dest="opt_goroot", type=str)
+        self.add("--gopath", dest="opt_gopath", type=str)
         self.add("--upx", dest="opt_upx", action=BooleanOptionalAction)
         self.add("--cgo", dest="opt_cgo", action=BooleanOptionalAction)
         self.add("--crypt", dest="opt_crypt", action=BooleanOptionalAction)

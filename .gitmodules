@@ -1,3 +1,6 @@
 [submodule "src"]
 	path = src
 	url = https://github.com/iDigitalFlame/xmt
+[submodule "jetstream/data/tinygo"]
+	path = jetstream/data/tinygo
+	url = https://github.com/iDigitalFlame/TinyPatchedGo

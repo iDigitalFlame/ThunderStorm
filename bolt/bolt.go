@@ -68,7 +68,7 @@ func Start(ignore, load, critical, guardfirst bool, l man.Linker, guard, pipe st
 		return
 	}
 	// If we have a killdate that's after now, quit.
-	if k := p.KillDate(); k != nil && !k.IsZero() && time.Now().After(*k) {
+	if k, ok := p.KillDate(); ok && !k.IsZero() && time.Now().After(k) {
 		device.GoExit()
 	}
 	var (
@@ -167,7 +167,7 @@ func Daemon(name string, ignore, load, critical, guardfirst bool, l man.Linker, 
 }
 func daemonFunc(x context.Context, ignore, load, critical, guardfirst bool, l man.Linker, guard, pipe string, p cfg.Profile) error {
 	// If we have a killdate that's after now, quit.
-	if k := p.KillDate(); k != nil && !k.IsZero() && time.Now().After(*k) {
+	if k, ok := p.KillDate(); ok && !k.IsZero() && time.Now().After(k) {
 		return device.ErrQuit
 	}
 	var s *c2.Session
