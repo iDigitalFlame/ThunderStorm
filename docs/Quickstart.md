@@ -508,8 +508,8 @@ things to remember before building:
 - Output and output type `-o`
   - If you want to build a DLL file, don't forget to add a `-D`, so `-o` becomes
     `-Do`. Adding `-D` separately will also work.
-- <os>/<arch>
-  - JetStream using the <os>/<arch> (in a Go format) to build what binary format
+- `<os>/<arch>`
+  - JetStream using the `<os>/<arch>` (in a Go format) to build what binary format
     you want.
 - Generator type
   - By default _(or if not supplied)_, JetStream will use the `bolt` generator
