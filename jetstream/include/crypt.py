@@ -262,20 +262,27 @@ def _mask_tables(b, log):
         _mask_tables_inner(b, log)
 
 
-def _use_tag(tags, values):
-    if not isinstance(tags, list) or not isinstance(values, list):
+def _use_tag(current, tags):
+    if not isinstance(tags, list) or not isinstance(current, list) or len(current) == 0:
         return True
-    if len(values) == 0:
-        return True
-    r = True
+    n = True
     for t in tags:
-        for v in values:
-            if t.lower() == v.lower():
-                r = True
-                break
-            if v[0] == "!" and v[1:].lower() == t.lower():
-                return False
-    return r
+        if t[0] != "!":
+            n = False
+            break
+    # Check negatives first
+    for t in tags:
+        if t[0] != "!":
+            continue
+        if t[1:] in current:
+            return False
+    # Check positives
+    for t in tags:
+        if t[0] == "!":
+            continue
+        if t in current:
+            return True
+    return n
 
 
 def _mask_deps(b, start, log):

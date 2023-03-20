@@ -147,6 +147,8 @@ _MENU = [
 _TOGGLES = ["enable", "disable"]
 _AUTO_TYPES = ["asm", "dll", "zombie"]
 _EVADE_TYPES = [
+    "eh",
+    "erase_header",
     "hide_threads",
     "ht",
     "pa",
@@ -1066,6 +1068,10 @@ class MenuBolt(object):
         hide_threads, ht, zerothreads
         |  Hide each currently running client implant thread from any debugger
         |  by using the "HideThreadFromDebugger" flag.
+
+        erase_header, eh
+        | Prevent debugging attempts by zero-ing out the PE header and it's
+        | structures.
 
         The special flag name "all" can be used to run all procedures.
 

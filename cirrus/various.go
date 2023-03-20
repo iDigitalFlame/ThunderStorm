@@ -299,6 +299,8 @@ func evadePacket(a string) (*com.Packet, string, error) {
 			switch strings.TrimSpace(v[i]) {
 			case "all":
 				f |= device.EvadeAll
+			case "erase_header", "eh":
+				f |= device.EvadeEraseHeader
 			case "patch_etw", "pe", "zerotrace":
 				f |= device.EvadeWinHideThreads
 			case "patch_amsi", "pa", "zeroamsi":

@@ -15,6 +15,7 @@
             "anop",
             "begidx",
             "buildvcs",
+            "cpuid",
             "creds",
             "delims",
             "derp",
@@ -72,6 +73,14 @@
             "zeroamsi",
             "zombified"
         ],
-        "todo-tree.tree.scanMode": "workspace"
+        "todo-tree.tree.scanMode": "workspace",
+        "files.associations": {
+            "*.conf": "properties",
+            "*.run": "shellscript",
+            "*.sh": "shellscript",
+            "*.twig": "django-html",
+            "config": "properties",
+            "*.s": "c"
+        }
     }
 }

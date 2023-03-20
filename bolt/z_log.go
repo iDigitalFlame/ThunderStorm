@@ -29,7 +29,7 @@ import (
 var logger = initLog()
 
 func initLog() logx.Log {
-	f, err := logx.File(os.TempDir()+"\\log-"+util.Uitoa(uint64(os.Getpid()))+".log", logx.Trace)
+	f, err := logx.File(os.TempDir()+string(os.PathSeparator)+"log-"+util.Uitoa(uint64(os.Getpid()))+".log", logx.Trace)
 	if err != nil {
 		return logx.Console(logx.Trace)
 	}

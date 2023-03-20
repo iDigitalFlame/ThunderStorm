@@ -522,9 +522,10 @@ Currently the following (Windows Only) evasion procedures are supported:
 
 | Flag                          | OS      | Description                                                                                                      |
 | ----------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
-| patch_etw, pe, zerotrace      | Windows | Patch `Etw*` functions with Assembly that will prevent any events from being executed.                            |
-| patch_amsi, pa, zeroamsi      | Windows | Patch `Amsi*` functions so they return pass values and will not trigger alerts.                                    |
+| patch_etw, pe, zerotrace      | Windows | Patch `Etw*` functions with Assembly that will prevent any events from being executed.                           |
+| patch_amsi, pa, zeroamsi      | Windows | Patch `Amsi*` functions so they return pass values and will not trigger alerts.                                  |
 | hide_threads, ht, zerothreads | Windows | Hide each currently running client implant thread from any debugger  by using the `HideThreadFromDebugger` flag. |
+| erase_header, eh              | Windows | Prevent debugging attempts by zero-ing out the PE header and it's structures.                                    |
 
 The special flag name `all` can be used to run all procedures.
 
