@@ -69,7 +69,7 @@ pip install requests websocket-client
 
 ### Building Dependencies
 
-Now, if you're building Bolt, you will need the above dependencies and the following
+Now, if you're building Bolts, you will need the above dependencies and the following
 additional ones
 
 - Golang
