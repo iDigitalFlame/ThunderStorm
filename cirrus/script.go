@@ -62,12 +62,12 @@ var (
 )
 
 type script struct {
+	last time.Time
+	s    *task.Script
+	path string
+	c    []string
+	r    []uint64
 	sync.Mutex
-	last   time.Time
-	s      *task.Script
-	path   string
-	c      []string
-	r      []uint64
 	loaded bool
 }
 type scriptArgs struct {
@@ -81,9 +81,8 @@ type scriptArgs struct {
 }
 type scriptManager struct {
 	*Cirrus
-	sync.RWMutex
-
 	e map[string]*script
+	sync.RWMutex
 }
 
 func ws(s val.Set) val.Set {

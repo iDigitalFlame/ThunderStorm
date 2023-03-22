@@ -32,10 +32,9 @@ import (
 const msgNoJob = "job was not found"
 
 type jobManager struct {
-	sync.RWMutex
 	*Cirrus
-
 	e map[uint64]*c2.Job
+	sync.RWMutex
 }
 
 func (j *jobManager) pruneSessions() {

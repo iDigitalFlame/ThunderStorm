@@ -42,9 +42,8 @@ type packet struct {
 }
 type packetManager struct {
 	*Cirrus
-	sync.RWMutex
-
 	e map[string]*packet
+	sync.RWMutex
 }
 
 func (c *Cirrus) packetNew(n *com.Packet) {

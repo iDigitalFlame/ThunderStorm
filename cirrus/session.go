@@ -42,18 +42,15 @@ var (
 )
 
 type session struct {
-	sync.RWMutex
 	s *c2.Session
 	j []uint16
+	sync.RWMutex
 	h uint32
 }
 type sessionManager struct {
 	*Cirrus
-	sync.RWMutex
-
-	// TODO(dij): Work on naming sessions
-	// n map[string]*session
 	e map[string]*session
+	sync.RWMutex
 }
 
 func (c *Cirrus) newSession(s *c2.Session) {

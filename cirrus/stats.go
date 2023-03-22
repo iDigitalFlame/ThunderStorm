@@ -43,8 +43,7 @@ const (
 )
 
 type stats struct {
-	_ [0]func()
-	sync.Mutex
+	_    [0]func()
 	f, t *os.File
 	ch   chan struct{}
 	ej   chan statJobEvent
@@ -52,6 +51,7 @@ type stats struct {
 	ep   chan statPacketEvent
 	e    [0xFF]uint64
 	j, s uint64
+	sync.Mutex
 }
 type statJobEvent struct {
 	_       [0]func()

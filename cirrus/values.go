@@ -311,6 +311,7 @@ type taskAssembly struct {
 	taskExecute
 }
 type taskWorkHours struct {
+	_         [0]func()
 	Line      string `json:"line"`
 	Days      string `json:"days"`
 	StartHour uint8  `json:"start_hour"`

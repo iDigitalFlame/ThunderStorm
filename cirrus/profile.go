@@ -35,9 +35,8 @@ const msgNoProfile = "profile was not found"
 
 type profileManager struct {
 	*Cirrus
-	sync.RWMutex
-
 	e map[string]cfg.Config
+	sync.RWMutex
 }
 
 func (p *profileManager) MarshalJSON() ([]byte, error) {

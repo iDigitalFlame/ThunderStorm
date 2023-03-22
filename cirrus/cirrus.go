@@ -48,26 +48,25 @@ const (
 // Cirrus also supplies a stats module that can be used to log and track
 // event counts.
 type Cirrus struct {
-	srv http.Server
-	ctx context.Context
-	ws  *websocket.Upgrader
-
-	s      *c2.Server
-	st     *stats
-	ch     chan struct{}
-	mux    *routex.Mux
-	log    logx.Log
-	cancel context.CancelFunc
-
+	log       logx.Log
+	ctx       context.Context
+	cancel    context.CancelFunc
 	jobs      *jobManager
+	st        *stats
+	ch        chan struct{}
+	mux       *routex.Mux
+	ws        *websocket.Upgrader
+	listeners *listenerManager
+	s         *c2.Server
 	events    *eventManager
 	packets   *packetManager
 	scripts   *scriptManager
 	profiles  *profileManager
 	sessions  *sessionManager
-	listeners *listenerManager
 
-	Auth    string
+	Auth string
+	srv  http.Server
+
 	Timeout time.Duration
 }
 
@@ -138,26 +137,7 @@ func (c *Cirrus) Load(s string) error {
 	if err = json.Unmarshal(b, &m); err != nil {
 		return err
 	}
-	if t, ok := m["scripts"]; ok {
-		if err = json.Unmarshal(t, &c.scripts); err != nil {
-			return err
-		}
-	}
-	if t, ok := m["profiles"]; ok {
-		if err = json.Unmarshal(t, &c.profiles); err != nil {
-			return err
-		}
-	}
-	if t, ok := m["listeners"]; ok {
-		if err = json.Unmarshal(t, &c.listeners); err != nil {
-			return err
-		}
-	}
-	if t, ok := m["timeout"]; ok {
-		if err = json.Unmarshal(t, &c.Timeout); err != nil {
-			return err
-		}
-	}
+	// Load keys first.
 	if t, ok := m["keys"]; ok {
 		var v map[string]string
 		if err = json.Unmarshal(t, &v); err != nil {
@@ -176,8 +156,29 @@ func (c *Cirrus) Load(s string) error {
 			}
 		}
 	}
-	if t, ok := m["auth"]; ok && len(t) > 2 {
+	if t, ok := m["auth"]; ok {
 		if err = json.Unmarshal(t, &c.Auth); err != nil {
+			return err
+		}
+	}
+	if t, ok := m["timeout"]; ok {
+		if err = json.Unmarshal(t, &c.Timeout); err != nil {
+			return err
+		}
+	}
+	if t, ok := m["profiles"]; ok {
+		if err = json.Unmarshal(t, &c.profiles); err != nil {
+			return err
+		}
+	}
+	if t, ok := m["scripts"]; ok {
+		if err = json.Unmarshal(t, &c.scripts); err != nil {
+			return err
+		}
+	}
+	// Load listeners since they rely on all the above to work.
+	if t, ok := m["listeners"]; ok {
+		if err = json.Unmarshal(t, &c.listeners); err != nil {
 			return err
 		}
 	}

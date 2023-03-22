@@ -51,9 +51,8 @@ type listener struct {
 }
 type listenerManager struct {
 	*Cirrus
-	sync.RWMutex
-
 	e map[string]*listener
+	sync.RWMutex
 }
 
 func (l *listener) MarshalJSON() ([]byte, error) {
