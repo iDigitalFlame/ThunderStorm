@@ -264,7 +264,10 @@ def tiny_root(old, new):
         ["return 0"],
     )
     _sed(
-        join(new, "src", "runtime", "traceback.go"), ['"runtime/internal/atomic"'], [""]
+        join(new, "src", "runtime", "traceback.go"),
+        ['"runtime/internal/atomic"'],
+        [""],
+        ign=True,
     )
     _sed(
         join(new, "src", "net", "http", "transport.go"),
