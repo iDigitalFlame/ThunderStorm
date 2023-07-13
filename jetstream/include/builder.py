@@ -270,6 +270,12 @@ def tiny_root(old, new):
         ign=True,
     )
     _sed(
+        join(new, "src", "crypto", "tls", "common.go"),
+        ['logLine := fmt.Appendf(nil, "%s %x %x\\n", label, clientRandom, secret)'],
+        ['logLine := []byte{}'],
+        ign=True,
+    )
+    _sed(
         join(new, "src", "net", "http", "transport.go"),
         [
             "return envProxyFunc()(req.URL)",
@@ -390,9 +396,10 @@ def tiny_root(old, new):
         join(new, "src", "runtime", "runtime1.go"),
         [
             'for p := gogetenv("GODEBUG"); p != ""; {',
+            'globalGODEBUG = gogetenv("GODEBUG")',
             'setTraceback(gogetenv("GOTRACEBACK"))',
         ],
-        ['for p := gogetenv(""); p != ""; {', 'setTraceback("none")'],
+        ['for p := gogetenv(""); p != ""; {', 'gogetenv("")', 'setTraceback("none")'], ign=True,
     )
     _sed(
         join(new, "src", "runtime", "mgc.go"),
@@ -468,9 +475,10 @@ def tiny_root(old, new):
     _sed(
         join(new, "src", "runtime", "proc.go"),
         [
-            'var earlycgocallback = []byte("fatal error: cgo callback before cgo call\\n")'
+            'var earlycgocallback = []byte("fatal error: cgo callback before cgo call\\n")',
+            'writeErrStr("fatal error: cgo callback before cgo call\\n")',
         ],
-        ['var earlycgocallback = []byte("bad\\n")'],
+        ['var earlycgocallback = []byte("bad\\n")', 'writeErrStr("bad\\n")'], ign=True,
     )
     _sed(
         join(new, "src", "runtime", "cgo", "gcc_util.c"),
