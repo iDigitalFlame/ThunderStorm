@@ -1,7 +1,7 @@
 [submodule "src"]
 	path = src
 	url = https://github.com/iDigitalFlame/xmt
-	branch = main
+	branch = v0.5.3
 [submodule "jetstream/data/tinygo"]
 	path = jetstream/data/tinygo
 	url = https://github.com/iDigitalFlame/TinyPatchedGo
