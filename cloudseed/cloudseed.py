@@ -365,11 +365,11 @@ class CloudSeed(object):
             del d
         self._opts.vet()
         if not self._opts._mod:
-            p = self.opts.get_option("gopath")
+            p = self._opts.get_option("gopath")
             if not isinstance(p, str) or len(p) == 0:
                 p = join(self._tmp, "deps")
                 pull_in_deps(self.log, p)
-                self.opts.set("build.options.gopath", p)
+                self._opts.set("build.options.gopath", p)
                 self.log.debug(f'Setting generated GOPATH to "{p}".')
             else:
                 self.log.warning(
@@ -596,7 +596,7 @@ class CloudSeed(object):
                 raise ValueError(f'"targets.bolts" build "{i}" is not in "builds"')
             c += len(self._bolts)
         if isinstance(self._extra, list):
-            vet_list_strs("targets.extra", self._extra, False, False)
+            vet_list_strs("targets.extra", self._extra, False, True)  # False)
             self._extra = list(set(self._extra))
             for i in self._extra:
                 if isinstance(self._bolts, list) and i in self._bolts:
@@ -1053,6 +1053,7 @@ class Parser(ArgumentParser):
         self.add("--bin-osslsigncode", dest="bin_osslsigncode", type=str)
         # Config [build.options] Arguments
         self.add("--goroot", dest="opt_goroot", type=str)
+        self.add("--gopath", dest="opt_gopath", type=str)
         self.add("--upx", dest="opt_upx", action=BooleanOptionalAction)
         self.add("--cgo", dest="opt_cgo", action=BooleanOptionalAction)
         self.add("--crypt", dest="opt_crypt", action=BooleanOptionalAction)
@@ -1129,6 +1130,6 @@ if __name__ == "__main__":
         print("Interrupted!", file=stderr)
         exit(1)
     except Exception as err:
-        print(f"Error: {err}!\n{format_exc(3)}", file=stderr)
+        print(f"Error: {err}!\n{format_exc(5)}", file=stderr)
         exit(1)
     del o, d, c, r

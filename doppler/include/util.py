@@ -316,8 +316,6 @@ def bytes_from_src(
         if b64 and v[0] == "e":
             return b64decode(v[2:k], validate=True), False
         del k
-    if explicit:
-        raise ValueError("explicit data identifier required")
     if path:
         p = expandvars(expanduser(v))
         if isfile(p):
@@ -325,6 +323,8 @@ def bytes_from_src(
                 d = f.read()
             return d, False
         del p
+    if explicit:
+        raise ValueError("explicit data identifier required")
     if b64 and cb64:
         try:
             return b64decode(v, validate=True), False

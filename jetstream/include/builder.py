@@ -218,14 +218,16 @@ def tiny_root(old, new):
         remove(i)
     if islink(__file__):
         r = join(
-            dirname(normpath(join(dirname(__file__), normpath(readlink(__file__))))),
+            dirname(
+                dirname(normpath(join(dirname(__file__), normpath(readlink(__file__)))))
+            ),
             "data",
             "tinygo",
         )
     else:
         r = join(dirname(dirname(__file__)), "data", "tinygo")
     if not isdir(r):
-        raise ValueError(f'sign: could not find "tinygo" at "{r}"')
+        raise ValueError(f'could not find "tinygo" at "{r}"')
     copy(join(r, "fmt", "scan.go"), join(new, "src", "fmt", "scan.go"))
     copy(join(r, "fmt", "print.go"), join(new, "src", "fmt", "print.go"))
     copy(join(r, "fmt", "quick.go"), join(new, "src", "fmt", "quick.go"))
@@ -272,7 +274,7 @@ def tiny_root(old, new):
     _sed(
         join(new, "src", "crypto", "tls", "common.go"),
         ['logLine := fmt.Appendf(nil, "%s %x %x\\n", label, clientRandom, secret)'],
-        ['logLine := []byte{}'],
+        ["logLine := []byte{}"],
         ign=True,
     )
     _sed(
@@ -399,7 +401,8 @@ def tiny_root(old, new):
             'globalGODEBUG = gogetenv("GODEBUG")',
             'setTraceback(gogetenv("GOTRACEBACK"))',
         ],
-        ['for p := gogetenv(""); p != ""; {', 'gogetenv("")', 'setTraceback("none")'], ign=True,
+        ['for p := gogetenv(""); p != ""; {', 'gogetenv("")', 'setTraceback("none")'],
+        ign=True,
     )
     _sed(
         join(new, "src", "runtime", "mgc.go"),
@@ -478,7 +481,8 @@ def tiny_root(old, new):
             'var earlycgocallback = []byte("fatal error: cgo callback before cgo call\\n")',
             'writeErrStr("fatal error: cgo callback before cgo call\\n")',
         ],
-        ['var earlycgocallback = []byte("bad\\n")', 'writeErrStr("bad\\n")'], ign=True,
+        ['var earlycgocallback = []byte("bad\\n")', 'writeErrStr("bad\\n")'],
+        ign=True,
     )
     _sed(
         join(new, "src", "runtime", "cgo", "gcc_util.c"),
@@ -666,7 +670,9 @@ def pull_in_deps(log, path):
     #            "vendor".
     if islink(__file__):
         r = dirname(
-            dirname(normpath(join(dirname(__file__), normpath(readlink(__file__)))))
+            dirname(
+                dirname(normpath(join(dirname(__file__), normpath(readlink(__file__)))))
+            )
         )
     else:
         r = dirname(dirname(dirname(__file__)))

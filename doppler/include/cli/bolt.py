@@ -92,6 +92,7 @@ _MENU = [
     "ls",
     "main",
     "make_token",
+    "man",
     "migrate",
     "mktoken",
     "mounts",
@@ -590,6 +591,9 @@ class MenuBolt(object):
         """
         self.do_download(f, None)
 
+    def do_man(self, n):
+        self.do_help(n)
+
     def do_hup(self, *a):
         """
         hup [-u <user>] [-d <domain>] [-p <password>] <command>
@@ -667,8 +671,9 @@ class MenuBolt(object):
         OPsec: Safe
         Admin: Maybe (depends on target)
 
-        Reads the filepath from the local (non-client) filesystem as binary data
-        and will run it in memory as assembly.
+        Reads some specified data as raw assembly (shellcode). By default this
+        command will assume a local path if it exists. But using Data Specification
+        Identifiers, it is possible to directly specify machine code if needed.
 
         If the "-x" or "--detach" argument is specified, the command will be ran
         in "detached" mode and will return instantly and not be monitored. (This
@@ -692,6 +697,7 @@ class MenuBolt(object):
         Examples:
             asm /home/hackerman/gibson.bin
             asm /tmp/malware.dll
+            asm b$\x90\x33
         """
         if _is_help(a):
             return self.do_help("asm")
@@ -803,7 +809,7 @@ class MenuBolt(object):
         self.do_back(_)
 
     def do_help(self, n):
-        if len(n) == 0 or n == "help":
+        if len(n) == 0 or n == "help" or n == "man":
             return print("help <command>")
         if n == "data":
             return print(HELP_DATA)
@@ -1971,6 +1977,7 @@ class MenuBolt(object):
             zombie /home/hackerman/gibson.bin svchost.exe -k LocalSystemNetworkRestricted -p -s
             zombie /tmp/malware.dll notepad.exe this-file-does-not-exist.txt
             zombie ~/malware.dll -a admin -p Password123 explorer.exe
+            zombie b$\x00\x090\x33 -a admin -p Password123 explorer.exe
         """
         if _is_help(a):
             return self.do_help("zombie")
@@ -2229,6 +2236,8 @@ class MenuBolt(object):
         - multi|multi_sz: "data" must be a string, separate multiple entries with
           '\\n' (newline). Recommended to use Raw Strings with r$.
         - exp_sz|expand_string: "data" must be a string
+
+        Spaces in Registry paths and values require them to be enclosed in quotes.
 
         Data passed to this command when setting value data will be evaluated for
         Data Specification Identifiers, but will default to text. THIS WILL NOT
@@ -3293,6 +3302,9 @@ class MenuBolt(object):
 
     def complete_job(self, n, *_):
         return self.shell.cache.jobs(self.id, n, False)
+
+    def complete_man(self, n, *_):
+        return make_menu(n, _MENU)
 
     def do_parent_desktop(self, v):
         """

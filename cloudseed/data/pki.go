@@ -25,11 +25,11 @@ func main() {
 	)
 	f.Var(&certStart, "start", "Cert Fake Sign Date in RFC3339Nano format.")
 	f.StringVar(&caName, "ca-name", "", "CA Authority Common Name.")
-	f.StringVar(&certName, "ca-name", "", "Signing Authority Common Name.")
+	f.StringVar(&certName, "cert-name", "", "Signing Authority Common Name.")
 	f.Uint64Var(&caDays, "ca-days", 3650, "CA Authority Valid Length in Days.")
 	f.Uint64Var(&certDays, "cert-days", 1440, "Signing Authority Valid Length in Days.")
 
-	if err := f.Parse(os.Args); err != nil {
+	if err := f.Parse(os.Args[1:]); err != nil {
 		f.PrintDefaults()
 		os.Exit(2)
 	}

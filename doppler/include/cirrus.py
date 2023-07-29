@@ -989,8 +989,10 @@ class Api(object):
 
     def server_public_key(self):
         r = self._req("server", 200, "get")
-        if not isinstance(r, dict) or "public_key" not in r:
+        if not isinstance(r, dict):
             raise ValueError(f'"{self._base}/server" returned an invalid result')
+        if "public_key" not in r:
+            return None, None
         v, h = r["public_key"], r.get("public_key_hash", 0)
         del r
         if len(v) == 0:

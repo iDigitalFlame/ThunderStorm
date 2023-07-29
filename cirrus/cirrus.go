@@ -452,5 +452,9 @@ func ListenContext(x context.Context, s *c2.Server, log logx.Log, key, addr stri
 	return NewContext(x, s, log, key).Listen(addr)
 }
 func (c *Cirrus) httpServerInfoGet(_ context.Context, w http.ResponseWriter, _ *routex.Request) {
+	if c.s.Keys.Public.Empty() {
+		w.Write([]byte(`{}`))
+		return
+	}
 	w.Write([]byte(`{"public_key":"` + c.s.Keys.Public.String() + `","public_key_hash":"` + util.Uitoa16(uint64(c.s.Keys.Public.Hash())) + `"}`))
 }

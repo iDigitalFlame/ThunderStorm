@@ -382,6 +382,9 @@ class MenuScript(MenuBolt):
     def do_job(self, _, line=None):
         print("Not available inside a Script.")
 
+    def do_man(self, n, line=None):
+        self.do_help(n, line)
+
     def do_wait(self, d, line=None):
         """
         wait <duration>

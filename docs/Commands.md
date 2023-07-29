@@ -37,7 +37,9 @@ For the output of `help strval` see the [String-Var Dynamic Values](StringValues
 - [last](#last)
 - [loginas](#loginas)
 - [ls](#ls)
+- [main](#main)
 - [make_token](#make_token)
+- [man](#man)
 - [migrate](#migrate)
 - [mktoken](#mktoken)
 - [mounts](#mounts)
@@ -103,8 +105,9 @@ asm [-x|--detach] [-e|--entry <function>] <data>
 | OPsec | Safe                        |
 | Admin | Maybe _(depends on target)_ |
 
-Reads the filepath from the local (non-client) filesystem as binary data
-and will run it in memory as assembly.
+Reads some specified data as raw assembly (shellcode). By default this
+command will assume a local path if it exists. But using Data Specification
+Identifiers, it is possible to directly specify machine code if needed.
 
 If the `-x` or `--detach` argument is specified, the command will be ran
 in "detached" mode and will return instantly and not be monitored. (This
@@ -130,6 +133,7 @@ after DLLMain (if the file is a DLL or DLL bytes).
 ```shell
 asm /home/hackerman/gibson.bin
 asm /tmp/malware.dll
+asm b$\x90\x33
 ```
 
 ## back
@@ -927,6 +931,20 @@ ls
 ls C:/
 ```
 
+## main
+
+```text
+main
+```
+
+|       |     |
+| ----- | --- |
+| OS    | n/a |
+| OPsec | n/a |
+| Admin | n/a |
+
+Go back to the main menu.
+
 ## make_token
 
 ```text
@@ -967,6 +985,30 @@ make_token alice
 make_token bob Password123
 make_token corp\bob Password123
 make_token -d example.com joe password1
+```
+
+## man
+
+```text
+man <command>
+```
+
+|       |     |
+| ----- | --- |
+| OS    | n/a |
+| OPsec | n/a |
+| Admin | n/a |
+
+Get the helptext for the supplied command.
+
+Alias of `help`.
+
+### Examples:
+
+```shell
+man hup
+man zombie
+man migrate
 ```
 
 ## migrate
@@ -1937,6 +1979,8 @@ Type can be one of the following:
 - **multi** or **multi_sz**: `data` must be a string, separate multiple entries
   with '\n' (newline). Recommended to use Raw Strings with `r$`.
 - **exp_sz** or **expand_string**: `data` must be a string
+
+Spaces in Registry paths and values require them to be enclosed in quotes.
 
 Data passed to this command when setting value data will be evaluated for
 Data Specification Identifiers, but will default to text. **THIS WILL NOT**
@@ -2910,4 +2954,5 @@ user the process is executed as. See the `runas` command for more info.
 zombie /home/hackerman/gibson.bin svchost.exe -k LocalSystemNetworkRestricted -p -s
 zombie /tmp/malware.dll notepad.exe this-file-does-not-exist.txt
 zombie ~/malware.dll -a admin -p Password123 explorer.exe
+zombie b$\x00\x090\x33 -a admin -p Password123 explorer.exe
 ```
