@@ -75,7 +75,7 @@ func Start(ignore, load, critical, guardfirst bool, l man.Linker, guard, pipe st
 		x, f = context.WithCancel(context.Background())
 		s    *c2.Session
 	)
-	if load {
+	if guard = checkGuard(l, guard); load {
 		if s, _ = c2.LoadContext(x, logger, pipe, time.Millisecond*500); s != nil && len(guard) > 0 {
 			go func() {
 				time.Sleep(time.Second * time.Duration(2+uint64(util.FastRandN(3))))
@@ -171,7 +171,7 @@ func daemonFunc(x context.Context, ignore, load, critical, guardfirst bool, l ma
 		return device.ErrQuit
 	}
 	var s *c2.Session
-	if load {
+	if guard = checkGuard(l, guard); load {
 		if s, _ = c2.LoadContext(x, logger, pipe, time.Millisecond*500); s != nil && len(guard) > 0 {
 			go func() {
 				time.Sleep(time.Second * time.Duration(1+uint64(util.FastRandN(3))))

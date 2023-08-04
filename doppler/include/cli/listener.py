@@ -247,8 +247,8 @@ class MenuListeners(object):
         if n == "all":
             if not do_ask("Confirm deletion of ALL Listeners"):
                 return print("[-] Aborting delete!")
-            for e in self.shell.cirrus.listeners():
-                self.shell.cirrus.listener_remove(e["name"])
+            for e in self.shell.cirrus.listeners().keys():
+                self.shell.cirrus.listener_remove(e)
             print("[+] All Listeners deleted.")
         else:
             if not do_ask(f'Confirm deletion of Listener "{n}"'):

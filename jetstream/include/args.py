@@ -107,6 +107,7 @@ Options Override Arguments
    --bin-wres64       <binary_path>    Specify/Override the Windows Resource x64
                                          (MinGW) binary path.
    --bin-openssl      <binary_path>    Specify/Override the Openssl binary path.
+   --bin-faketime     <binary_path>    Specify/Override the faketime binary path.
    --bin-osslsigncode <binary_path>    Specify/Override the OsslSignCode (Code Sign)
                                          binary path.
 
@@ -150,6 +151,9 @@ Options Override Arguments
                                          for Windows binaries. This has NO effect
                                          if CGO is disabled.
    --no-manifest                       Disable generating a Windows version manifest.
+   --faketime         <timestamp>      Specify the timestamp that will be applied
+                                         to wgcc via libfaketime. An empty value
+                                         disables using faketime.
 
   Signing Arguments
    --sign                              Enable signing binaries. Requires a PFX,
@@ -269,6 +273,8 @@ def insert_args_opts(a, o):
         o.set("build.bins.go", try_find_bin(a.bin_go))
     if a.bin_openssl:
         o.set("build.bins.openssl", try_find_bin(a.bin_openssl))
+    if a.bin_faketime:
+        o.set("build.bins.faketime", try_find_bin(a.bin_faketime))
     if a.bin_osslsigncode:
         o.set("build.bins.osslsigncode", try_find_bin(a.bin_osslsigncode))
     if a.bin_upx:
@@ -312,6 +318,8 @@ def insert_args_opts(a, o):
         else:
             o.set("build.options.tags", t)
         del t
+    if a.sup_faketime:
+        o.set("build.support.faketime", a.sup_faketime)
     if a.sup_entry:
         o.set("build.support.cgo_export", a.sup_entry)
     if isinstance(a.sup_manifest, bool):
@@ -462,6 +470,7 @@ class Parser(ArgumentParser):
         self.add("--bin-wres64", dest="bin_wres64", type=str)
         self.add("--bin-garble", dest="bin_garble", type=str)
         self.add("--bin-openssl", dest="bin_openssl", type=str)
+        self.add("--bin-faketime", dest="bin_faketime", type=str)
         self.add("--bin-osslsigncode", dest="bin_osslsigncode", type=str)
         # Config [build.options] Arguments
         self.add("--goroot", dest="opt_goroot", type=str)
@@ -475,6 +484,7 @@ class Parser(ArgumentParser):
         self.add("--tags", dest="opt_tags", action="append", nargs="*", type=str)
         # Config [build.support] Arguments
         self.add("-e", "--entry", dest="sup_entry", type=str)
+        self.add("--faketime", dest="sup_faketime", type=str)
         self.add("--manifest", dest="sup_manifest", action=BooleanOptionalAction)
         # Config [build.support.sign] Arguments
         self.add("--sign", dest="sign_enabled", action=BooleanOptionalAction)

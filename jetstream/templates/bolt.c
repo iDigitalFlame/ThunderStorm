@@ -54,8 +54,8 @@
 
 #define UNICODE
 
-#include <winsock.h>
 #include <windows.h>
+#include <winsock.h>
 
 #include "bolt.h"
 

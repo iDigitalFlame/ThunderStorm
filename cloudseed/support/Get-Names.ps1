@@ -175,7 +175,7 @@ function Export-NamesJSON {
             if ($ext -eq "exe" -or $ext -eq "dll" -or $ext -eq "sys") {
                 if ($null -ne $i.VersionInfo.FileDescription) {
                     $title = $i.VersionInfo.FileDescription.ToString().Trim().Replace("&", "and").Replace("<", "[").Replace(">", "]")
-                    if ($title.Length -gt 0 -and -not $title.Contains('"') -and -not $title.Contains("'") -and -not $titleList.Contains($title)) {
+                    if ($title.Length -gt 0 -and -not $title.Contains('"') -and -not $title.Contains("'") -and $title.Contains(" ") -and -not $titleList.Contains($title)) {
                         $titleList.Add($title) | Out-Null
                     }
                 }
@@ -199,6 +199,10 @@ function Export-NamesJSON {
             $name = $i.Name.Substring(0, $n).Trim()
             if ($name.Length -le 3 -or $name.Contains("~") -or $name.Split("-").Count -gt 2) {
                 continue
+            }
+            if ($name.Contains(".")) {
+                $u = $i.Name.LastIndexOf(".")
+                $name = $i.Name.Substring(0, $u).Trim()
             }
             if (-not $dirNameList.Contains($name)) {
                 $dirNameList.Add($name) | Out-Null

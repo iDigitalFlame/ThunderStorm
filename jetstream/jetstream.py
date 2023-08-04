@@ -60,6 +60,7 @@ _DEFAULT_WGCC32 = "i686-w64-mingw32-gcc"
 _DEFAULT_WGCC64 = "x86_64-w64-mingw32-gcc"
 _DEFAULT_GARBLE = "garble"
 _DEFAULT_OPENSSL = "openssl"
+_DEFAULT_FAKETIME = "faketime"
 _DEFAULT_OSSLSIGNCODE = "osslsigncode"
 
 _CGO_MAIN_STD = "\nfunc main() {\n"
@@ -92,6 +93,7 @@ def which_empty(opts):
     _which_empty(opts, "build.bins.wgcc64", _DEFAULT_WGCC64)
     _which_empty(opts, "build.bins.garble", _DEFAULT_GARBLE)
     _which_empty(opts, "build.bins.openssl", _DEFAULT_OPENSSL)
+    _which_empty(opts, "build.bins.faketime", _DEFAULT_FAKETIME)
     _which_empty(opts, "build.bins.osslsigncode", _DEFAULT_OSSLSIGNCODE)
 
 
@@ -410,6 +412,8 @@ class JetStream(object):
         if osv != "windows":
             return
         print("- | Support Configuration", file=file)
+        if nes(self.opts.get_support("faketime")):
+            print(f'- | = {"Faketime:":20}{self.opts.get_support("faketime")}', file=file)
         print(f'- | = {"Manifest:":20}{self.opts.get_support("manifest")}', file=file)
         if self.opts.get_option("cgo"):
             if self.opts.get_support("cgo_export"):
@@ -685,11 +689,16 @@ class JetStream(object):
         del m
         if "gcc_args" in workspace and isinstance(workspace["gcc_args"], list):
             z += workspace["gcc_args"]
+        f = self.opts.get_support("faketime")
+        if nes(f):
+            x = [self.opts.get_bin("faketime"), f, c]
+        else:
+            x = [c]
         if not lib:
             self.log.info(f'Building CGO Binary "{o}".')
             self._exec(
-                [
-                    c,
+                x
+                + [
                     "-mwindows",
                     "-o",
                     o,
@@ -702,7 +711,7 @@ class JetStream(object):
                     "-O2",
                     "-Wa,--strip-local-absolute",
                     "-Wp,-femit-struct-debug-reduced,-O2",
-                    "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",
+                    "-Wl,-x,-s,-nostdlib,--insert-timestamp",
                     src,
                     i,
                 ]
@@ -713,8 +722,8 @@ class JetStream(object):
         else:
             self.log.info(f'Building CGO DLL "{o}".')
             self._exec(
-                [
-                    c,
+                x
+                + [
                     "-c",
                     "-o",
                     f"{o}.o",
@@ -735,8 +744,8 @@ class JetStream(object):
                 wd=base,
             )
             self._exec(
-                [
-                    c,
+                x
+                + [
                     "-shared",
                     "-o",
                     o,
@@ -758,7 +767,7 @@ class JetStream(object):
                 env=env,
                 wd=base,
             )
-        del c, i, z
+        del c, i, z, x
         return o
 
     def run(self, osv, arch, gen, library, output, no_clean, dest=None, auto=False):

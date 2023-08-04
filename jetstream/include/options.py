@@ -193,6 +193,7 @@ def _cfg_bins(cfg, b):
         cfg["wres64"] = ""
         cfg["garble"] = ""
         cfg["openssl"] = ""
+        cfg["faketime"] = ""
         cfg["osslsigncode"] = ""
         return
     cfg["go"] = try_find_bin(b.get("go", ""))
@@ -204,6 +205,7 @@ def _cfg_bins(cfg, b):
     cfg["wres64"] = try_find_bin(b.get("wres64", ""))
     cfg["garble"] = try_find_bin(b.get("garble", ""))
     cfg["openssl"] = try_find_bin(b.get("openssl", ""))
+    cfg["faketime"] = try_find_bin(b.get("faketime", ""))
     cfg["osslsigncode"] = try_find_bin(b.get("osslsigncode", ""))
     vet_str_exists("build.bins.go", cfg["go"])
     vet_str_exists("build.bins.gcc", cfg["gcc"])
@@ -214,6 +216,7 @@ def _cfg_bins(cfg, b):
     vet_str_exists("build.bins.wres64", cfg["wres64"])
     vet_str_exists("build.bins.garble", cfg["garble"])
     vet_str_exists("build.bins.openssl", cfg["openssl"])
+    vet_str_exists("build.bins.faketime", cfg["faketime"])
     vet_str_exists("build.bins.osslsigncode", cfg["osslsigncode"])
 
 
@@ -278,15 +281,18 @@ def _cfg_options(cfg, b):
 
 def _cfg_support(cfg, b):
     if not isinstance(b, dict):
+        cfg["faketime"] = ""
         cfg["manifest"] = True
         cfg["cgo_export"] = ""
         cfg["cgo_secondary"] = ""
         _cfg_rc(cfg["rc"], None)
         _cfg_sign(cfg["sign"], None)
         return
+    cfg["faketime"] = b.get("faketime", "")
     cfg["manifest"] = b.get("manifest", True)
     cfg["cgo_export"] = b.get("cgo_export", "")
     cfg["cgo_secondary"] = b.get("cgo_secondary", "")
+    vet_str("build.support.faketime", cfg["faketime"])
     vet_bool("build.support.manifest", cfg["manifest"])
     vet_str("build.support.cgo_export", cfg["cgo_export"])
     vet_str("build.support.cgo_secondary", cfg["cgo_secondary"])

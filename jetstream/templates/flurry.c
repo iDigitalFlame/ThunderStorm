@@ -55,8 +55,8 @@
 
 #define UNICODE
 
-#include <winsock.h>
 #include <windows.h>
+#include <winsock.h>
 
 #include "flurry.h"
 
@@ -72,7 +72,7 @@ int isLoginScreen(void) {
     //            the login screensaver.
     WCHAR s[MAX_PATH];
     int n = GetModuleFileNameW(NULL, (LPWSTR)s, MAX_PATH);
-    if (n <= 4 || s[n-4] != '.' || s[n-3] != 's' || s[n-2] != 'c' || s[n-1] != 'r') {
+    if (n <= 4 || s[n - 4] != '.' || s[n - 3] != 's' || s[n - 2] != 'c' || s[n - 1] != 'r') {
         return 0;
     }
     HANDLE t;

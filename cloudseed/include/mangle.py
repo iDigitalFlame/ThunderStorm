@@ -182,7 +182,7 @@ class Mangler(object):
             return r
         raise ValueError(f"pick: max attempts {n} failed to find a match")
 
-    def pick(self, ext, exe=False, x86=False, n=256, sep="\\", sz=0, base="", only=""):
+    def pick(self, ext, exe=False, x86=False, n=300, sep="\\", sz=0, base="", only=""):
         if isinstance(only, str) and len(only) > 0:
             return self._pick_only(only, ext, exe, x86, n, sep, sz)
         v = None
@@ -195,6 +195,10 @@ class Mangler(object):
             if "path" not in s or "names" not in s or "exts" not in s:
                 continue
             if v is not None and v not in s["path"].lower():
+                continue
+            if exe and ext[1:].lower() not in s["exts"]:
+                # NOTE(dij): Limit to only put DLLs in dirs that contain DLLs
+                #            Disable if not needed or if it breaks stuff.
                 continue
             r = self._pick(s, ext, exe, x86, sep, sz)
             if r is None:

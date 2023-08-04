@@ -31,6 +31,7 @@ from include.sentinel import Sentinel
 from base64 import b64decode, b64encode
 from tempfile import mkdtemp, gettempdir
 from include.mangle import Mangler, Path
+from json.decoder import JSONDecodeError
 from include.args import insert_args_opts
 from os import environ, makedirs, listdir, getcwd
 from datetime import datetime, timedelta, timezone
@@ -750,9 +751,11 @@ class CloudSeed(object):
             return
         if len(self._sentinels) == 0:
             raise ValueError("generate: no Sentinels to choose from")
+        t = 0
         for i in self._flurries:
             v, e = self._builds[i], list()
             n = v.sentinels
+            t += v.count
             if not isinstance(n, int) or n < 1:
                 n = self._gen.sentinel.size
             for _ in range(0, v.count):
@@ -783,7 +786,8 @@ class CloudSeed(object):
                     self.log.debug(f'Picked {n} Sentinels for Flurry "{i}".')
             self._process.append(_Build(v, e, _BUILD_TYPE_FLURRY))
             del v, e, n
-        self.log.info(f"Generated {len(self._flurries)} Flurry Builds.")
+        self.log.info(f"Generated {t} Flurry Builds.")
+        del t
 
     def _generate_sentinels(self, x86, pathval):
         b = self._generate_bolts(x86, pathval)
@@ -894,7 +898,10 @@ class CloudSeed(object):
         del j, v
         self._opts.vet()
         with open(expanduser(expandvars(self._paths))) as f:
-            d = loads(f.read())
+            try:
+                d = loads(f.read())
+            except JSONDecodeError as err:
+                raise ValueError(f'bad JSON in "{self._paths}": {err}')
             self._mangle = Mangler(d["paths"], d.get("names"))
             self._titles = d.get("titles")
             self._versions = d.get("versions")
@@ -1050,6 +1057,7 @@ class Parser(ArgumentParser):
         self.add("--bin-wres64", dest="bin_wres64", type=str)
         self.add("--bin-garble", dest="bin_garble", type=str)
         self.add("--bin-openssl", dest="bin_openssl", type=str)
+        self.add("--bin-faketime", dest="bin_faketime", type=str)
         self.add("--bin-osslsigncode", dest="bin_osslsigncode", type=str)
         # Config [build.options] Arguments
         self.add("--goroot", dest="opt_goroot", type=str)
@@ -1063,6 +1071,7 @@ class Parser(ArgumentParser):
         self.add("--tags", dest="opt_tags", action="append", nargs="*", type=str)
         # Config [build.support] Arguments
         self.add("-e", "--entry", dest="sup_entry", type=str)
+        self.add("--faketime", dest="sup_faketime", type=str)
         self.add("--manifest", dest="sup_manifest", action=BooleanOptionalAction)
         # Config [build.support.sign] Arguments
         self.add("--sign", dest="sign_enabled", action=BooleanOptionalAction)

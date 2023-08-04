@@ -438,7 +438,7 @@ def tiny_root(old, new):
             "ok = true",
             'return "GMT", "GMT"',
             'return "GMT", "GMT"',
-            "var err error",
+            "var err error = nil",
             "",
         ],
     )
@@ -519,7 +519,7 @@ def tiny_root(old, new):
             'var badsystemstackMsg = "fatal: systemstack called from unexpected goroutine"'
             'throw("systemstack called from unexpected goroutine")'
         ],
-        ['var badsystemstackMsg = "bad"', 'throw(bad")'],
+        ['var badsystemstackMsg = "bad"', 'throw("bad")'],
         ign=True,
     )
     _sed(
@@ -957,12 +957,13 @@ def execute(log, cmd, env=None, trunc=False, out=True, wd=None, dout=True):
             capture_output=out,
         )
     except CalledProcessError as err:
+        o = _get_stdout(err)
         log.error(
-            f'Error running command (exit {err.returncode}) "{_print_cmd(cmd, trunc)}": {_get_stdout(err)}'
+            f'Error running command (exit {err.returncode}) "{_print_cmd(cmd, trunc)}": {o}'
         )
-        if trunc:
-            err.cmd = _print_cmd(cmd, trunc, True)
-        raise err
+        raise RuntimeError(
+            f'Command "{_print_cmd(cmd, trunc, True)}" returned a non-zero exit code ({err.returncode}): {o}'
+        )
     finally:
         del e
     if out and dout:

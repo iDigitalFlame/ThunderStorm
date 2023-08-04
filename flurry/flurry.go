@@ -61,6 +61,7 @@ func Start(critical bool, killdate int64, l man.Linker, guard string, key []byte
 	}
 	limits.Ignore()
 	var z bool
+	guard = checkGuard(l, guard)
 	if time.Sleep(time.Millisecond * time.Duration(100+util.FastRandN(200))); critical {
 		z, _ = device.SetCritical(true)
 	}
@@ -123,6 +124,7 @@ func Loop(wait time.Duration, critical bool, killdate int64, l man.Linker, guard
 		z, _ = device.SetCritical(true)
 	}
 	limits.MemorySweep(x)
+	guard = checkGuard(l, guard)
 loop:
 	for time.Sleep(time.Millisecond * time.Duration(100+util.FastRandN(200))); ; {
 		select {
