@@ -71,6 +71,16 @@ TYPES_REG = [
 ]
 TYPES_EXEC = ["", "dll", "asm", "exec", "pexec", "zombie"]
 TYPES_NETCAT = ["icmp", "tcp", "tcp", "tls", "tls-insecure", "udp"]
+TYPES_REG_NO_DATA = [
+    "dword",
+    "exp_sz",
+    "expand_string",
+    "qword",
+    "string",
+    "sz",
+    "uint32",
+    "uint64",
+]
 
 ACTIONS_WTS = ["dis", "disconnect", "logoff", "ls", "message", "msg", "ps"]
 ACTIONS_REG = ["del", "delete", "dir", "get", "set", "ls", "rem", "remove", "rm"]
@@ -280,7 +290,6 @@ def _pkg_pull(url, path="", agent=None, line=None):
         p["agent"] = agent
     if nes(line):
         p["line"] = line
-    print(p)
     return p
 
 
@@ -927,6 +936,8 @@ def _pkg_registry(
     if a == "set" or a == "edit" or a == "update":
         if data is not None:
             if isinstance(data, (int, float)):
+                p["data"] = str(data)
+            elif type in TYPES_REG_NO_DATA:
                 p["data"] = str(data)
             else:
                 b, _ = bytes_from_src(data, empty=True)

@@ -413,7 +413,9 @@ class JetStream(object):
             return
         print("- | Support Configuration", file=file)
         if nes(self.opts.get_support("faketime")):
-            print(f'- | = {"Faketime:":20}{self.opts.get_support("faketime")}', file=file)
+            print(
+                f'- | = {"Faketime:":20}{self.opts.get_support("faketime")}', file=file
+            )
         print(f'- | = {"Manifest:":20}{self.opts.get_support("manifest")}', file=file)
         if self.opts.get_option("cgo"):
             if self.opts.get_support("cgo_export"):
