@@ -15,7 +15,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+import threading
+
 from sys import stderr
+from signal import SIGINT
+from os import getpid, kill
 from requests import session
 from json import dumps, loads
 from datetime import datetime
@@ -120,6 +124,11 @@ ACTIONS_WINDOW = [
     "transparent",
     "type",
 ]
+
+
+def _thread_except(args):
+    print(f"Received an uncaught Thread error {args.exc_type} ({args.exc_value})!")
+    kill(getpid(), SIGINT)
 
 
 def _err_from_stat(r, url, ex):
@@ -2603,6 +2612,7 @@ class _Events(Thread):
         self._running = Event()
         self._select = DefaultSelector()
         self.name = "Cirrus Events Thread"
+        threading.excepthook = _thread_except
 
     def run(self):
         try:
