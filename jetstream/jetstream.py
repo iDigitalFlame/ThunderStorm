@@ -374,7 +374,7 @@ class JetStream(object):
         return o
 
     def print_options(self, osv, arch, gen, file=None):
-        print(f'JetSteam Load complete!\n- | Configured Options\n{"="*60}', file=file)
+        print(f'JetSteam Load complete!\n- | Configured Options\n{"=" * 60}', file=file)
         print(f'- | {"Target:":22}{osv}/{arch}', file=file)
         print(f'- | {"Generator:":22}{gen.name()}\n- |', file=file)
         print("- | Binary Configuration", file=file)
@@ -512,6 +512,8 @@ class JetStream(object):
         if self.opts.get_option("garble"):
             b = self.opts.get_bin("garble")
             x += ["-tiny", "-seed=random"]
+            if workspace.get("no_clean", False):
+                x.append(f'-debugdir={join(workspace["dir"], "garble")}')
         else:
             t = which("go")
             if t != b:

@@ -222,7 +222,7 @@ def _mask_tail(b, log):
     for i in range(0, len(PACKAGES)):
         x = 0
         if callable(log) and i % 10 == 0:
-            log(f"Checking package {i+1} out of {len(PACKAGES)}..")
+            log(f"Checking package {i + 1} out of {len(PACKAGES)}..")
         while x < len(b):
             x = b.find(PACKAGES[i], x)
             if x <= 0:
@@ -289,13 +289,15 @@ def _mask_deps(b, start, log):
     x = start
     for r in range(0, 2):
         if callable(log):
-            log(f"Searching for command line args (round {r+1})..")
+            log(f"Searching for command line args (round {r + 1})..")
         x = b.find(CRUMB_DEPS, start)
         if x <= 0:
             continue
         x -= 5
         while x < len(b):
-            if b[x] < 0x21 and b[x + 1] > 0x7E:
+            if b[x] == 0xA or b[x] == 0x9:
+                b[x] = 0
+            elif b[x] < 0x21 and b[x + 1] > 0x7E:
                 break
             if b[x] > 0x21:
                 b[x] = 0
@@ -439,16 +441,15 @@ def strip_binary(file, log=None, root=None, path=None):
         return
     _mask_tables(b, log)
     _mask_tail(b, log)
-    _mask_deps(b, x, log)
     if callable(log):
         log("Removing version info..")
     _mask_version(b, x, root, path)
+    _mask_deps(b, 0, log)
     _mask_build_id(b)
     _mask_build_inf(b)
     if callable(log):
         log("Cleaning up..")
     _mask_cleanup(b)
-    del x
     with open(file, "wb") as f:
         f.write(b)
     del b

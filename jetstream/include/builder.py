@@ -174,13 +174,18 @@ def _get_stdout(r):
     return e
 
 
-def _find_func(s, x):
+def _find_func(s, x, n, r):
     i = -1
     for i in range(x, x + 256):
         if s[i] == "{" and s[i - 1] != "e":  # Ignore interface{}
             break
     if i == -1:
         return -1, -1
+    if r is not None:
+        v = _find_return(s, x + len(n) + 5, i)
+        if v != r:
+            return -1, -1
+        del v
     i += 1
     c, e = 0, i + 1
     while e < len(s):
@@ -192,6 +197,28 @@ def _find_func(s, x):
             c += 1
         e += 1
     return i, e
+
+
+def _find_return(s, x, e):
+    if x >= e:
+        return ""
+    if s[x] == "[":
+        x = s.find(x, "]")
+        if x > e:
+            raise ValueError("invalid generic definition")
+        x += 1
+    c, p = 0, -1
+    for x in range(x, e):
+        if s[x] == "(":
+            c += 1
+        elif s[x] == ")":
+            c -= 1
+        if c == 0:
+            p = x + 1
+            break
+    if p == -1 or p > e:
+        return ""
+    return s[p:e].strip()
 
 
 def _sign_range(d, exp):
@@ -249,7 +276,8 @@ def tiny_root(old, new):
     _empty(
         join(new, "src", "runtime", "traceback.go"),
         [
-            "printOneCgoTraceback",
+            "printOneCgoTraceback:int",
+            "printOneCgoTraceback:bool",
             "printcreatedby",
             "printcreatedby1",
             "traceback",
@@ -263,7 +291,16 @@ def tiny_root(old, new):
             "printCgoTraceback",
             "printArgs",
         ],
-        ["return 0"],
+        ["return 0", "return true"],
+    )
+    _empty(
+        join(new, "src", "net", "http", "h2_bundle.go"),
+        [
+            "(wr http2FrameWriteRequest) String",
+            "http2summarizeFrame",
+            "(h http2FrameHeader) writeDebug",
+        ],
+        ['return ""', 'return ""'],
     )
     _sed(
         join(new, "src", "runtime", "traceback.go"),
@@ -273,8 +310,33 @@ def tiny_root(old, new):
     )
     _sed(
         join(new, "src", "crypto", "tls", "common.go"),
-        ['logLine := fmt.Appendf(nil, "%s %x %x\\n", label, clientRandom, secret)'],
-        ["logLine := []byte{}"],
+        [
+            '"fmt"',
+            'logLine := fmt.Appendf(nil, "%s %x %x\\n", label, clientRandom, secret)',
+            (
+                'return fmt.Errorf("tls: received unexpected handshake message of type %T '
+                'when waiting for %T", got, wanted)'
+            ),
+            'return fmt.Sprintf("tls: failed to verify certificate: %s", e.Err)',
+            'return fmt.Sprintf("0x%04X", version)',
+            'panic(fmt.Sprintf("tls: unable to generate random session ticket key: %v", err))',
+            'return fmt.Errorf("failed to parse certificate: %w", err)',
+            'return fmt.Errorf("certificate is not valid for requested server name: %w", err)',
+            'return fmt.Errorf("failed to parse certificate #%d in the chain: %w", j, err)',
+            'panic(fmt.Sprintf("unable to generate random session ticket key: %v", err))',
+        ],
+        [
+            "",
+            "logLine := []byte{}",
+            'return errors.New("unexpected handshake")',
+            "return e.Err.Error()",
+            'return "unknown"',
+            'panic("")',
+            'return errors.New("bad cert")',
+            'return errors.New("cert not valid")',
+            'return errors.New("bad cert in chain")',
+            'panic("")',
+        ],
         ign=True,
     )
     _sed(
@@ -320,6 +382,86 @@ def tiny_root(old, new):
             "\n\t\thttp2logFrameReads = true\n\t}\n}",
             "\nvar (\n\thttp2VerboseLogs    bool\n\thttp2logFrameWrites bool\n\t"
             "http2logFrameReads  bool\n\thttp2inTests        bool\n)\n",
+            (
+                'return fr.connError(http2ErrCodeProtocol, fmt.Sprintf("unexpected CONTINUATION for stream %d"'
+                ", fh.StreamID))"
+            ),
+            (
+                'fmt.Sprintf("got CONTINUATION for stream %d; expected stream %d",\n\t\t\t\t\tfh.StreamID, '
+                "fr.lastHeaderStream))"
+            ),
+            (
+                'fmt.Sprintf("got %s for stream %d; expected CONTINUATION following %s for stream %d",\n\t\t\t\t\t'
+                "fh.Type, fh.StreamID,\n\t\t\t\t\tlast.Header().Type, fr.lastHeaderStream))"
+            ),
+            (
+                'return nil, http2connError{http2ErrCodeFrameSize, fmt.Sprintf("PRIORITY frame payload size was %d; '
+                'want 5", len(payload))}'
+            ),
+            'panic(fmt.Sprintf("No space found in %q", b))',
+            'panic(fmt.Sprintf("Failed to parse goroutine ID out of %q: %v", b, err))',
+            'return fmt.Sprintf("[%v = %d]", s.ID, s.Val)',
+            (
+                'return fmt.Errorf("http2: TLSConfig.CipherSuites is missing an HTTP/2-required AES_128_GCM_SHA256 '
+                "cipher (need at least one of TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 or TLS_ECDHE_ECDSA_WITH_AES_128_"
+                'GCM_SHA256)")'
+            ),
+            (
+                'sc.rejectConn(http2ErrCodeInadequateSecurity, fmt.Sprintf("Prohibited TLS 1.2 Cipher Suite: %x", '
+                "sc.tlsState.CipherSuite))"
+            ),
+            'panic(fmt.Sprintf("unexpected type %T", v))',
+            '<- fmt.Errorf("bogus greeting %q", buf)',
+            'panic(fmt.Sprintf("internal error: attempt to send frame on a half-closed-local stream: %v", wr))',
+            'panic(fmt.Sprintf("internal error: attempt to send frame on a closed stream: %v", wr))',
+            'panic(fmt.Sprintf("invariant; can\'t close stream in state %v", st.state))',
+            (
+                'st.body.CloseWithError(fmt.Errorf("sender tried to send more than declared Content-Length of %d '
+                'bytes", st.declBodyBytes))'
+            ),
+            (
+                'st.body.CloseWithError(fmt.Errorf("request declared a Content-Length of %d but only wrote %d bytes",'
+                "\n\t\t\tst.declBodyBytes, st.bodyBytes))"
+            ),
+            'panic(fmt.Sprintf("invalid WriteHeader code %v", code))',
+            'return fmt.Errorf("target must be an absolute URL or an absolute path: %q", target)',
+            'return fmt.Errorf("cannot push URL with scheme %q from request with scheme %q", u.Scheme, wantScheme)',
+            'return fmt.Errorf("promised request headers cannot include pseudo header %q", k)',
+            'return fmt.Errorf("promised request headers cannot include %q", k)',
+            'return fmt.Errorf("method %q must be GET or HEAD", opts.Method)',
+            'panic(fmt.Sprintf("newWriterAndRequestNoBody(%+v): %v", msg.url, err))',
+            'return fmt.Errorf("request header %q is not valid in HTTP/2", k)',
+            'f(fmt.Sprintf("%s_%s_%s", typ, codeStr, name))',
+            (
+                'return nil, fmt.Errorf("http2: Transport: cannot retry err [%v] after Request.Body was written; '
+                'define Request.GetBody to avoid this error", err)'
+            ),
+            'return nil, fmt.Errorf("http2: unexpected ALPN protocol %q; want %q", p, http2NextProtoTLS)',
+            'return "", fmt.Errorf("invalid Trailer key %q", k)',
+            'return fmt.Errorf("http2: invalid Upgrade request header: %q", req.Header["Upgrade"])',
+            'return fmt.Errorf("http2: invalid Transfer-Encoding request header: %q", vv)',
+            'return fmt.Errorf("http2: invalid Connection request header: %q", vv)',
+            'return nil, fmt.Errorf("invalid request :path %q from URL.Opaque = %q", orig, req.URL.Opaque)',
+            'return nil, fmt.Errorf("invalid request :path %q", orig)',
+            'return nil, fmt.Errorf("invalid HTTP header name %q", k)',
+            'return nil, fmt.Errorf("invalid HTTP header value for header %q", k)',
+            (
+                'return fmt.Sprintf("http2: server sent GOAWAY and closed the connection; LastStreamID=%v, '
+                'ErrCode=%v, debug=%q",\n\t\te.LastStreamID, e.ErrCode, e.DebugData)'
+            ),
+            'f(fmt.Sprintf("read_frame_conn_error_%s", errCode.stringToken()))',
+            'err = fmt.Errorf("%v", e)',
+            'return fmt.Sprintf("writeData(stream=%d, p=%d, endStream=%v)", w.streamID, len(w.p), w.endStream)',
+            'panic(fmt.Sprintf("unbuffered done channel passed in for type %T", wr.write))',
+            'panic(fmt.Sprintf("stream %d already opened", streamID))',
+            'panic(fmt.Sprintf("violation of WriteScheduler interface: unknown stream %d", streamID))',
+            'panic(fmt.Sprintf("violation of WriteScheduler interface: stream %d already closed", streamID))',
+            'panic(fmt.Errorf("stream %d already opened", streamID))',
+            '"fmt"',
+            "orig := path",
+            'st.body.CloseWithError(fmt.Errorf("%w", os.ErrDeadlineExceeded))',
+            'return fmt.Sprintf("UNKNOWN_SETTING_%d", uint16(s))',
+            "last := fr.lastFrame",
         ],
         [
             'if a := ""; len(a) > 0 {',
@@ -348,6 +490,55 @@ def tiny_root(old, new):
             "\n\t\thttp2logFrameReads = true\n\t}\n}\n*/",
             "\nconst (\n\thttp2VerboseLogs    = false\n\thttp2logFrameWrites = false\n\t"
             "http2logFrameReads  = false\n\thttp2inTests        = false\n)\n",
+            'return fr.connError(http2ErrCodeProtocol, "")',
+            '"")',
+            '"")',
+            'return nil, http2connError{http2ErrCodeFrameSize, ""}',
+            'panic("")',
+            'panic("")',
+            'return ""',
+            'return errors.New("cipher error")',
+            'sc.rejectConn(http2ErrCodeInadequateSecurity, "bad cipher")',
+            'panic("")',
+            '<- errors.New("bogus greeting")',
+            'panic("")',
+            'panic("")',
+            'panic("")',
+            "st.body.CloseWithError(io.EOF)",
+            "st.body.CloseWithError(io.EOF)",
+            'panic("")',
+            'return errors.New("bad target")',
+            'return errors.New("bad scheme")',
+            'return errors.New("bad header")',
+            'return errors.New("bad header")',
+            'return errors.New("bad method")',
+            'panic("")',
+            'return errors.New("bad header")',
+            'f(typ + "_" + codeStr + "_" + name)',
+            'return nil, errors.New("no body")',
+            'return nil, errors.New("bad proto")',
+            'return "", errors.New("bad trailer")',
+            'return errors.New("bad header")',
+            'return errors.New("bad header")',
+            'return errors.New("bad header")',
+            'return nil, errors.New("bad path")',
+            'return nil, errors.New("bad path")',
+            'return nil, errors.New("bad header")',
+            'return nil, errors.New("bad header")',
+            'return "go away"',
+            'f("read_frame_conn_error_" + errCode.stringToken())',
+            'err = errors.New("bad")',
+            'return "writeDataError"',
+            'panic("")',
+            'panic("")',
+            'panic("")',
+            'panic("")',
+            'panic("")',
+            "",
+            "",
+            "st.body.CloseWithError(os.ErrDeadlineExceeded)",
+            'return "UNKNOWN_SETTING"',
+            "",
         ],
         ign=True,
     )
@@ -400,8 +591,14 @@ def tiny_root(old, new):
             'for p := gogetenv("GODEBUG"); p != ""; {',
             'globalGODEBUG = gogetenv("GODEBUG")',
             'setTraceback(gogetenv("GOTRACEBACK"))',
+            'godebug := gogetenv("GODEBUG")',
         ],
-        ['for p := gogetenv(""); p != ""; {', 'gogetenv("")', 'setTraceback("none")'],
+        [
+            'for p := gogetenv(""); p != ""; {',
+            'gogetenv("")',
+            'setTraceback("none")',
+            'godebug := ""\n_ = godebug\n\n_ = gogetenv("")',
+        ],
         ign=True,
     )
     _sed(
@@ -412,8 +609,8 @@ def tiny_root(old, new):
     )
     _sed(
         join(new, "src", "runtime", "mgcpacer.go"),
-        ['p := gogetenv("GOGC")'],
-        ['p := ""'],
+        ['p := gogetenv("GOGC")', 'p := gogetenv("GOMEMLIMIT")'],
+        ['p := ""', 'p := ""'],
         ign=True,
     )
     _sed(
@@ -429,8 +626,8 @@ def tiny_root(old, new):
             "a, ok = abbrs[englishName]",
             "return a.std, a.dst",
             "return extractCAPS(stdName), extractCAPS(dstName)",
-            "englishName, err := toEnglishName(stdName, dstName)",
             "dstName := syscall.UTF16ToString(z.DaylightName[:])",
+            "englishName, err := toEnglishName(stdName, dstName)",
         ],
         [
             'return "GMT", "GMT"',
@@ -456,6 +653,7 @@ def tiny_root(old, new):
             'const msg = "runtime: signal received on thread not created by Go.\\n"',
         ],
         ["", 'const msg = "bad\\n"'],
+        ign=True,
     )
     _sed(
         join(new, "src", "cmd", "link", "internal", "ld", "data.go"),
@@ -516,8 +714,8 @@ def tiny_root(old, new):
     _sed(
         join(new, "src", "runtime", "stubs.go"),
         [
-            'var badsystemstackMsg = "fatal: systemstack called from unexpected goroutine"'
-            'throw("systemstack called from unexpected goroutine")'
+            'var badsystemstackMsg = "fatal: systemstack called from unexpected goroutine"',
+            'throw("systemstack called from unexpected goroutine")',
         ],
         ['var badsystemstackMsg = "bad"', 'throw("bad")'],
         ign=True,
@@ -720,7 +918,12 @@ def _print_cmd(v, trunc, ns=False):
 
 def _sed(path, old, new, ign=False):
     if not isfile(path) and ign:
+        print(f"sed: {path} does not exist")
         return
+    if len(old) != len(new):
+        raise ValueError(
+            f"{path}: mismatched old ({len(old)}) and replacement ({len(new)}) sizes"
+        )
     with open(path, "r") as f:
         d = f.read()
     with open(path, "w") as f:
@@ -728,7 +931,7 @@ def _sed(path, old, new, ign=False):
             if not ign and old[x] not in d:
                 raise ValueError(f"{path}: missing {old[x]}")
             if old[x] not in d:
-                # print(f"{path} missing {old[x]}")
+                print(f"sed: {path} missing {old[x]}")
                 continue
             d = d.replace(old[x], new[x])
         f.write(d)
@@ -775,10 +978,18 @@ def _empty(path, names, ret=None, ign=False):
         d = f.read()
     with open(path, "w") as f:
         for i in range(0, len(names)):
-            x = d.find(f"func {names[i]}(")
+            q = names[i].rfind(":")
+            if q > -1:
+                t, r = names[i][:q], names[i][q + 1 :]
+            else:
+                t, r = names[i], None
+            del q
+            x = d.find(f"func {t}(")
             if x <= 0:
                 continue
-            s, e = _find_func(d, x)
+            s, e = _find_func(d, x, t, r)
+            print(f"find ret {r} name {t}, s={s}, e={e}")
+            del r
             if s <= x:
                 continue
             if isinstance(ret, list) and len(ret) > i:
