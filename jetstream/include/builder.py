@@ -918,7 +918,7 @@ def _print_cmd(v, trunc, ns=False):
 
 def _sed(path, old, new, ign=False):
     if not isfile(path) and ign:
-        print(f"sed: {path} does not exist")
+        # print(f"sed: {path} does not exist")
         return
     if len(old) != len(new):
         raise ValueError(
@@ -931,7 +931,7 @@ def _sed(path, old, new, ign=False):
             if not ign and old[x] not in d:
                 raise ValueError(f"{path}: missing {old[x]}")
             if old[x] not in d:
-                print(f"sed: {path} missing {old[x]}")
+                # print(f"sed: {path} missing {old[x]}")
                 continue
             d = d.replace(old[x], new[x])
         f.write(d)
@@ -987,8 +987,10 @@ def _empty(path, names, ret=None, ign=False):
             x = d.find(f"func {t}(")
             if x <= 0:
                 continue
-            s, e = _find_func(d, x, t, r)
-            print(f"find ret {r} name {t}, s={s}, e={e}")
+            try:
+                s, e = _find_func(d, x, t, r)
+            except ValueError as err:
+                raise ValueError(f'error processing function "{names[i]}": {err}')
             del r
             if s <= x:
                 continue
