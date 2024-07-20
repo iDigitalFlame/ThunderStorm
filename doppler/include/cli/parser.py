@@ -61,6 +61,7 @@ def __parsers():
     # eq    = False
     p[PARSER_ASM] = Parser()
     p[PARSER_ASM].add("-e", "--entry", type=str, dest="entry")
+    p[PARSER_ASM].add("-t", "--timeout", type=str, dest="timeout")
     p[PARSER_ASM].add("-x", "--detach", dest="detach", action="store_true")
     p[PARSER_ASM].add(nargs=1, type=str, dest="data")
     # dex
@@ -72,6 +73,7 @@ def __parsers():
     # dll
     p[PARSER_DLL] = Parser()
     p[PARSER_DLL].add("-e", "--entry", type=str, dest="entry")
+    p[PARSER_DLL].add("-t", "--timeout", type=str, dest="timeout")
     p[PARSER_DLL].add("-x", "--detach", dest="detach", action="store_true")
     p[PARSER_DLL].add("-r", "--reflect", dest="reflect", action="store_true")
     p[PARSER_DLL].add(nargs=1, type=str, dest="data")
@@ -88,6 +90,7 @@ def __parsers():
     # nones = False
     p[PARSER_RUNAS] = Parser()
     p[PARSER_RUNAS].add("-d", "--domain", type=str, dest="domain")
+    p[PARSER_RUNAS].add("-t", "--timeout", type=str, dest="timeout")
     p[PARSER_RUNAS].add("-x", "--detach", dest="detach", action="store_true")
     p[PARSER_RUNAS].add(nargs=1, type=str, dest="user")
     p[PARSER_RUNAS].add(nargs=1, type=str, dest="pw")
@@ -128,6 +131,7 @@ def __parsers():
     p[PARSER_ZOMBIE].add("-e", "--entry", type=str, dest="entry")
     p[PARSER_ZOMBIE].add("-p", "--password", type=str, dest="pw")
     p[PARSER_ZOMBIE].add("-d", "--domain", type=str, dest="domain")
+    p[PARSER_ZOMBIE].add("-t", "--timeout", type=str, dest="timeout")
     p[PARSER_ZOMBIE].add("-x", "--detach", dest="detach", action="store_true")
     p[PARSER_ZOMBIE].add(nargs=1, type=str, dest="data")
     p[PARSER_ZOMBIE].add(nargs=REMAINDER, type=str, dest="args")
@@ -154,6 +158,7 @@ def __parsers():
     p[PARSER_RUN].add("-u", "--user", type=str, dest="user")
     p[PARSER_RUN].add("-p", "--password", type=str, dest="pw")
     p[PARSER_RUN].add("-d", "--domain", type=str, dest="domain")
+    p[PARSER_RUN].add("-t", "--timeout", type=str, dest="timeout")
     p[PARSER_RUN].add("-f", "--file", dest="file", action="store_true")
     p[PARSER_RUN].add("-x", "--detach", dest="detach", action="store_true")
     p[PARSER_RUN].add(nargs=REMAINDER, type=str, dest="command")

@@ -139,15 +139,16 @@ def _err_from_stat(r, url, ex):
         r.close()
     except Exception:
         raise CirrusError(
-            f'"{url}" returned non-{ex} status: {r.status_code}'
+            f'"{url}" returned non-{ex} status: {r.status_code}', code=r.status_code
         ) from None
     if not isinstance(d, dict) or len(d) == 0 or not nes(d.get("error")):
         raise CirrusError(
-            f'"{url}" returned non-{ex} status: {r.status_code}'
+            f'"{url}" returned non-{ex} status: {r.status_code}', code=r.status_code
         ) from None
     raise CirrusError(
         f'"{url}" returned non-{ex} status: ({r.status_code}) {d["error"]}',
         sub=d["error"],
+        code=r.status_code,
     ) from None
 
 
@@ -501,7 +502,9 @@ def _pkg_power(action, message="", force=False, seconds=None, reason=None, line=
     return p
 
 
-def _pkg_assembly(data, show=False, detach=False, filter=None, entry=None, line=None):
+def _pkg_assembly(
+    data, show=False, detach=False, filter=None, entry=None, timeout=None, line=None
+):
     if filter is not None and not isinstance(filter, Filter):
         raise ValueError('"filter" must be a Filter type')
     b, _ = bytes_from_src(data, cb64=True, empty=False, explicit=True)
@@ -513,6 +516,10 @@ def _pkg_assembly(data, show=False, detach=False, filter=None, entry=None, line=
     del b
     if nes(entry):
         p["entry"] = entry
+    if nes(timeout):
+        p["timeout"] = timeout
+    elif isinstance(timeout, int):
+        p["timeout"] = f"{timeout}s"
     if isinstance(filter, Filter):
         p["filter"] = filter.json()
     if nes(line):
@@ -527,6 +534,7 @@ def _pkg_dll(
     detach=False,
     filter=None,
     entry=None,
+    timeout=None,
     line=None,
 ):
     if filter is not None and not isinstance(filter, Filter):
@@ -540,6 +548,10 @@ def _pkg_dll(
     del b, r
     if nes(entry):
         p["entry"] = entry
+    if nes(timeout):
+        p["timeout"] = timeout
+    elif isinstance(timeout, int):
+        p["timeout"] = f"{timeout}s"
     if isinstance(filter, Filter):
         p["filter"] = filter.json()
     if nes(line):
@@ -681,6 +693,7 @@ def _pkg_zombie(
     domain="",
     pw="",
     entry=None,
+    timeout=None,
     line=None,
 ):
     if not nes(fake_args):
@@ -707,6 +720,10 @@ def _pkg_zombie(
     del u, d, b
     if nes(entry):
         p["entry"] = entry
+    if nes(timeout):
+        p["timeout"] = timeout
+    elif isinstance(timeout, int):
+        p["timeout"] = f"{timeout}s"
     if isinstance(filter, Filter):
         p["filter"] = filter.json()
     if nes(line):
@@ -863,6 +880,7 @@ def _pkg_execute(
     user="",
     domain="",
     pw="",
+    timeout=None,
     line=None,
 ):
     if not nes(cmd):
@@ -894,6 +912,10 @@ def _pkg_execute(
             del b
         else:
             p["stdin"] = b64encode(stdin).decode("UTF-8")
+    if nes(timeout):
+        p["timeout"] = timeout
+    elif isinstance(timeout, int):
+        p["timeout"] = f"{timeout}s"
     if isinstance(filter, Filter):
         p["filter"] = filter.json()
     if nes(line):
@@ -1476,6 +1498,7 @@ class Api(object):
         detach=False,
         filter=None,
         entry=None,
+        timeout=None,
     ):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
@@ -1485,7 +1508,7 @@ class Api(object):
             f"script/{name}/dll",
             201,
             "put",
-            json=_pkg_dll(data, reflect, show, detach, filter, entry, line),
+            json=_pkg_dll(data, reflect, show, detach, filter, entry, timeout, line),
         )
 
     def script_wts(
@@ -1600,6 +1623,7 @@ class Api(object):
         domain="",
         pw="",
         entry=None,
+        timeout=None,
     ):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
@@ -1610,7 +1634,17 @@ class Api(object):
             201,
             "put",
             json=_pkg_zombie(
-                data, fake_args, show, detach, filter, user, domain, pw, line, entry
+                data,
+                fake_args,
+                show,
+                detach,
+                filter,
+                user,
+                domain,
+                pw,
+                entry,
+                timeout,
+                line,
             ),
         )
 
@@ -1666,6 +1700,7 @@ class Api(object):
         user="",
         domain="",
         pw="",
+        timeout=None,
     ):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
@@ -1675,7 +1710,9 @@ class Api(object):
             f"script/{name}/exec",
             201,
             "put",
-            json=_pkg_execute(cmd, show, detach, filter, stdin, user, domain, pw, line),
+            json=_pkg_execute(
+                cmd, show, detach, filter, stdin, user, domain, pw, timeout, line
+            ),
         )
 
     def script_migrate(
@@ -1732,6 +1769,7 @@ class Api(object):
         detach=False,
         filter=None,
         entry=None,
+        timeout=None,
     ):
         if not nes(name):
             raise ValueError('"name" must be a non-empty string')
@@ -1741,7 +1779,7 @@ class Api(object):
             f"script/{name}/asm",
             201,
             "put",
-            json=_pkg_assembly(data, show, detach, filter, entry, line),
+            json=_pkg_assembly(data, show, detach, filter, entry, timeout, line),
         )
 
     def script_pull_exec(
@@ -1843,6 +1881,16 @@ class Api(object):
             raise ValueError('"id" must be a non-empty string')
         return self._req(f"session/{id}", 200, "get")
 
+    def session_rename(self, id, name):
+        v = name
+        if not nes(v):
+            v = ""
+        elif len(v) > 64:
+            raise ValueError("name must be less than 64 chars")
+        elif len(v) < 4:
+            raise ValueError("name must be at least 4 chars")
+        return self._req(f"session/{id}/name", 200, "put", json={"name": v})
+
     def session_proxy_remove(self, id, name):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -1916,7 +1964,8 @@ class Api(object):
         v = Utils.str_to_dur(duration) / 1000000000
         r = list()
         n = datetime.now()
-        for i in self.sessions():
+        for e in self.sessions():
+            i = e["session"]
             x = n - datetime.fromisoformat(i["last"].replace("Z", "")).replace(
                 tzinfo=None
             )
@@ -1932,7 +1981,7 @@ class Api(object):
                 raise ValueError("There were no Bolts matching the prune limit")
             return False
         if verbose:
-            print(f'{"ID":9}Last\n{"="*20}')
+            print(f'{"ID":9}Last\n{"=" * 20}')
             for i in r:
                 print(f"{i[0]:9}{time_str(n, i[1], True)}")
             print()
@@ -2253,6 +2302,7 @@ class Api(object):
         detach=False,
         filter=None,
         entry=None,
+        timeout=None,
     ):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -2260,7 +2310,7 @@ class Api(object):
             f"session/{id}/dll",
             201,
             "put",
-            json=_pkg_dll(data, reflect, show, detach, filter, entry),
+            json=_pkg_dll(data, reflect, show, detach, filter, entry, timeout),
         )
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
@@ -2351,6 +2401,7 @@ class Api(object):
         user="",
         domain="",
         pw="",
+        timeout=None,
         entry=None,
     ):
         if not nes(id):
@@ -2360,7 +2411,7 @@ class Api(object):
             201,
             "put",
             json=_pkg_zombie(
-                data, fake_args, show, detach, filter, user, domain, pw, entry
+                data, fake_args, show, detach, filter, user, domain, pw, entry, timeout
             ),
         )
         if not isinstance(r, dict) or "id" not in r:
@@ -2421,6 +2472,7 @@ class Api(object):
         user="",
         domain="",
         pw="",
+        timeout=None,
     ):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -2428,7 +2480,9 @@ class Api(object):
             f"session/{id}/exec",
             201,
             "put",
-            json=_pkg_execute(cmd, show, detach, filter, stdin, user, domain, pw),
+            json=_pkg_execute(
+                cmd, show, detach, filter, stdin, user, domain, pw, timeout
+            ),
         )
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
@@ -2493,6 +2547,7 @@ class Api(object):
         detach=False,
         filter=None,
         entry=None,
+        timeout=None,
     ):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -2500,7 +2555,7 @@ class Api(object):
             f"session/{id}/asm",
             201,
             "put",
-            json=_pkg_assembly(data, show, detach, filter, entry),
+            json=_pkg_assembly(data, show, detach, filter, entry, timeout),
         )
         if not isinstance(r, dict) or "id" not in r:
             raise ValueError(
@@ -2674,12 +2729,13 @@ class _Events(Thread):
 
 
 class CirrusError(ValueError):
-    def __init__(self, val, sub=None):
+    def __init__(self, val, sub=None, code=None):
         ValueError.__init__(self, val)
         if nes(sub):
             self.sub = sub[0].upper() + sub[1:]
         else:
             self.sub = None
+        self.code = code
 
     def __str__(self):
         if nes(self.sub):

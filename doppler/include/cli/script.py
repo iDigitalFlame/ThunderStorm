@@ -89,7 +89,7 @@ class MenuScripts(object):
             print()
 
     def default(self, n):
-        if not is_valid_name(n, 1, True):
+        if not is_valid_name(n, 1):
             return
         try:
             self.shell.cirrus.script(n)
@@ -456,6 +456,9 @@ class MenuScript(MenuBolt):
     def do_jobs(self, _, line=None):
         print("Not available inside a Script.")
 
+    def do_name(self, _, line=None):
+        print("Not available inside a Script.")
+
     def do_last(self, _, line=None):
         print("Not available inside a Script.")
 
@@ -476,6 +479,9 @@ class MenuScript(MenuBolt):
         if not super(__class__, self).do_creds(a):
             return
         self._add_note(line)
+
+    def do_rename(self, _, line=None):
+        print("Not available inside a Script.")
 
     def do_history(self, _, line=None):
         """

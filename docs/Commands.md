@@ -44,6 +44,7 @@ For the output of `help strval` see the [String-Var Dynamic Values](StringValues
 - [mktoken](#mktoken)
 - [mounts](#mounts)
 - [mv](#mv)
+- [name](#name)
 - [nc](#nc)
 - [parent](#parent)
 - [parent_clear](#parent_clear)
@@ -67,6 +68,7 @@ For the output of `help strval` see the [String-Var Dynamic Values](StringValues
 - [reboot](#reboot)
 - [refresh](#refresh)
 - [regedit](#regedit)
+- [rename](#rename)
 - [rev2self](#rev2self)
 - [rm](#rm)
 - [run](#run)
@@ -1207,6 +1209,27 @@ Environment variables are processed on the client.
 mv C:/file2 C:/file3
 ```
 
+## name
+
+```text
+name [new name]
+```
+
+|       |     |
+| ----- | --- |
+| OS    | n/a |
+| OPsec | n/a |
+| Admin | n/a |
+
+Changes the display name of this Bolt to the supplied name. This new name will
+be displayed on the Bolts menu and can be used in place of the Bolt ID value.
+This will update the name for all currently connected operator sessions.
+
+Names have a minimum of 4 characters and a maximum of 64 characters.
+
+If the "new name" argument is omitted or empty, the name will be revered to the
+Bolt ID.
+
 ## nc
 
 ```text
@@ -2001,6 +2024,29 @@ regedit set "HKCU:\Control Panel\Desktop" "Wallpaper" string "C:\lol.jpg"
 regedit ls "HKCU\System\CurrentControlSet\Services"
 regedit ls "HKLM\Hardware\Description\System\CentralProcessor"
 ```
+
+## rename
+
+```text
+rename [new name]
+```
+
+|       |     |
+| ----- | --- |
+| OS    | n/a |
+| OPsec | n/a |
+| Admin | n/a |
+
+Changes the display name of this Bolt to the supplied name. This new name will
+be displayed on the Bolts menu and can be used in place of the Bolt ID value.
+This will update the name for all currently connected operator sessions.
+
+Names have a minimum of 4 characters and a maximum of 64 characters.
+
+If the "new name" argument is omitted or empty, the name will be revered to the
+Bolt ID.
+
+Alias of `name`.
 
 ## rev2self
 

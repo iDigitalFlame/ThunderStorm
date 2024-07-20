@@ -160,7 +160,7 @@ class MenuProfiles(object):
         # self.shell.cache._profiles = None
 
     def default(self, n):
-        if not is_valid_name(n, 1, True):
+        if not is_valid_name(n, 1):
             return
         try:
             self.shell.cirrus.profile(n)
@@ -220,7 +220,7 @@ class MenuProfiles(object):
         if n != "all":
             return print(b64encode(self.shell.cirrus.profile(n)).decode("UTF-8"))
         for k, p in self.shell.cirrus.profiles().items():
-            print(f'{k+":":<21}{b64encode(p).decode("UTF-8")}')
+            print(f'{k + ":":<21}{b64encode(p).decode("UTF-8")}')
 
     def do_scipts(self, _):
         self.shell.set_menu(MENU_SCRIPTS)

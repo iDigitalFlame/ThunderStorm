@@ -21,7 +21,14 @@ from os.path import basename
 from string import whitespace
 from datetime import datetime
 from include.cli.helpers import is_valid_name, make_menu
-from include.cli.const import EMPTY, MENU_BOLTS, HELP_DATA, HELP_PIPE, HELP_STRVAL
+from include.cli.const import (
+    EMPTY,
+    MENU_BOLT,
+    MENU_BOLTS,
+    HELP_DATA,
+    HELP_PIPE,
+    HELP_STRVAL,
+)
 from include.cirrus import (
     Filter,
     ACTIONS_REG,
@@ -97,6 +104,7 @@ _MENU = [
     "mktoken",
     "mounts",
     "mv",
+    "name",
     "nc",
     "parent",
     "parent_clear",
@@ -120,6 +128,7 @@ _MENU = [
     "reboot",
     "refresh",
     "regedit",
+    "rename",
     "rev2self",
     "rm",
     "run",
@@ -629,7 +638,7 @@ class MenuBolt(object):
 
     def do_run(self, *a):
         """
-        run [-x|--detach] [-u <user>] [-d <domain>] [-p <password>] <command>
+        run [-x|--detach] [-t|--timeout <duration>] [-u <user>] [-d <domain>] [-p <password>] <command>
 
         OS:    Any
         OPsec: Maybe (depends on command)
@@ -665,7 +674,7 @@ class MenuBolt(object):
 
     def do_asm(self, *a):
         """
-        asm [-x|--detach] [-e|--entry <function>] <data>
+        asm [-x|--detach] [-t|--timeout <duration>] [-e|--entry <function>] <data>
 
         OS:    Windows
         OPsec: Safe
@@ -713,6 +722,7 @@ class MenuBolt(object):
             detach=r.detach,
             filter=self.filter,
             entry=r.entry,
+            timeout=r.timeout,
         )
         del r
 
@@ -893,7 +903,7 @@ class MenuBolt(object):
 
     def do_dll(self, *a):
         """
-        dll [-x|--detach] [-r|--reflect] [-e|--entry <function>] <data>
+        dll [-x|--detach] [-t|--timeout <duration>] [-r|--reflect] [-e|--entry <function>] <data>
 
         OS:    Windows
         OPsec: Not Safe! (If a local file is used without reflection), Disk Write
@@ -949,6 +959,7 @@ class MenuBolt(object):
             show=self.show,
             detach=r.detach,
             filter=self.filter,
+            timeout=r.timeout,
         )
         del r
 
@@ -1050,6 +1061,42 @@ class MenuBolt(object):
         )
         del r
 
+    def do_name(self, n):
+        """
+        name [new name]
+
+        OS:    n/a
+        OPsec: n/a
+        Admin: n/a
+
+        Changes the display name of this Bolt to the supplied name. This new name will
+        be displayed on the Bolts menu and can be used in place of the Bolt ID value.
+        This will update the name for all currently connected operator sessions.
+
+        Names have a minimum of 4 characters and a maximum of 64 characters.
+
+        If the "new name" argument is omitted or empty, the name will be revered to the
+        Bolt ID.
+        """
+        if nes(n) and len(n) < 4:
+            return print("[!] Names must be longer than 4 characters!")
+        if nes(n) and len(n) > 64:
+            return print("[!] Names must be smaller then than 64 characters!")
+        try:
+            self.shell.cirrus.session_rename(self.id, n)
+        except ValueError as err:
+            if err.code == 400:
+                return print(f"[!] {err}")
+            return print(f'[!] Bolt "{self.id}" does not exist!')
+        self.shell.cache._bolts = None
+        if not nes(n):
+            return print(
+                "[!] Back out and re-enter the interactive shell for the reset to take effect."
+            )
+        print(f'Renamed Bolt "{self.id}" to "{n}".')
+        self.id = n.lower()
+        self.shell.set_menu(MENU_BOLT, n.lower())
+
     def do_evade(self, m):
         """
         evade <flag1,flag2,..flagN>
@@ -1134,7 +1181,7 @@ class MenuBolt(object):
 
     def do_pwsh(self, *a):
         """
-        pwsh [-x|--detach] [-u <user>] [-d <domain>] [-p <password>] [-f|--file] <command>
+        pwsh [-x|--detach] [-t|--timeout <duration>] [-u <user>] [-d <domain>] [-p <password>] [-f|--file] <command>
 
         OS:    Any
         OPsec: Maybe (depends on command / PowerShell Logging)
@@ -1209,7 +1256,7 @@ class MenuBolt(object):
         """
         if len(v) == 0:
             s = self.shell.cirrus.session(self.id)
-            print(f'Sleep is set to: {int(int(s["sleep"])//1000000000)}s')
+            print(f'Sleep is set to: {int(int(s["sleep"]) // 1000000000)}s')
             del s
             return
         self._system(f"sleep {v}")
@@ -1298,7 +1345,7 @@ class MenuBolt(object):
                 r = self.shell.cirrus.session(self.id)
                 if "proxy" not in r or len(r["proxy"]) == 0:
                     return print("No proxy services are running.")
-                print(f'{"Name":16}Address\n{"="*40}')
+                print(f'{"Name":16}Address\n{"=" * 40}')
                 for i in r["proxy"]:
                     print(f'{i["name"]:16}{i["address"]:20}')
                 del r
@@ -1345,7 +1392,7 @@ class MenuBolt(object):
             script script1
             script script_test
         """
-        if not is_valid_name(n, 1, True):
+        if not is_valid_name(n, 1):
             return print("script <name>")
         self._exec(self.shell.cirrus.task_script, script=n)
 
@@ -1421,7 +1468,7 @@ class MenuBolt(object):
 
     def do_runas(self, *a):
         """
-        runas [-x|--detach] [-d|--domain <domain>] <[domain\\]user[@domain]> <pass> <command>
+        runas [-x|--detach] [-t|--timeout <duration>] [-d|--domain <domain>] <[domain\\]user[@domain]> <pass> <command>
 
         OS:    Any
         OPsec: Maybe (depends on command)
@@ -1480,12 +1527,13 @@ class MenuBolt(object):
             user=u,
             domain=d,
             pw=r.pw,
+            timeout=r.timeout,
         )
         del u, d, r
 
     def do_shell(self, *a):
         """
-        shell [-x|--detach] [-u <user>] [-d <domain>] [-p <password>] [-f|--file] <command>
+        shell [-x|--detach] [-t|--timeout <duration>] [-u <user>] [-d <domain>] [-p <password>] [-f|--file] <command>
 
         OS:    Any
         OPsec: Maybe (depends on command)
@@ -1735,6 +1783,25 @@ class MenuBolt(object):
         )
         del f, m, c, r
 
+    def do_rename(self, n):
+        """
+        rename [new name]
+
+        OS:    n/a
+        OPsec: n/a
+        Admin: n/a
+
+        Changes the display name of this Bolt to the supplied name. This new name will
+        be displayed on the Bolts menu and can be used in place of the Bolt ID value.
+        This will update the name for all currently connected operator sessions.
+
+        Names have a minimum of 4 characters and a maximum of 64 characters.
+
+        If the "new name" argument is omitted or empty, the name will be revered to the
+        Bolt ID.
+        """
+        self.do_name(n)
+
     def do_reboot(self, *a):
         """
         reboot [-r|--reason <N>] [-t|--seconds <N>] [-f|--force] [message]
@@ -1936,6 +2003,7 @@ class MenuBolt(object):
     def do_zombie(self, *a):
         """
         zombie [-x|--detach]
+               [-t|--timeout]  <duration>
                [-u|--user]     <user>
                [-d|--domain]   <domain>
                [-p|--password] <password>
@@ -2003,6 +2071,7 @@ class MenuBolt(object):
             user=u,
             domain=d,
             pw=p,
+            timeout=r.timeout,
         )
         del r, u, p, d
 
@@ -3600,6 +3669,7 @@ class MenuBolt(object):
             user=u,
             domain=d,
             pw=p,
+            timeout=r.timeout,
         )
         del i, r, u, d, p
 

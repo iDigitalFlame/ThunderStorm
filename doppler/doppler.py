@@ -136,20 +136,28 @@ def _trunc(n, s):
     return s[:n] + "~"
 
 
-def _print_session_info(s):
+def _print_session_info(x):
+    s = x["session"]
+    a = x.get("name", None)
+    if nes(a):
+        n = f" ({a})"
+    else:
+        n = ""
+    del a
     print(
-        f'{"ID:":<12}{s["id"]}\n{"="*40}\n{"Hostname:":<12}{s["device"]["hostname"]}\n'
+        f'{"ID:":<12}{s["id"]}{n}\n{"=" * 64}\n{"Hostname:":<12}{s["device"]["hostname"]}\n'
         f'{"User:":<12}{("*" if s["device"]["elevated"] else "") + s["device"]["user"]}\n'
         f'{"Domain:":<12}{"Yes" if s["device"]["domain"] else "No"}\n'
         f'{"OS:":<12}{s["device"]["os"]}\n{"Version:":<12}{s["device"]["version"]}\n{"Arch:":<12}'
         f'{s["device"]["arch"]}\n{"PID:":<12}{s["device"]["pid"]}\n{"PPID:":<12}'
         f'{s["device"]["ppid"]}\n{"Abilities:":<12}{s["device"]["capabilities"]}\nNetwork:'
     )
+    del n
     for i in s["device"]["network"]:
-        print(f'  {i["name"]+":":6} {", ".join(i["ip"])}')
+        print(f'  {i["name"] + ":":6} {", ".join(i["ip"])}')
     t = datetime.now()
     print(
-        f'{"Sleep:":<12}{int(int(s["sleep"])//1000000000)}s\n{"Jitter:":<12}{s["jitter"]}%\n'
+        f'{"Sleep:":<12}{int(int(s["sleep"]) // 1000000000)}s\n{"Jitter:":<12}{s["jitter"]}%\n'
         f'{"Channel:":<12}{"Yes" if s["channel"] else "No"}',
     )
     h = s["device"]["id"][: -len(s["id"])]
@@ -242,7 +250,7 @@ class Doppler(Api):
             return self.events.put(
                 _Event(
                     action=a,
-                    msg=f'{n}: Receiving Job {z} ({v.get("count", 0)+1}/{v.get("total", 0)})',
+                    msg=f'{n}: Receiving Job {z} ({v.get("count", 0) + 1}/{v.get("total", 0)})',
                     id=n,
                     job=z,
                 )
@@ -255,7 +263,7 @@ class Doppler(Api):
         r = super(__class__, self).sessions()
         if not isinstance(r, list) or len(r) == 0:
             return list()
-        r.sort(key=lambda x: x["device"]["id"], reverse=True)
+        r.sort(key=lambda x: x["session"]["device"]["id"], reverse=True)
         if isinstance(exp, Exp):
             return exp.matches(r)
         return r
@@ -266,7 +274,7 @@ class Doppler(Api):
             return
         if not prefix:
             print(
-                f'{"ID":6}{"Type":5}{"Status":11}{"Start":10}{"Complete":10}{"Took":8}Result Error\n{"="*65}'
+                f'{"ID":6}{"Type":5}{"Status":11}{"Start":10}{"Complete":10}{"Took":8}Result Error\n{"=" * 65}'
             )
         t = datetime.now()
         e = list(d.values())
@@ -276,7 +284,7 @@ class Doppler(Api):
             if "id" not in j or "status" not in j or "type" not in j:
                 continue
             if prefix:
-                print(f'{j["host"]} ', end="")
+                print(f"{_trunc(24, id):25} ", end="")
             print(
                 f'{j["id"]:<6}{j["type"]:<5X}{j["status"].title():11}{time_str(t, j["start"]):10}',
                 end="",
@@ -376,7 +384,7 @@ class Doppler(Api):
         if not isinstance(n, dict) or len(n) == 0:
             return
         print(
-            f'{script} - {size_str(n["size"])}\n{"="*35}\n'
+            f'{script} - {size_str(n["size"])}\n{"=" * 35}\n'
             f'Channel:       {n["channel"]}\n'
             f'Return Output: {n["return_output"]}\n'
             f'Stop On Error: {n["stop_on_error"]}\n'
@@ -385,7 +393,7 @@ class Doppler(Api):
             return
         c = n["commands"]
         if len(c) > 0:
-            print(f'#    Command\n{"="*35}')
+            print(f'#    Command\n{"=" * 35}')
             for x in range(0, len(c)):
                 print(f"{x:3}: {c[x]}")
         del c, n
@@ -397,7 +405,7 @@ class Doppler(Api):
             n = super(__class__, self).profiles()
         if not isinstance(n, dict) or len(n) == 0:
             return
-        print(f'{"Name":16}Details\n{"="*35}')
+        print(f'{"Name":16}Details\n{"=" * 35}')
         for k, v in n.items():
             print(f"{k:16}{v}")
         del n
@@ -409,7 +417,9 @@ class Doppler(Api):
             n = super(__class__, self).scripts()
         if not isinstance(n, dict) or len(n) == 0:
             return
-        print(f'{"Name":16}{"Size":9} {"History":7} StopOnError ReturnOutput\n{"="*60}')
+        print(
+            f'{"Name":16}{"Size":9} {"History":7} StopOnError ReturnOutput\n{"=" * 60}'
+        )
         for k, v in n.items():
             i = k
             if "marks" in v and "rollbacks" in v and "commands" in v:
@@ -435,7 +445,7 @@ class Doppler(Api):
         if not isinstance(n, dict) or len(n) == 0:
             return
         print(
-            f'{"Name":16}{"Profile":16}{"Bind Address":24}{"Connect Script":16}# Bolts\n{"="*80}'
+            f'{"Name":16}{"Profile":16}{"Bind Address":24}{"Connect Script":16}# Bolts\n{"=" * 80}'
         )
         for k, v in n.items():
             print(f'{k:16}{v["profile_name"]:16}', end="")
@@ -455,7 +465,7 @@ class Doppler(Api):
         if "commands" not in n:
             return
         c = n["commands"]
-        print(f'#    Command\n{"="*35}')
+        print(f'#    Command\n{"=" * 35}')
         for x in range(0, len(c)):
             print(f"{x:3}: {c[x]}")
         del c, n
@@ -491,8 +501,8 @@ class Doppler(Api):
                 print()
             del n
             return print("}")
-        print(f'{name} ({p})\n{55*"="}')
-        print(f'JSON:\n{dumps(p.json(), sort_keys=False, indent=4)}\n{55*"="}\nRaw:')
+        print(f'{name} ({p})\n{55 * "="}')
+        print(f'JSON:\n{dumps(p.json(), sort_keys=False, indent=4)}\n{55 * "="}\nRaw:')
         n = 0
         for i in p:
             if n > 10:
@@ -500,7 +510,7 @@ class Doppler(Api):
                 n = 0
             print(f"0x{str(hex(i)[2:]).zfill(2).upper()} ", end="")
             n += 1
-        print(f'\n{55*"="}\nBase64: {b64encode(p).decode("UTF-8")}')
+        print(f'\n{55 * "="}\nBase64: {b64encode(p).decode("UTF-8")}')
         del p, n
 
     def show_info(self, id=None, all=False, exp=None):
@@ -521,10 +531,13 @@ class Doppler(Api):
         if not isinstance(r, list) or len(r) == 0:
             return
         print(
-            f'{"Host":9}{"ID":6}{"Type":5}{"Status":11}{"Start":10}{"Complete":10}{"Took":8}Result Error\n{"="*75}'
+            f'{"Host":26}{"ID":6}{"Type":5}{"Status":11}{"Start":10}{"Complete":10}{"Took":8}Result Error\n{"=" * 100}'
         )
         for s in r:
-            self._show_jobs(s["id"], True)
+            if nes(s["name"]):
+                self._show_jobs(s["name"], True)
+            else:
+                self._show_jobs(s["id"], True)
         del r
 
     def show_sessions(self, exp=None, advanced=False, hw=False):
@@ -534,20 +547,20 @@ class Doppler(Api):
         t = datetime.now()
         m = 0
         if hw:
-            print(f'{"ID":25}', end="")
             m = 16
-        else:
-            print(f'{"ID":9}', end="")
+        print(f'{"ID":25}', end="")
         if advanced:
             print(
-                f'{"Hostname":20}{"IP":17}{"OS":26}{"Arch":8}{"User":32}{"From":20}{"PID":9}{" Last":8}\n{"="*(150+m)}'
+                f'{"Hostname":20}{"IP":17}{"OS":26}{"Arch":8}{"User":32}'
+                f'{"From":20}{"PID":9}{" Last":8}\n{"=" * (165 + m)}'
             )
         else:
             print(
-                f'{"Hostname":20}{"IP":17}{"OS":10}{"User":32}{"PID":9}{"Last":8}\n{"="*(105+m)}'
+                f'{"Hostname":20}{"IP":17}{"OS":10}{"User":32}{"PID":9}{"Last":8}\n{"=" * (135 + m)}'
             )
         del m
-        for s in e:
+        for x in e:
+            s = x["session"]
             if advanced:
                 # Handle IPv6 encoded IPv4 addresses
                 if s["via"].lower().startswith("[::ffff:"):
@@ -584,9 +597,14 @@ class Doppler(Api):
                 if o.startswith("Microsoft Windows"):
                     o = o[10:]
                 if hw:
-                    print(f'{s["device"]["id"][:16]+ s["id"]:25}', end="")
+                    print(f'{s["device"]["id"][:16] + s["id"]:25}', end="")
                 else:
-                    print(f'{s["id"]:9}', end="")
+                    a = x["name"]
+                    if nes(a):
+                        print(f"{_trunc(24, a):25}", end="")
+                    else:
+                        print(f'{s["id"]:25}', end="")
+                    del a
                 u = ""
                 if s["device"]["elevated"]:
                     u = "*"
@@ -608,12 +626,16 @@ class Doppler(Api):
                     f"{_trunc(18, h):20}{ip_str(s):17}{_trunc(24, o):26}{a:8}{_trunc(30, u):32}"
                     f'{v:20}{s["device"]["pid"]:<9}{c}{time_str(t, s["last"])}'
                 )
-                del v, o, u, h, c, a
+                del v, o, u, h, c, a, x
                 continue
             if hw:
-                print(f'{s["device"]["id"][:16]+ s["id"]:25}', end="")
+                print(f'{s["device"]["id"][:16] + s["id"]:25}', end="")
             else:
-                print(f'{s["id"]:9}', end="")
+                a = x["name"]
+                if nes(a):
+                    print(f"{_trunc(24, a):25}", end="")
+                else:
+                    print(f'{s["id"]:25}', end="")
             u = ""
             if s["device"]["elevated"]:
                 u = "*"
@@ -763,7 +785,7 @@ class Doppler(Api):
             id,
             super(__class__, self).task_login(id, user, domain, pw, interactive),
             f'login_user {"interactive" if interactive else "network"} {user}'
-            f'{"@"+domain if nes(domain) else ""}',
+            f'{"@" + domain if nes(domain) else ""}',
         )
 
     def task_funcmap(self, id, action, function="", data=None, raw=False):
@@ -782,11 +804,12 @@ class Doppler(Api):
         detach=False,
         filter=None,
         entry=None,
+        timeout=None,
     ):
         self._watch(
             id,
             super(__class__, self).task_dll(
-                id, data, reflect, show, detach, filter, entry
+                id, data, reflect, show, detach, filter, entry, timeout
             ),
             "dll",
         )
@@ -857,11 +880,22 @@ class Doppler(Api):
         domain="",
         pw="",
         entry=None,
+        timeout=None,
     ):
         self._watch(
             id,
             super(__class__, self).task_zombie(
-                id, data, fake_args, show, detach, filter, user, domain, pw, entry
+                id,
+                data,
+                fake_args,
+                show,
+                detach,
+                filter,
+                user,
+                domain,
+                pw,
+                entry,
+                timeout,
             ),
             "zombie",
         )
@@ -928,11 +962,12 @@ class Doppler(Api):
         user="",
         domain="",
         pw="",
+        timeout=None,
     ):
         self._watch(
             id,
             super(__class__, self).task_execute(
-                id, cmd, show, detach, filter, stdin, user, domain, pw
+                id, cmd, show, detach, filter, stdin, user, domain, pw, timeout
             ),
             cmd,
         )
@@ -982,10 +1017,13 @@ class Doppler(Api):
         detach=False,
         filter=None,
         entry=None,
+        timeout=None,
     ):
         self._watch(
             id,
-            super(__class__, self).task_assembly(id, data, show, detach, filter, entry),
+            super(__class__, self).task_assembly(
+                id, data, show, detach, filter, entry, timeout
+            ),
             "asm",
         )
 

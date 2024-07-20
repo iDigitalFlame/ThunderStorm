@@ -18,6 +18,7 @@
 from os import getcwd
 from shlex import split
 from base64 import b64decode
+from fnmatch import translate
 from datetime import datetime
 from re import compile, Pattern, I
 from include.errors import find_error
@@ -139,6 +140,22 @@ def complete_with_all(e, n):
     return e
 
 
+def is_valid_name(s, size=0):
+    if not isinstance(s, str) or len(s) < size:
+        return False
+    for i in s:
+        if ord(i) <= 57 and ord(i) >= 48:  # 9 - 0
+            continue
+        if ord(i) <= 90 and ord(i) >= 65:  # Z - A
+            continue
+        if ord(i) <= 122 and ord(i) >= 97:  # z - a
+            continue
+        if ord(i) == 45 or ord(i) == 46 or ord(i) == 95:  # '-' or '.' or '_'
+            continue
+        return False
+    return True
+
+
 def make_menu(v, menu, inv=False):
     if not nes(v):
         return menu
@@ -164,24 +181,6 @@ def make_menu(v, menu, inv=False):
         elif not inv and e.startswith(s):
             r.append(e)
     return r
-
-
-def is_valid_name(s, size=0, extra=False):
-    if not isinstance(s, str) or len(s) <= size:
-        return False
-    for i in s:
-        if ord(i) <= 57 and ord(i) >= 48:  # 9 - 0
-            continue
-        if ord(i) <= 90 and ord(i) >= 65:  # Z - A
-            continue
-        if ord(i) <= 122 and ord(i) >= 97:  # z - a
-            continue
-        if not extra:
-            return False
-        if ord(i) == 45 or ord(i) == 46 or ord(i) == 95:  # '-' or '.' or '_'
-            continue
-        return False
-    return True
 
 
 def _print_job_result(id, job, type, res, out, script):
@@ -274,7 +273,7 @@ def _print_job_result(id, job, type, res, out, script):
             return print("returned: 0 entries")
         print(
             f'returned: {len(res["entries"])} entries.\n'
-            f'{"ID":<8}{"User":28}{"Status":16}{"Host":10}{"From":16}{"Login":10}{"Last Input":10}\n{"="*100}'
+            f'{"ID":<8}{"User":28}{"Status":16}{"Host":10}{"From":16}{"Login":10}{"Last Input":10}\n{"=" * 100}'
         )
         t = datetime.now()
         for i in res["entries"]:
@@ -309,7 +308,7 @@ def _print_job_result(id, job, type, res, out, script):
     if type == "execute":
         return print(
             f'returned.\n[+] PID: {res.get("pid", "n/a")}, Exit Result: {res.get("exit", 0)}\n'
-            f'{_strip_rn(b64decode(res["data"], validate=True).decode("UTF-8",errors="replace"))}'
+            f'{_strip_rn(b64decode(res["data"], validate=True).decode("UTF-8", errors="replace"))}'
         )
     if type == "registry":
         if "status" in res:
@@ -319,7 +318,7 @@ def _print_job_result(id, job, type, res, out, script):
         if "entries" not in res:
             return print("done.")
         print(
-            f'returned {len(res["entries"])} entries.\n{"Name":32}{"Type":16}Value\n{"="*85}'
+            f'returned {len(res["entries"])} entries.\n{"Name":32}{"Type":16}Value\n{"=" * 85}'
         )
         for v in res["entries"]:
             if "name" not in v:
@@ -370,10 +369,10 @@ def _print_job_result(id, job, type, res, out, script):
             return print("returned: 0 entries")
         print(f'returned: {len(res["entries"])} entries.')
         print(
-            f'{"Handle":10}{"Name":40}Min Max {"Width":8}{"Height":8}{"X":>8}{"Y":>8}\n{"="*92}'
+            f'{"Handle":10}{"Name":40}Min Max {"Width":8}{"Height":8}{"X":>8}{"Y":>8}\n{"=" * 92}'
         )
         for i in res["entries"]:
-            print(f'{(0xFFFFFFFF&i["handle"]):<10X}', end="")
+            print(f'{(0xFFFFFFF & i["handle"]):<10X}', end="")
             if len(i["name"]) > 40:
                 print(f'{i["name"][:39]:40}', end="")
             else:
@@ -392,7 +391,7 @@ def _print_job_result(id, job, type, res, out, script):
         if "entries" not in res or len(res["entries"]) == 0:
             return print("returned: 0 entries")
         print(f'returned: {len(res["entries"])} entries.')
-        print(f'{"Hash":12}{"Original":18}{"Swapped":18}\n{"="*45}')
+        print(f'{"Hash":12}{"Original":18}{"Swapped":18}\n{"=" * 45}')
         for i in res["entries"]:
             print(f'0x{i["hash"]:<10X}0x{i["original"]:<16X}0x{i["swapped"]:<16X}')
         return
@@ -418,16 +417,19 @@ def _print_job_result(id, job, type, res, out, script):
             f'Exit Result: {res.get("exit", 0)}'
         )
     if type == "processes" or type == "logins_processes":
+        w = max(max([len(i["name"]) for i in res["entries"]]), 64) + 2
+        print(f"max is {w}")
         if "entries" not in res or len(res["entries"]) == 0:
             return print("returned: 0 entries")
         print(
-            f'returned: {len(res["entries"])} entries.\n{"Name":32} {"PID":<10}{"PPID":<10} {"User":35}\n{"="*90}'
+            f'returned: {len(res["entries"])} entries.\n{"Process":{w}} {"PID":<10}{"PPID":<10} '
+            f'{"User":35}\n{"=" * 160}'
         )
         for i in res["entries"]:
-            if len(i["name"]) > 32:
-                print(f'{i["name"][:31]:32} ', end="")
+            if len(i["name"]) > w:
+                print(f'{i["name"][:w - 1]:{w}} ', end="")
             else:
-                print(f'{i["name"]:32} ', end="")
+                print(f'{i["name"]:{w}} ', end="")
             print(f'{i["pid"]:<10}{i["ppid"]:<10} ', end="")
             if len(i["user"]) > 35:
                 print(f'{i["user"][:34]:35}')
@@ -460,7 +462,7 @@ def print_job_result(id, job, res, arg, out, multi=False):
     print(f'returned {res["count"]} results.')
     d = res["entries"]
     for x in range(0, len(d)):
-        print(f"[+] {x+1:>2}: ", end="")
+        print(f"[+] {x + 1:>2}: ", end="")
         _print_job_result(id, job, d[x].get("type", "unknown"), d[x], None, True)
     del d
 
@@ -493,9 +495,16 @@ class Exp(object):
     def _compile(v):
         if not nes(v):
             return None
+        if "*" in v or "?" in v:
+            try:
+                return compile(translate(v), I)
+            except Exception:
+                pass
         if v[0] == "^" or "[" in v or "]" in v or "(" in v or ")" in v or "+" in v:
             try:
-                return compile(v[1:], I)
+                if v[0] == "^":
+                    return compile(v[1:], I)
+                return compile(v, I)
             except Exception:
                 pass
         return v
@@ -533,7 +542,8 @@ class Exp(object):
         if not isinstance(v, list) or len(v) == 0:
             return v
         n = list()
-        for i in v:
+        for x in v:
+            i = x["session"]
             if "device" not in i:
                 continue
             if isinstance(self.elevated, bool):
@@ -549,7 +559,12 @@ class Exp(object):
                 continue
             if _ex(self.user) and not _is_match(self.user, i["device"]["user"]):
                 continue
-            if _ex(self.host) and not _is_match(self.host, i["device"]["hostname"]):
+            if (
+                _ex(self.host)
+                and not _is_match(self.host, i["device"]["hostname"])
+                and nes(x["name"])
+                and not _is_match(self.host, x["name"])
+            ):
                 continue
-            n.append(i)
+            n.append(x)
         return n

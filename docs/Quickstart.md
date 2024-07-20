@@ -77,6 +77,10 @@ additional ones
 - Garble _(Optional, only if using Garble)_
 - Openssl _(Optional, only if using the Signer)_
 - Osslsigncode _(Optional, only if using the Signer)_
+  - debugedit _(Optional, only if building osslsigncode [Arch specific])_
+  - make _(Optional, only if building osslsigncode [Arch specific])_
+  - fakeroot _(Optional, only if building osslsigncode [Arch specific])_
+- libfaketime _(Optional, only if using the 'faketime' option)_
 - UPX _(Optional, only if using UPX)_
 - MinGW (x64/x86) _(Optional, only if building for Windows)_
 
@@ -102,7 +106,14 @@ You'll have to use your preferred AUR helper for `osslsigncode` or build it from
 If you have `yay` you can use
 
 ```text
+pacman -S debugedit fakeroot make
 yay -S osslsigncode
+```
+
+To use Faketime
+
+```text
+pacman -S libfaketime
 ```
 
 To use UPX
@@ -120,7 +131,7 @@ pacman -S mingw-w64-binutils mingw-w64-crt mingw-w64-gcc mingw-w64-headers mingw
 If you want it all
 
 ```text
-pacman -S go gcc openssl upx mingw-w64-binutils mingw-w64-crt mingw-w64-gcc mingw-w64-headers mingw-w64-winpthreads
+pacman -S go gcc openssl upx mingw-w64-binutils mingw-w64-crt mingw-w64-gcc mingw-w64-headers mingw-w64-winpthreads libfaketime debugedit fakeroot make
 yay -S osslsigncode
 ```
 
@@ -138,6 +149,12 @@ To use the Signing tool
 apt install openssl osslsigncode
 ```
 
+To use Faketime
+
+```text
+apt install libfaketime
+```
+
 To use UPX
 
 ```text
@@ -153,7 +170,7 @@ apt install binutils-mingw-w64 gcc-mingw-w64-x86-64-win32-runtime gcc-mingw-w64 
 If you want it all
 
 ```text
-apt install golang gcc openssl osslsigncode upx binutils-mingw-w64 gcc-mingw-w64-x86-64-win32-runtime gcc-mingw-w64 gcc-mingw-w64-base gcc-mingw-w64-i686 mingw-w64 mingw-w64-tools
+apt install golang gcc openssl osslsigncode upx binutils-mingw-w64 gcc-mingw-w64-x86-64-win32-runtime gcc-mingw-w64 gcc-mingw-w64-base gcc-mingw-w64-i686 mingw-w64 mingw-w64-tools libfaketime
 ```
 
 #### Garble

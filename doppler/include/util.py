@@ -88,7 +88,7 @@ def is_true(v):
 
 def perm_str(v):
     if v == 0:
-        return "---------"
+        return "----------"
     b = StringIO()
     if v & (2**31) != 0:
         b.write("d")
@@ -356,7 +356,7 @@ class Parser(ArgumentParser):
     def error(self, _):
         pass
 
-    def print_help(Self, _):
+    def print_help(self, _):
         pass
 
     def print_usage(self, _):

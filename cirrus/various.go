@@ -135,10 +135,10 @@ func isValidName(s string) bool {
 	}
 	for i := range s {
 		switch {
-		case s[i] <= 57 && s[i] >= 48:
-		case s[i] <= 90 && s[i] >= 65:
-		case s[i] <= 122 && s[i] >= 97:
-		case s[i] == 45 || s[i] == 46 || s[i] == 95:
+		case s[i] <= 57 && s[i] >= 48: // 0 - 9
+		case s[i] <= 90 && s[i] >= 65: // A - Z
+		case s[i] <= 122 && s[i] >= 97: // a - z
+		case s[i] == 45 || s[i] == 46 || s[i] == 95: // - . _
 		default:
 			return false
 		}
@@ -247,30 +247,11 @@ func parseDayString(s string) (uint8, error) {
 	}
 	return d, nil
 }
-func parseDuration(s string) (time.Duration, error) {
-	if len(s) == 0 {
-		return 0, errInvalidSleep
-	}
-	v := strings.ToLower(s)
-	switch v[len(v)-1] {
-	case 's', 'h', 'm':
-	default:
-		v += "s"
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		return 0, errInvalidSleep
-	}
-	if d < time.Second || d > time.Hour*24 {
-		return 0, errInvalidSleep
-	}
-	return d, nil
-}
 func parseSleep(s string) (time.Duration, int, error) {
 	if i := strings.IndexByte(s, '/'); i > 0 {
 		var (
 			b, a   = strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+1:])
-			d, err = parseDuration(b)
+			d, err = parseDuration(b, true)
 		)
 		if err != nil {
 			return 0, 0, errInvalidSleep
@@ -281,7 +262,7 @@ func parseSleep(s string) (time.Duration, int, error) {
 		}
 		return d, j, nil
 	}
-	d, err := parseDuration(strings.TrimSpace(s))
+	d, err := parseDuration(strings.TrimSpace(s), true)
 	return d, -1, err
 }
 func evadePacket(a string) (*com.Packet, string, error) {
@@ -316,6 +297,34 @@ func evadePacket(a string) (*com.Packet, string, error) {
 }
 func (c *Cirrus) context(_ net.Listener) context.Context {
 	return c.ctx
+}
+func parseDuration(s string, b bool) (time.Duration, error) {
+	if len(s) == 0 {
+		if !b {
+			return 0, nil
+		}
+		return 0, errInvalidSleep
+	}
+	v := strings.ToLower(s)
+	switch v[len(v)-1] {
+	case 's', 'h', 'm':
+	default:
+		v += "s"
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, errInvalidSleep
+	}
+	if (!b && d < 0) || (b && d <= 0) {
+		return 0, errInvalidSleep
+	}
+	if !b {
+		return d, nil
+	}
+	if d < time.Second || d > time.Hour*24 {
+		return 0, errInvalidSleep
+	}
+	return d, nil
 }
 func writeJobJSON(z bool, t uint8, j *com.Packet, w io.Writer) error {
 	if err := writeJobJSONSimple(z, t, j, w); err != io.ErrClosedPipe {

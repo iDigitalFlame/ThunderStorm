@@ -18,17 +18,20 @@ package cirrus
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/PurpleSec/escape"
 	"github.com/PurpleSec/routex"
 	"github.com/iDigitalFlame/xmt/c2"
 	"github.com/iDigitalFlame/xmt/c2/task"
 	"github.com/iDigitalFlame/xmt/cmd/filter"
 	"github.com/iDigitalFlame/xmt/com"
+	"github.com/iDigitalFlame/xmt/util"
 	"github.com/iDigitalFlame/xmt/util/xerr"
 )
 
@@ -36,7 +39,7 @@ const msgNoSession = "session was not found"
 
 var (
 	errEmptyFilter    = xerr.New("invalid or empty filter")
-	errInvalidSleep   = xerr.New("invalid sleep value")
+	errInvalidSleep   = xerr.New("invalid time interval value")
 	errInvalidJitter  = xerr.New("invalid jitter value")
 	errUnknownCommand = xerr.New("invalid or unrecognized command")
 )
@@ -45,14 +48,37 @@ type session struct {
 	s *c2.Session
 	j []uint16
 	sync.RWMutex
-	h uint32
+	h    uint32
+	name string
 }
 type sessionManager struct {
 	*Cirrus
-	e map[string]*session
+	e     map[string]*session
+	names map[string]*session
 	sync.RWMutex
 }
 
+func (s *session) ID() string {
+	if len(s.name) > 0 {
+		return s.name
+	}
+	return s.s.ID.String()
+}
+func (s *session) JSON(w io.Writer) error {
+	if _, err := w.Write([]byte(`{"id":` + escape.JSON(s.s.ID.String()) + `,"hash":` + util.Uitoa(uint64(s.h)))); err != nil {
+		return err
+	}
+	if _, err := w.Write([]byte(`,"name":` + escape.JSON(s.name) + `,"session":`)); err != nil {
+		return err
+	}
+	if err := s.s.JSON(w); err != nil {
+		return err
+	}
+	if _, err := w.Write([]byte{'}'}); err != nil {
+		return err
+	}
+	return nil
+}
 func (c *Cirrus) newSession(s *c2.Session) {
 	if s == nil || s.ID.Empty() {
 		return
@@ -93,6 +119,10 @@ func (c *Cirrus) session(n string) *session {
 		return nil
 	}
 	c.sessions.RLock()
+	if f, ok := c.sessions.names[strings.ToLower(n)]; ok {
+		c.sessions.RUnlock()
+		return f
+	}
 	v := c.sessions.e[strings.ToUpper(n)]
 	c.sessions.RUnlock()
 	return v
@@ -136,9 +166,13 @@ func (c *Cirrus) shutdownSession(s *c2.Session) {
 	c.sessions.clearJobs(x)
 	c.sessions.Lock()
 	c.sessions.e[n] = nil
+	if len(x.name) > 0 {
+		c.sessions.names[x.name] = nil
+		delete(c.sessions.names, x.name)
+	}
 	delete(c.sessions.e, n)
 	c.sessions.Unlock()
-	c.events.publishSessionDelete(n)
+	c.events.publishSessionDelete(x.ID())
 	c.sessionEvent(s, sSessionDelete)
 }
 func syscallPacket(c, a string, f *filter.Filter) (*com.Packet, error) {
@@ -157,7 +191,7 @@ func syscallPacket(c, a string, f *filter.Filter) (*com.Packet, error) {
 	case "cd":
 		return task.Cwd(a), nil
 	case "wait":
-		d, err := parseDuration(a)
+		d, err := parseDuration(a, false)
 		if err != nil {
 			return nil, err
 		}
@@ -204,6 +238,31 @@ func syscallPacket(c, a string, f *filter.Filter) (*com.Packet, error) {
 		return task.KillDate(t), nil
 	}
 	return nil, errUnknownCommand
+}
+func (s *sessionManager) updateName(n string, x *session) (string, bool) {
+	o := x.name
+	if len(x.name) > 0 {
+		s.Lock()
+		s.e[x.name] = nil
+		delete(s.e, x.name)
+		s.Unlock()
+		x.name = ""
+	}
+	if len(n) == 0 {
+		return o, true
+	}
+	v := strings.ToLower(n)
+	s.RLock()
+	_, ok := s.names[v]
+	s.RUnlock()
+	if ok {
+		return o, false
+	}
+	x.name = v
+	s.Lock()
+	s.names[v] = x
+	s.Unlock()
+	return o, true
 }
 func syscallSinglePacket(c string, f *filter.Filter) (*com.Packet, error) {
 	switch strings.ToLower(c) {
@@ -265,7 +324,7 @@ func (s *sessionManager) httpSessionGet(_ context.Context, w http.ResponseWriter
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	x.s.JSON(w)
+	x.JSON(w)
 }
 func (s *sessionManager) httpSessionsGet(_ context.Context, w http.ResponseWriter, _ *routex.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -276,7 +335,7 @@ func (s *sessionManager) httpSessionsGet(_ context.Context, w http.ResponseWrite
 			if n > 0 {
 				w.Write([]byte{','})
 			}
-			v.s.JSON(w)
+			v.JSON(w)
 			n++
 		}
 	}
@@ -295,6 +354,43 @@ func (s *sessionManager) httpSessionDelete(_ context.Context, w http.ResponseWri
 	}
 	s.s.Remove(x.s.ID, v)
 	w.WriteHeader(http.StatusOK)
+}
+func (s *sessionManager) httpSessionRename(_ context.Context, w http.ResponseWriter, r *routex.Request) {
+	x := s.session(r.Values.StringDefault("session", ""))
+	if x == nil {
+		writeError(http.StatusNotFound, msgNoSession, w, r)
+		return
+	}
+	c, err := r.Content()
+	if err != nil {
+		writeError(http.StatusBadRequest, err.Error(), w, r)
+		return
+	}
+	n := c.StringDefault("name", "")
+	if !isValidName(n) {
+		writeError(http.StatusBadRequest, "name is invalid", w, r)
+		return
+	}
+	if len(n) < 4 {
+		writeError(http.StatusBadRequest, "name is too short (min 4 chars)", w, r)
+		return
+	}
+	if len(n) > 64 {
+		writeError(http.StatusBadRequest, "name is too long (max 64 chars)", w, r)
+		return
+	}
+	u, ok := s.updateName(n, x)
+	if !ok {
+		writeError(http.StatusConflict, `name "`+n+`" already in use`+n, w, r)
+		return
+	}
+	if len(u) == 0 {
+		s.events.publishSessionUpdate(x.s.ID.String())
+	} else {
+		s.events.publishSessionUpdate(u)
+	}
+	w.WriteHeader(http.StatusOK)
+	x.JSON(w)
 }
 func (s *sessionManager) httpSessionProxyDelete(_ context.Context, w http.ResponseWriter, r *routex.Request) {
 	x := s.session(r.Values.StringDefault("session", ""))

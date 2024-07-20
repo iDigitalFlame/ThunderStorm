@@ -76,7 +76,14 @@ func (j *jobManager) pruneSessions() {
 	j.sessions.Unlock()
 }
 func (c *Cirrus) removeJob(j *c2.Job) {
-	c.events.publishJobDelete(j.Session().ID.String(), j.ID)
+	i := j.Session().ID.String()
+	c.sessions.RLock()
+	x, ok := c.sessions.e[i]
+	if c.sessions.RUnlock(); !ok {
+		c.events.publishJobDelete(j.Session().ID.String(), j.ID)
+	} else {
+		c.events.publishJobDelete(x.ID(), j.ID)
+	}
 }
 func (c *Cirrus) completeJob(j *c2.Job) {
 	s := j.Session()
@@ -86,14 +93,18 @@ func (c *Cirrus) completeJob(j *c2.Job) {
 		c.log.Warning(`[cirrus/job] Received a non-tracked Job "%d"!`, j.ID)
 		return
 	}
+	c.sessions.RLock()
+	x, ok := c.sessions.e[s.ID.String()]
+	c.sessions.RUnlock()
 	i := s.ID.String()
+	if ok {
+		i = x.ID()
+	}
 	if j.Type == task.MvMigrate && j.Status == c2.StatusCompleted {
-		c.sessions.RLock()
-		_, ok = c.sessions.e[i]
-		if c.sessions.RUnlock(); ok {
+		if ok {
 			c.events.publishSessionUpdate(i)
 			c.sessionEvent(s, sSessionUpdate)
-			c.log.Warning(`[cirrus/job] Received a Session update for "%s"!`, i)
+			c.log.Info(`[cirrus/job] Received a Session update for "%s"!`, i)
 		}
 	}
 	switch c.jobEvent(s, j, ""); j.Status {
@@ -165,7 +176,7 @@ func (c *Cirrus) watchJob(s *session, j *c2.Job, v string) {
 	c.jobs.Lock()
 	c.jobs.e[uint64(s.h)<<16|uint64(j.ID)] = j
 	c.jobs.Unlock()
-	c.events.publishJobNew(s.s.ID.String(), j.ID)
+	c.events.publishJobNew(s.ID(), j.ID)
 	j.Update = c.completeJob
 	c.jobEvent(s.s, j, v)
 }
@@ -248,7 +259,7 @@ func (j *jobManager) httpJobResultGetDelete(_ context.Context, w http.ResponseWr
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		if err := writeJobJSON(false, v.Type, v.Result, w); err != nil {
-			writeError(http.StatusInternalServerError, "job type is invald", w, r)
+			writeError(http.StatusInternalServerError, "job type is invalid", w, r)
 			j.log.Warning("[cirrus/http] httpJobResultGetDelete(): Error on writeJobJSON(): %s!", err.Error())
 		}
 		v.Result.Seek(0, 0)

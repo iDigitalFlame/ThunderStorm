@@ -69,7 +69,7 @@ _MENU_LISTENERS = [
 def _print_listener_info(v):
     c = Config(b64decode(v["profile"], validate=True))
     print(
-        f'Listener: {v["listener"]["name"]}\n{"="*30}\nProfile : {v["profile_name"]} ({c})'
+        f'Listener: {v["listener"]["name"]}\n{"=" * 30}\nProfile : {v["profile_name"]} ({c})'
     )
     print(dumps(c.json(), sort_keys=False, indent=4))
     del c
@@ -206,7 +206,7 @@ class MenuListeners(object):
         self.shell.cache._listeners = None
 
     def default(self, n):
-        if not is_valid_name(n, 1, True):
+        if not is_valid_name(n, 1):
             return
         try:
             self.shell.cirrus.listener(n)

@@ -382,8 +382,8 @@ class Shell(Cmd):
                     s = self.cirrus.session(id)
                     print(
                         f"\nNew Bolt Registered: [{id}] "
-                        f'{("*" if s["device"]["elevated"] else "") + s["device"]["user"]}'
-                        f" @ {ip_str(s)}"
+                        f'{("*" if s["session"]["device"]["elevated"] else "") + s["session"]["device"]["user"]}'
+                        f' @ {ip_str(s["session"])}'
                     )
                     del s
                 except ValueError:
@@ -391,6 +391,13 @@ class Shell(Cmd):
             self.cache._bolts = None
             if self.cache._jobs is not None and id in self.cache._jobs:
                 del self.cache._jobs[id]
+            return
+        if a == "session_update":
+            if self._state == MENU_BOLT and self._menu.id == id:
+                print(
+                    f"\n[*] {id}: This Bolt was renamed, please back out and re-enter it's shell."
+                )
+            self.cache._bolts, self.cache._jobs = None, None
             return
         if a == "session_delete":
             if self._state == MENU_BOLT and self._menu.id == id:
@@ -622,11 +629,14 @@ class _Cache(object):
 
     def bolts(self, n):
         if self._bolts is None:
-            self._bolts = [i["id"].upper() for i in self.cirrus.sessions()]
+            self._bolts = [
+                i["name"].lower() if nes(i["name"]) else i["id"].upper()
+                for i in self.cirrus.sessions()
+            ]
         if nes(n) and len(self._bolts) > 0:
-            n, r = n.upper(), list()
+            n, r, k = n.lower(), list(), n.upper()
             for e in self._bolts:
-                if e.startswith(n):
+                if e.startswith(n) or e.startswith(k):
                     r.append(e)
             return r
         return self._bolts
@@ -669,7 +679,7 @@ class _Cache(object):
             if not nes(s):
                 return EMPTY
             r = self.bolts(s)
-            if s.upper() not in r:
+            if s.upper() not in r and s.lower() not in r:
                 return r
             del r
         if self._jobs is None:

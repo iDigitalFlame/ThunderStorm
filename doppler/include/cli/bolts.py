@@ -42,6 +42,7 @@ _MENU_BOLTS = [
     "main",
     "profiles",
     "prune",
+    "rename",
     "scripts",
     "shutdown",
 ]
@@ -72,16 +73,19 @@ class MenuBolts(object):
         self.shell.cirrus.show_info(n)
 
     def default(self, n):
-        if not is_valid_name(n, 7, False):
+        if not is_valid_name(n, 4):
             return
         try:
-            self.shell.cirrus.session(n)
+            r = self.shell.cirrus.session(n)
         except ValueError:
             return print(f'[!] Bolt "{n}" does not exist!')
-        self.shell.set_menu(MENU_BOLT, n.upper())
+        if n.upper() == r["id"].upper():
+            self.shell.set_menu(MENU_BOLT, n.upper())
+        else:
+            self.shell.set_menu(MENU_BOLT, n.lower())
 
     def do_jobs(self, id):
-        if is_valid_name(id, 7):
+        if is_valid_name(id, 4):
             return self.shell.cirrus.show_jobs(id, all=False)
         if len(id) > 0:
             return
@@ -135,7 +139,7 @@ class MenuBolts(object):
         self.shell.set_menu(MENU_LISTENERS)
 
     def do_job(self, id, job):
-        if not is_valid_name(id, 7):
+        if not is_valid_name(id, 4):
             return print("job <id> [job]")
         try:
             if is_valid_name(job):
@@ -151,11 +155,30 @@ class MenuBolts(object):
     def prompt(self, args=None):
         return " > Bolts > "
 
+    def do_rename(self, id, name):
+        if not is_valid_name(id, 4):
+            return print("rename <id|name> [new_name]")
+        if nes(name) and len(name) > 64:
+            return print("[!] Names must be smaller than 64 characters!")
+        try:
+            self.shell.cirrus.session_rename(id, name)
+        except ValueError as err:
+            if err.code == 400:
+                return print(f"[!] {err}")
+            return print(f'[!] Bolt "{id}" does not exist!')
+        self.shell.cache._bolts = None
+        if not nes(name):
+            return print(f'Reset the name of "{id}" to the default.')
+        print(f'Renamed Bolt "{id}" to "{name}".')
+
     def completenames(self, n, *_):
         return make_menu(n, _MENU_BOLTS + self.shell.cache.bolts(n), True)
 
     def complete_info(self, n, *_):
         return complete_with_all(self.shell.cache.bolts(n), n)
+
+    def complete_rename(self, n, *_):
+        return self.shell.cache.bolts(n)
 
     def complete_delete(self, n, *_):
         return complete_with_all(self.shell.cache.bolts(n), n)
@@ -193,6 +216,12 @@ class MenuBoltAll(MenuBolt):
         self.shell.cirrus.show_jobs(all=True, exp=self.matcher)
 
     def do_last(self, _):
+        print("Not available inside ALL Bolts")
+
+    def do_name(self, _):
+        print("Not available inside ALL Bolts")
+
+    def do_rename(self, _):
         print("Not available inside ALL Bolts")
 
     def do_display(self, n):
@@ -258,10 +287,18 @@ class MenuBoltAll(MenuBolt):
         if len(s) == 0:
             print(f'[!] The matcher "{self.matcher}", does not match any Bolt(s)\n')
             return f" > Bolts > [{self.matcher}] > "
-        print(f'The matcher "{self.matcher}", matches the following Bolt(s):')
-        print(f'{"ID":9}{"Hostname":20}{"IP":17}{"OS":10}{"User":32}\n{"="*80}')
-        for v in s:
-            print(f'{v["id"]:9}', end="")
+        print(f'The matcher "{self.matcher}", matches the following Bolt(s):\n')
+        print(f'{"ID":25}{"Hostname":20}{"IP":17}{"OS":10}{"User":32}\n{"=" * 80}')
+        for x in s:
+            v = x["session"]
+            a = x["name"]
+            if nes(a):
+                if len(a) > 25:
+                    print(f'{x["name"]:24:25}', end="")
+                else:
+                    print(f'{x["name"]:25}', end="")
+            else:
+                print(f'{v["id"]:25}', end="")
             u = ""
             if v["device"]["elevated"]:
                 u = "*"

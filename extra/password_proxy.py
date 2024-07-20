@@ -76,7 +76,7 @@ class Proxy(Api):
                     k, j = r.read_uint64(), r.read_uint64()
                     if k > 0 or j == 0 or ((j >> 24) & 0xFF) == 127:
                         continue  # Skip IPv6 for now
-                    w = f"{(j>>24)&0xFF}.{(j>>16)&0xFF}.{(j>>8)&0xFF}.{j&0xFF}"
+                    w = f"{(j >> 24) & 0xFF}.{(j >> 16) & 0xFF}.{(j >> 8) & 0xFF}.{j & 0xFF}"
                     del k, j
                 del z
             del i

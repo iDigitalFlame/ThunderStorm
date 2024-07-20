@@ -38,7 +38,7 @@ from datetime import datetime, timedelta, timezone
 from include.jetstream import JetStream, which_empty
 from include.builder import tiny_root, make_cert_target, pull_in_deps
 from argparse import ArgumentParser, BooleanOptionalAction, Namespace
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
+from concurrent.futures import ProcessPoolExecutor, wait, FIRST_EXCEPTION
 from os.path import isdir, join, isfile, expanduser, expandvars, basename
 from include.values import Pki, Build, Override, Generator, WINDOWS, UNIX
 from include.options import LEVELS, Logger, Options, vet_list_strs, vet_str_exists
@@ -505,7 +505,8 @@ class CloudSeed(object):
         del self._sentinels, self._overrides
         del self._bolts, self._extra, self._flurries
         self.log.info("Starting builder thread pool..")
-        self._x = ThreadPoolExecutor(max_workers=12, thread_name_prefix="Builder")
+        # self._x = ThreadPoolExecutor(max_workers=12, thread_name_prefix="Builder")
+        self._x = ProcessPoolExecutor(max_workers=16)
         w = list()
         try:
             for i in range(0, len(self._process)):

@@ -248,6 +248,7 @@ func configureRoutes(c *Cirrus, m *routex.Mux) {
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/job/(?P<job>[0-9]+)$`, routex.Func(c.jobs.httpJobGetDelete), http.MethodGet, http.MethodDelete)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/job/(?P<job>[0-9]+)/result$`, routex.Func(c.jobs.httpJobResultGetDelete), http.MethodGet, http.MethodDelete)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/pull$`, routex.Wrap(valTaskPull, routex.WrapFunc(c.sessions.httpTaskPull)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/name$`, routex.Func(c.sessions.httpSessionRename), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/login$`, routex.Wrap(valTaskLogin, routex.WrapFunc(c.sessions.httpTaskLogin)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/io$`, routex.Wrap(valTaskSystemIo, routex.WrapFunc(c.sessions.httpTaskSystemIo)), http.MethodPut)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/ui$`, routex.Wrap(valTaskWindowUI, routex.WrapFunc(c.sessions.httpTaskWindowUI)), http.MethodPut)
@@ -389,10 +390,10 @@ func NewContext(x context.Context, s *c2.Server, log logx.Log, key string) *Cirr
 	c.jobs = &jobManager{Cirrus: c, e: make(map[uint64]*c2.Job)}
 	c.packets = &packetManager{Cirrus: c, e: make(map[string]*packet)}
 	c.scripts = &scriptManager{Cirrus: c, e: make(map[string]*script)}
-	c.sessions = &sessionManager{Cirrus: c, e: make(map[string]*session)}
 	c.profiles = &profileManager{Cirrus: c, e: make(map[string]cfg.Config)}
 	c.listeners = &listenerManager{Cirrus: c, e: make(map[string]*listener)}
 	c.events = &eventManager{Cirrus: c, in: make(chan event, 256), new: make(chan *websocket.Conn, 64)}
+	c.sessions = &sessionManager{Cirrus: c, e: make(map[string]*session), names: make(map[string]*session)}
 	c.ctx, c.cancel = context.WithCancel(x)
 	c.srv.BaseContext, c.mux = c.context, routex.NewContext(x)
 	c.mux.Middleware(encoding)
