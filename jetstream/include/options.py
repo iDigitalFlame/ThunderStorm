@@ -320,6 +320,10 @@ def _cfg_multi(n, cfg, b):
     vet_list_strs(f"build.support.rc.{n}_multi.choices", cfg["choices"])
 
 
+def _check_ends_no_dll(s):
+    not s.lower().endswith(" dll")
+
+
 def vet_bool(name, v, null=False):
     if v is None and null:
         return
@@ -471,7 +475,10 @@ class Rc(object):
         else:
             i = ""
         if self.title_multi.enabled:
-            t = self.title_multi.pick()
+            if not n.lower().endswith(".dll"):
+                t = self.title_multi.pick(_check_ends_no_dll)
+            else:
+                t = self.title_multi.pick()
         else:
             t = self.title
         if self.version_multi.enabled:
@@ -538,7 +545,7 @@ class _Multi(object):
         vet_int(f"build.support.rc.{n}_multi.chance", self.chance, min=0)
         vet_list_strs(f"build.support.rc.{n}_multi.choices", self.choices)
 
-    def pick(self):
+    def pick(self, tester=None):
         if self._cache is None:
             if isinstance(self.file, str) and len(self.file) > 0:
                 self._cache = list()
@@ -555,6 +562,12 @@ class _Multi(object):
                 self._cache = list()
         if self.chance > 0 and randint(0, self.chance) != 0:
             return self.default
+        if len(self._cache) > 0 and callable(tester):
+            for _ in range(0, 64):
+                v = choice(self._cache)
+                if tester(v):
+                    return v
+                del v
         if len(self._cache) > 0:
             return choice(self._cache)
         return self.default
