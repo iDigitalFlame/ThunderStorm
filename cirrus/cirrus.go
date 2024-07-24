@@ -178,7 +178,6 @@ func (c *Cirrus) Load(s string) error {
 			return err
 		}
 	}
-	// Load listeners since they rely on all the above to work.
 	if t, ok := m["mappings"]; ok {
 		if err = json.Unmarshal(t, &c.sessions.hw); err != nil {
 			return err
