@@ -239,6 +239,8 @@ def tiny_root(old, new):
         copytree(old, new)
     except OSError as err:
         raise OSError(f'tiny_root: copytree from "{old}" to "{new}"') from err
+    # Set permissions
+    execute(None, ["/usr/bin/chmod", "-R", "775", new])
     for i in glob(join(new, "src", "fmt", "*.go"), recursive=False):
         remove(i)
     for i in glob(join(new, "src", "unicode", "*.go"), recursive=False):
@@ -261,6 +263,8 @@ def tiny_root(old, new):
     copy(join(r, "runtime", "print.go"), join(new, "src", "runtime", "print.go"))
     copy(join(r, "unicode", "unicode.go"), join(new, "src", "unicode", "unicode.go"))
     del r
+    # Set permissions
+    execute(None, ["/usr/bin/chmod", "-R", "775", new])
     # Help with this comes from the Garble project (runtime_patch.go)
     _empty(
         join(new, "src", "runtime", "error.go"),
@@ -299,8 +303,9 @@ def tiny_root(old, new):
             "(wr http2FrameWriteRequest) String",
             "http2summarizeFrame",
             "(h http2FrameHeader) writeDebug",
+            "(e *http2badStringError) Error",
         ],
-        ['return ""', 'return ""'],
+        ['return ""', 'return ""', "", 'return ""'],
     )
     _sed(
         join(new, "src", "runtime", "traceback.go"),
@@ -312,6 +317,7 @@ def tiny_root(old, new):
         join(new, "src", "crypto", "tls", "common.go"),
         [
             '"fmt"',
+            'logLine := []byte(fmt.Sprintf("%s %x %x\\n", label, clientRandom, secret))',
             'logLine := fmt.Appendf(nil, "%s %x %x\\n", label, clientRandom, secret)',
             (
                 'return fmt.Errorf("tls: received unexpected handshake message of type %T '
@@ -327,6 +333,7 @@ def tiny_root(old, new):
         ],
         [
             "",
+            "logLine := []byte{}",
             "logLine := []byte{}",
             'return errors.New("unexpected handshake")',
             "return e.Err.Error()",
@@ -374,6 +381,12 @@ def tiny_root(old, new):
             'return fmt.Sprintf("invalid header field name %q", string(e))',
             'return fmt.Sprintf("invalid header field value %q", string(e))',
             'return fmt.Sprintf("invalid header field value for %q", string(e))',
+            'return nil, fmt.Errorf("invalid HTTP header value %q for header %q", v, k)',
+            'return fmt.Errorf("http2: TLSConfig.CipherSuites index %d contains an HTTP/2-approved cipher suite '
+            "(%#04x), but it comes after unapproved cipher suites. With this configuration, clients that don't support"
+            ' previous, approved cipher suites may be given an unapproved one and reject the connection.", i, cs)',
+            'return fmt.Errorf("http2: TLSConfig.CipherSuites is missing an HTTP/2-required AES_128_GCM_SHA256 cipher ('
+            'need at least one of TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 or TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256).")',
             'http2errMixPseudoHeaderTypes = errors.New("mix of request and response pseudo headers")',
             'http2errPseudoAfterRegular   = errors.New("pseudo header field after regular")',
             'return fmt.Sprintf("UNKNOWN_FRAME_TYPE_%d", uint8(t))',
@@ -482,6 +495,9 @@ def tiny_root(old, new):
             'return "invalid"',
             'return "invalid"',
             'return "invalid"',
+            'return nil, errors.New("invalid")',
+            '_ = i\nreturn errors.New("?")',
+            'return errors.New("invalid")',
             'http2errMixPseudoHeaderTypes = errors.New("headers")',
             'http2errPseudoAfterRegular   = errors.New("after regular")',
             'return "UNKNOWN_FRAME_TYPE"',
@@ -863,7 +879,7 @@ def _find_next_token(s, i):
     return e + 1
 
 
-def pull_in_deps(log, path):
+def pull_in_deps(log, path, go):
     # NOTE(dij): Don't use the suggested Golang version, as it might not support
     #            "vendor".
     if islink(__file__):
@@ -888,7 +904,7 @@ def pull_in_deps(log, path):
     p = join(path, "src")
     try:
         makedirs(path)
-        execute(log, ["go", "mod", "vendor"])
+        execute(log, [go, "mod", "vendor"])
         if not isdir(d):
             raise OSError(f'vendor directory "{d}" was not created')
         move(d, p)
@@ -1155,7 +1171,8 @@ def sign_with_target(js, when, file, base, target, name):
 
 
 def execute(log, cmd, env=None, trunc=False, out=True, wd=None, dout=True):
-    log.debug(f'Running "{_print_cmd(cmd, trunc)}"..')
+    if log is not None:
+        log.debug(f'Running "{_print_cmd(cmd, trunc)}"..')
     e = env
     if env is None:
         e = environ
@@ -1171,9 +1188,10 @@ def execute(log, cmd, env=None, trunc=False, out=True, wd=None, dout=True):
         )
     except CalledProcessError as err:
         o = _get_stdout(err)
-        log.error(
-            f'Error running command (exit {err.returncode}) "{_print_cmd(cmd, trunc)}": {o}'
-        )
+        if log is not None:
+            log.error(
+                f'Error running command (exit {err.returncode}) "{_print_cmd(cmd, trunc)}": {o}'
+            )
         raise RuntimeError(
             f'Command "{_print_cmd(cmd, trunc, True)}" returned a non-zero exit code ({err.returncode}): {o}'
         )
@@ -1181,7 +1199,7 @@ def execute(log, cmd, env=None, trunc=False, out=True, wd=None, dout=True):
         del e
     if out and dout:
         o = _get_stdout(r)
-        if nes(o):
+        if nes(o) and log is not None:
             log.debug(f"Command output: {o}")
         del o
     del r

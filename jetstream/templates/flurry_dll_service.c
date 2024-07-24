@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2023 iDigitalFlame
+// Copyright (C) 2020 - 2024 iDigitalFlame
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -125,6 +125,10 @@ EXPORT VOID WINAPI $funcname(HWND h, HINSTANCE i, LPSTR a, int s) {
         ShowWindow(c, 0);
     }
     $secondary();
+}
+
+EXPORT DWORD WINAPI InitHelperDll(DWORD v, PVOID r) {
+    return 0;
 }
 
 EXPORT BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID args) {

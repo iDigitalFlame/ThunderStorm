@@ -38,7 +38,7 @@ from datetime import datetime, timedelta, timezone
 from include.jetstream import JetStream, which_empty
 from include.builder import tiny_root, make_cert_target, pull_in_deps
 from argparse import ArgumentParser, BooleanOptionalAction, Namespace
-from concurrent.futures import ProcessPoolExecutor, wait, FIRST_EXCEPTION
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
 from os.path import isdir, join, isfile, expanduser, expandvars, basename
 from include.values import Pki, Build, Override, Generator, WINDOWS, UNIX
 from include.options import LEVELS, Logger, Options, vet_list_strs, vet_str_exists
@@ -364,12 +364,12 @@ class CloudSeed(object):
             self._opts.set("build.options.goroot", d)
             self._opts.set("build.options.compact", False)
             del d
-        self._opts.vet()
+        self._opts.vet(check_go=True)
         if not self._opts._mod:
             p = self._opts.get_option("gopath")
             if not isinstance(p, str) or len(p) == 0:
                 p = join(self._tmp, "deps")
-                pull_in_deps(self.log, p)
+                pull_in_deps(self.log, p, self._opts.get_bin("go"))
                 self._opts.set("build.options.gopath", p)
                 self.log.debug(f'Setting generated GOPATH to "{p}".')
             else:
@@ -505,8 +505,8 @@ class CloudSeed(object):
         del self._sentinels, self._overrides
         del self._bolts, self._extra, self._flurries
         self.log.info("Starting builder thread pool..")
-        # self._x = ThreadPoolExecutor(max_workers=12, thread_name_prefix="Builder")
-        self._x = ProcessPoolExecutor(max_workers=16)
+        self._x = ThreadPoolExecutor(max_workers=12, thread_name_prefix="Builder")
+        # self._x = ProcessPoolExecutor(max_workers=16)
         w = list()
         try:
             for i in range(0, len(self._process)):

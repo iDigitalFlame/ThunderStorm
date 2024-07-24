@@ -804,7 +804,7 @@ class JetStream(object):
             "cgo": self.opts.get_option("cgo"),
             "dir": d,
             "out": output,
-            "tags": [],
+            "tags": self.opts.get_option("tags").copy(),
             "main": "",
             "arch": arch,
             "link": v,
@@ -823,6 +823,8 @@ class JetStream(object):
             workspace["work_dir"] = k
         if library:
             workspace["tags"].append("svcdll")
+        if self.opts.get_option("crypt"):
+            workspace["tags"].append("crypt")
         r = None
         if self.opts.get_rc("enabled"):
             r = Rc(self.opts.get_support("rc"))
@@ -832,7 +834,7 @@ class JetStream(object):
             p = self.opts.get_option("gopath")
             if not isinstance(p, str) or len(p) == 0:
                 p = join(d, "deps")
-                pull_in_deps(self.log, p)
+                pull_in_deps(self.log, p, self.opts.get_bin("go"))
                 self.opts.set("build.options.gopath", p)
                 self.log.debug(f'Setting generated GOPATH to "{p}".')
             else:

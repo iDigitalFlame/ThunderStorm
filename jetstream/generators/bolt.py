@@ -77,15 +77,6 @@ _HELP_TEXT = """ Generates a Bolt build based on the supplied profile and beh
                                         to be stopped by users or solutions. This only
                                         takes effect on Windows devices when ran with
                                         administrative privileges.
-   -E                                 Enable the "Guardian First" behavior. This will
-   --guard-first                        cause the Bolt to start the Guardian before the
-                                        first call to "Connect" succeeds. This is useful
-                                        when using WorkHours as Bolts launched during the
-                                        non-WorkHours period will wait. This will allow
-                                        other Bolts started to "know" there is a Bolt
-                                        "waiting" so they do not need to start. This is
-                                        still ignored by Bolts that have "ignore" set to
-                                        True.
 
   CGO Build Arguments
    -T                 <thread_name>   Supply the thread name to be used in the
@@ -157,9 +148,6 @@ class Bolt(object):
         self._m.add(
             "critical", ("-K", "--critical"), False, action=BooleanOptionalAction
         )
-        self._m.add(
-            "guard_first", ("-J", "--guard-first"), False, action=BooleanOptionalAction
-        )
         # CGO Build Options
         self._m.add("func", ("-F", "--func"), "", is_str(True, ft=True), str)
         self._m.add("thread", ("-T", "--thread"), "", is_str(True, ft=True), str)
@@ -181,7 +169,6 @@ class Bolt(object):
         print(f'- | = {"Ignore:":20}{cfg["ignore"]}', file=file)
         print(f'- | = {"Linker:":20}{cfg["linker"].title()}', file=file)
         print(f'- | = {"Guardian:":20}{cfg["guardian"]}', file=file)
-        print(f'- | = {"Guard First:":20}{cfg["guard_first"]}', file=file)
         print(f'- | = {"Service:":20}{cfg["service"]}', file=file)
         if cfg["service"]:
             print(f'- | = {"Service Name:":20}{cfg["service_name"]}', file=file)
@@ -218,10 +205,11 @@ class Bolt(object):
             service=cfg["service_name"],
             load="true" if cfg["load"] else "false",
             ignore="true" if cfg["ignore"] else "false",
-            guard_first="true" if cfg["guard_first"] else "false",
-            critical="true"
-            if cfg["critical"] and not workspace["library"] and cfg["service"]
-            else "false",
+            critical=(
+                "true"
+                if cfg["critical"] and not workspace["library"] and cfg["service"]
+                else "false"
+            ),
             # BUG(dij): Let's NOT set DLL files as critical for now. We can't
             #           control how they /exactly/ handle injection so we don't
             #           want to leave systems crashing.

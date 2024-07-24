@@ -145,6 +145,9 @@ class Mangler(object):
                 n = mangle_name(choice(sel["names"]))
         if isinstance(sz, int) and sz > 0 and len(n) > sz:
             return None
+        i = n.rfind(".")
+        if i > 0 and len(n) - i == 4:
+            n = n[:i]
         if not isinstance(ext, str):
             n += f'.{choice(sel["exts"])}'
         elif len(ext) > 0:

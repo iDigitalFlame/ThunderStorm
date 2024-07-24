@@ -268,7 +268,20 @@ class Doppler(Api):
             return exp.matches(r)
         return r
 
-    def _show_jobs(self, id, prefix=False):
+    def _watch(self, id, job, args, out=None):
+        if job is None:
+            return print(f"[+] {id}: Ok")
+        if not isinstance(job, int) or job < 1 or job > 0xFFFF:
+            raise ValueError('"job" must be a positive number between [1-65535]')
+        s = id + ":" + str(job)
+        if s in self.watch:
+            raise KeyError(f'duplicate "BoltID:JobID": "{s}"')
+        self.watch[s] = (out, args)
+        del s
+        self.last_job = job
+        print(f"[+] {id}: Queued Job {job}")
+
+    def _show_jobs(self, id, sz, prefix=False):
         d = super(__class__, self).jobs(id)
         if not isinstance(d, dict) and len(d) > 0:
             return
@@ -284,7 +297,7 @@ class Doppler(Api):
             if "id" not in j or "status" not in j or "type" not in j:
                 continue
             if prefix:
-                print(f"{_trunc(24, id):25} ", end="")
+                print(f"{_trunc(sz - 1, id):{sz}} ", end="")
             print(
                 f'{j["id"]:<6}{j["type"]:<5X}{j["status"].title():11}{time_str(t, j["start"]):10}',
                 end="",
@@ -306,19 +319,6 @@ class Doppler(Api):
                 print(" " + j["error"].replace("\n", " "), end="")
             print()
         del t, e
-
-    def _watch(self, id, job, args, out=None):
-        if job is None:
-            return print(f"[+] {id}: Ok")
-        if not isinstance(job, int) or job < 1 or job > 0xFFFF:
-            raise ValueError('"job" must be a positive number between [1-65535]')
-        s = id + ":" + str(job)
-        if s in self.watch:
-            raise KeyError(f'duplicate "BoltID:JobID": "{s}"')
-        self.watch[s] = (out, args)
-        del s
-        self.last_job = job
-        print(f"[+] {id}: Queued Job {job}")
 
     def start(self, do_eventer=True, events=None):
         if do_eventer:
@@ -526,19 +526,20 @@ class Doppler(Api):
 
     def show_jobs(self, id=None, all=False, exp=None):
         if not all:
-            return self._show_jobs(id, False)
+            return self._show_jobs(id, 0, False)
         r = self._sessions(exp=exp)
         if not isinstance(r, list) or len(r) == 0:
             return
+        w = min(max(max(len(i["name"]) for i in r), 64) + 1, 26)
         print(
-            f'{"Host":26}{"ID":6}{"Type":5}{"Status":11}{"Start":10}{"Complete":10}{"Took":8}Result Error\n{"=" * 100}'
+            f'{"Host":{w}}{"ID":6}{"Type":5}{"Status":11}{"Start":10}{"Complete":10}{"Took":8}Result Error\n{"=" * 100}'
         )
         for s in r:
             if nes(s["name"]):
-                self._show_jobs(s["name"], True)
+                self._show_jobs(s["name"], w, True)
             else:
-                self._show_jobs(s["id"], True)
-        del r
+                self._show_jobs(s["id"], w, True)
+        del r, w
 
     def show_sessions(self, exp=None, advanced=False, hw=False):
         e = self._sessions(exp=exp)
@@ -548,15 +549,16 @@ class Doppler(Api):
         m = 0
         if hw:
             m = 16
-        print(f'{"ID":25}', end="")
+        w = min(max(max(len(i["name"]) for i in e), 64) + 1, 26)
+        print(f'{"ID":{w}}', end="")
         if advanced:
             print(
                 f'{"Hostname":20}{"IP":17}{"OS":26}{"Arch":8}{"User":32}'
-                f'{"From":20}{"PID":9}{" Last":8}\n{"=" * (165 + m)}'
+                f'{"From":20}{"PID":9}{" Last":8}\n{"=" * (140 + m + w)}'
             )
         else:
             print(
-                f'{"Hostname":20}{"IP":17}{"OS":10}{"User":32}{"PID":9}{"Last":8}\n{"=" * (135 + m)}'
+                f'{"Hostname":20}{"IP":17}{"OS":10}{"User":32}{"PID":9}{"Last":8}\n{"=" * (110 + m + w)}'
             )
         del m
         for x in e:
@@ -601,9 +603,9 @@ class Doppler(Api):
                 else:
                     a = x["name"]
                     if nes(a):
-                        print(f"{_trunc(24, a):25}", end="")
+                        print(f"{_trunc(w - 1, a):{w}}", end="")
                     else:
-                        print(f'{s["id"]:25}', end="")
+                        print(f'{s["id"]:{w}}', end="")
                     del a
                 u = ""
                 if s["device"]["elevated"]:
@@ -655,7 +657,7 @@ class Doppler(Api):
                 f'{c}{time_str(t, s["last"])}'
             )
             del u, h, c
-        del t, e
+        del t, e, w
 
     def session_proxy_delete(self, id, name):
         self._watch(

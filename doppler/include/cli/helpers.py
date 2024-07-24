@@ -418,7 +418,6 @@ def _print_job_result(id, job, type, res, out, script):
         )
     if type == "processes" or type == "logins_processes":
         w = max(max([len(i["name"]) for i in res["entries"]]), 64) + 2
-        print(f"max is {w}")
         if "entries" not in res or len(res["entries"]) == 0:
             return print("returned: 0 entries")
         print(
@@ -514,13 +513,33 @@ class Exp(object):
         if self.elevated is not None:
             b.append(f"admin:{str(self.elevated).lower()}")
         if self.ip is not None:
-            b.append(f"ip:{self.ip}")
+            if isinstance(self.ip, Pattern):
+                b.append(
+                    f"ip:{self.ip.pattern.replace('(?s:', '').replace(')\\Z', '').replace('(?>', '')}"
+                )
+            else:
+                b.append(f"ip:{self.ip}")
         if self.os is not None:
-            b.append(f"os:{self.os}")
+            if isinstance(self.os, Pattern):
+                b.append(
+                    f"os:{self.os.pattern.replace('(?s:', '').replace(')\\Z', '').replace('(?>', '')}"
+                )
+            else:
+                b.append(f"os:{self.os}")
         if self.user is not None:
-            b.append(f"user:{self.user}")
+            if isinstance(self.user, Pattern):
+                b.append(
+                    f"user:{self.user.pattern.replace('(?s:', '').replace(')\\Z', '').replace('(?>', '')}"
+                )
+            else:
+                b.append(f"user:{self.user}")
         if self.host is not None:
-            b.append(f"host:{self.host}")
+            if isinstance(self.host, Pattern):
+                b.append(
+                    f"host:{self.host.pattern.replace('(?s:', '').replace(')\\Z', '').replace('(?>', '')}"
+                )
+            else:
+                b.append(f"host:{self.host}")
         if len(b) == 0:
             return ""
         v = ",".join(b)
@@ -559,11 +578,13 @@ class Exp(object):
                 continue
             if _ex(self.user) and not _is_match(self.user, i["device"]["user"]):
                 continue
+            if _ex(self.host) and not _is_match(self.host, i["device"]["hostname"]):
+                continue
             if (
                 _ex(self.host)
-                and not _is_match(self.host, i["device"]["hostname"])
                 and nes(x["name"])
                 and not _is_match(self.host, x["name"])
+                and not _is_match(self.host, i["device"]["hostname"])
             ):
                 continue
             n.append(x)

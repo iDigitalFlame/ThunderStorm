@@ -1230,6 +1230,9 @@ Names have a minimum of 4 characters and a maximum of 64 characters.
 If the "new name" argument is omitted or empty, the name will be revered to the
 Bolt ID.
 
+The function in this menu will NOT add this name as a Hardware mapping. To
+map a name to a Hardware ID, use the "rename" function in the Bolts menu.
+
 ## nc
 
 ```text
@@ -2045,6 +2048,9 @@ Names have a minimum of 4 characters and a maximum of 64 characters.
 
 If the "new name" argument is omitted or empty, the name will be revered to the
 Bolt ID.
+
+The function in this menu will NOT add this name as a Hardware mapping. To
+map a name to a Hardware ID, use the "rename" function in the Bolts menu.
 
 Alias of `name`.
 

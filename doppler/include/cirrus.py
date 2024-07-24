@@ -1881,16 +1881,6 @@ class Api(object):
             raise ValueError('"id" must be a non-empty string')
         return self._req(f"session/{id}", 200, "get")
 
-    def session_rename(self, id, name):
-        v = name
-        if not nes(v):
-            v = ""
-        elif len(v) > 64:
-            raise ValueError("name must be less than 64 chars")
-        elif len(v) < 4:
-            raise ValueError("name must be at least 4 chars")
-        return self._req(f"session/{id}/name", 200, "put", json={"name": v})
-
     def session_proxy_remove(self, id, name):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -1911,6 +1901,16 @@ class Api(object):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
         return self._req(f"session/{id}", 200, "delete", json={"shutdown": shutdown})
+
+    def session_rename(self, id, name, map=False):
+        v = name
+        if not nes(v):
+            v = ""
+        elif len(v) > 64:
+            raise ValueError("name must be less than 64 chars")
+        elif len(v) < 4:
+            raise ValueError("name must be at least 4 chars")
+        return self._req(f"session/{id}/name", 200, "put", json={"name": v, "map": map})
 
     def session_proxy_add(self, id, name, address, profile):
         if not nes(id):

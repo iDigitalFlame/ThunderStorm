@@ -14,39 +14,23 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-package main
+// Package bolt contains the functions for launching a Bolt instance.
+package bolt
 
 import (
-	"os"
-	"syscall"
+	"time"
 
-	"github.com/iDigitalFlame/xmt/com/pipe"
-	"github.com/iDigitalFlame/xmt/device"
-	"github.com/iDigitalFlame/xmt/device/winapi"
-	"github.com/iDigitalFlame/xmt/util"
+	"github.com/iDigitalFlame/xmt/c2/cfg"
 )
 
-func main() {
-	var (
-		n      int32
-		v, err = syscall.CommandLineToArgv(syscall.GetCommandLine(), &n)
-	)
+func checkBuild(c cfg.Config) cfg.Profile {
+	p, err := c.Build()
 	if err != nil {
-		device.GoExit()
-		return
+		return nil
 	}
-	var b util.Builder
-	for i := int32(1); i < n; i++ {
-		if i > 1 {
-			b.WriteByte(' ')
-		}
-		b.WriteString(winapi.UTF16ToString(v[i][:]))
+	// If we have a killdate that's after now, quit.
+	if k, ok := p.KillDate(); ok && !k.IsZero() && time.Now().After(k) {
+		return nil
 	}
-	c, err := pipe.Dial(pipe.Format(`$pipe`))
-	if err != nil {
-		os.Exit(1)
-	}
-	c.Write([]byte(b.Output()))
-	c.Close()
-	device.GoExit()
+	return p
 }

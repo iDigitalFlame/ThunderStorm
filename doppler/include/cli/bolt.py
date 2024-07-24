@@ -974,7 +974,7 @@ class MenuBolt(object):
         Display the last time the client connected.
         """
         s, t = self.shell.cirrus.session(self.id), datetime.now()
-        print(f'Last: {time_str(t, s["last"], True)}')
+        print(f'Last: {time_str(t, s["session"]["last"], True)}')
         del s, t
 
     def do_wts(self, *a):
@@ -1077,6 +1077,9 @@ class MenuBolt(object):
 
         If the "new name" argument is omitted or empty, the name will be revered to the
         Bolt ID.
+
+        The function in this menu will NOT add this name as a Hardware mapping. To
+        map a name to a Hardware ID, use the "rename" function in the Bolts menu.
         """
         if nes(n) and len(n) < 4:
             return print("[!] Names must be longer than 4 characters!")
@@ -1799,6 +1802,9 @@ class MenuBolt(object):
 
         If the "new name" argument is omitted or empty, the name will be revered to the
         Bolt ID.
+
+        The function in this menu will NOT add this name as a Hardware mapping. To
+        map a name to a Hardware ID, use the "rename" function in the Bolts menu.
         """
         self.do_name(n)
 
@@ -2374,10 +2380,11 @@ class MenuBolt(object):
             set_hide no
             set_hide true
         """
-        n = True
+        n = False
         if len(v) > 0:
             n = is_true(v)
-        n = not n
+        else:
+            n = not self.show
         print(f"[+] Set Show Window: {self.show} => {n}.")
         c = self.show != n
         self.show = n
@@ -3341,7 +3348,8 @@ class MenuBolt(object):
         n = True
         if len(v) > 0:
             n = is_true(v)
-        n = not n
+        else:
+            n = not self.show
         print(f"[+] Set Show Window: {self.show} => {n}.")
         c = self.show != n
         self.show = n

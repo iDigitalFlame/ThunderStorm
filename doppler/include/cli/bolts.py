@@ -161,7 +161,7 @@ class MenuBolts(object):
         if nes(name) and len(name) > 64:
             return print("[!] Names must be smaller than 64 characters!")
         try:
-            self.shell.cirrus.session_rename(id, name)
+            self.shell.cirrus.session_rename(id, name, map=True)
         except ValueError as err:
             if err.code == 400:
                 return print(f"[!] {err}")

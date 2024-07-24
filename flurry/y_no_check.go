@@ -1,7 +1,7 @@
 //go:build no_check
 // +build no_check
 
-// Copyright (C) 2020 - 2023 iDigitalFlame
+// Copyright (C) 2020 - 2024 iDigitalFlame
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@
 package flurry
 
 import (
-	"github.com/iDigitalFlame/xmt/device/local"
 	"github.com/iDigitalFlame/xmt/man"
 )
 

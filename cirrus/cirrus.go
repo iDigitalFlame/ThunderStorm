@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2023 iDigitalFlame
+// Copyright (C) 2020 - 2024 iDigitalFlame
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -99,6 +99,7 @@ func (c *Cirrus) Close() error {
 // This function will bail and return any encoding or writing errors that may
 // occur during the operation.
 func (c *Cirrus) Save(s string) error {
+
 	b, err := json.MarshalIndent(map[string]any{
 		"auth": c.Auth,
 		"keys": map[string]string{
@@ -108,6 +109,7 @@ func (c *Cirrus) Save(s string) error {
 		"timeout":   c.Timeout,
 		"scripts":   c.scripts,
 		"profiles":  c.profiles,
+		"mappings":  c.sessions.hw,
 		"listeners": c.listeners,
 	}, "", "    ")
 	if err != nil {
@@ -177,6 +179,12 @@ func (c *Cirrus) Load(s string) error {
 		}
 	}
 	// Load listeners since they rely on all the above to work.
+	if t, ok := m["mappings"]; ok {
+		if err = json.Unmarshal(t, &c.sessions.hw); err != nil {
+			return err
+		}
+	}
+	// Load listeners since they rely on all the above to work.
 	if t, ok := m["listeners"]; ok {
 		if err = json.Unmarshal(t, &c.listeners); err != nil {
 			return err
@@ -240,39 +248,39 @@ func configureRoutes(c *Cirrus, m *routex.Mux) {
 	m.Must(prefix+`/listener/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Wrap(valListener, routex.WrapFunc(c.listeners.httpListenerPost)), http.MethodPost)
 	m.Must(prefix+`/listener/(?P<name>[a-zA-Z0-9\-._]+)/script$`, routex.Wrap(valListenerScript, routex.WrapFunc(c.listeners.httpListenerScriptPost)), http.MethodPost)
 	m.Must(prefix+`/session$`, routex.Func(c.sessions.httpSessionsGet), http.MethodGet)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)$`, routex.Func(c.sessions.httpSessionGet), http.MethodGet)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)$`, routex.Func(c.sessions.httpSessionDelete), http.MethodDelete)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/proxy/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Func(c.sessions.httpSessionProxyDelete), http.MethodDelete)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/proxy/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Wrap(valListener, routex.WrapFunc(c.sessions.httpSessionProxyPutPost)), http.MethodPut, http.MethodPost)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/job$`, routex.Func(c.jobs.httpJobsGet), http.MethodGet)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/job/(?P<job>[0-9]+)$`, routex.Func(c.jobs.httpJobGetDelete), http.MethodGet, http.MethodDelete)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/job/(?P<job>[0-9]+)/result$`, routex.Func(c.jobs.httpJobResultGetDelete), http.MethodGet, http.MethodDelete)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/pull$`, routex.Wrap(valTaskPull, routex.WrapFunc(c.sessions.httpTaskPull)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/name$`, routex.Func(c.sessions.httpSessionRename), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/login$`, routex.Wrap(valTaskLogin, routex.WrapFunc(c.sessions.httpTaskLogin)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/io$`, routex.Wrap(valTaskSystemIo, routex.WrapFunc(c.sessions.httpTaskSystemIo)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/ui$`, routex.Wrap(valTaskWindowUI, routex.WrapFunc(c.sessions.httpTaskWindowUI)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/script$`, routex.Wrap(valTaskScript, routex.WrapFunc(c.sessions.httpTaskScript)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/upload$`, routex.Wrap(valTaskUpload, routex.WrapFunc(c.sessions.httpTaskUpload)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/profile$`, routex.Wrap(valTaskProfile, routex.WrapFunc(c.sessions.httpTaskProfile)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/regedit$`, routex.Wrap(valTaskRegistry, routex.WrapFunc(c.sessions.httpTaskRegistry)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/download$`, routex.Wrap(valTaskDownload, routex.WrapFunc(c.sessions.httpTaskDownload)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/dll$`, routex.Marshal[taskDLL](valTaskDLL, routex.MarshalFunc[taskDLL](c.sessions.httpTaskDLL)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/dll/check$`, routex.Marshal[taskCheck](valTaskPatchCheck, routex.MarshalFunc[taskCheck](c.sessions.httpTaskCheck)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/dll/patch$`, routex.Marshal[taskPatch](valTaskPatchCheck, routex.MarshalFunc[taskPatch](c.sessions.httpTaskPatch)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/pexec$`, routex.Marshal[taskPull](valPullEx, routex.MarshalFunc[taskPull](c.sessions.httpTaskPexec)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/spawn$`, routex.Marshal[taskSpawn](valTaskSpawn, routex.MarshalFunc[taskSpawn](c.sessions.httpTaskSpawn)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/sys$`, routex.Marshal[taskSystem](valTaskSystem, routex.MarshalFunc[taskSystem](c.sessions.httpTaskSystem)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/sys/workhours$`, routex.Marshal[taskWorkHours](valTaskWorkHours, routex.MarshalFunc[taskWorkHours](c.sessions.httpTaskWorkHours)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/zombie$`, routex.Marshal[taskZombie](valTaskZombie, routex.MarshalFunc[taskZombie](c.sessions.httpTaskZombie)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/exec$`, routex.Marshal[taskCommand](valTaskSimple, routex.MarshalFunc[taskCommand](c.sessions.httpTaskCommand)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/migrate$`, routex.Marshal[taskMigrate](valTaskMigrate, routex.MarshalFunc[taskMigrate](c.sessions.httpTaskMigrate)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/asm$`, routex.Marshal[taskAssembly](valTaskAssembly, routex.MarshalFunc[taskAssembly](c.sessions.httpTaskAssembly)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/wts$`, routex.Wrap(valTaskWTS, routex.WrapFunc(c.sessions.httpTaskWTS)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/evade$`, routex.Wrap(valTaskEvade, routex.WrapFunc(c.sessions.httpTaskEvade)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/power$`, routex.Marshal[taskPower](valTaskPower, routex.MarshalFunc[taskPower](c.sessions.httpTaskPower)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/net$`, routex.Marshal[taskNetcat](valTaskNetcat, routex.MarshalFunc[taskNetcat](c.sessions.httpTaskNetcat)), http.MethodPut)
-	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9]+)/funcmap$`, routex.Marshal[taskFuncmap](valTaskFuncmap, routex.MarshalFunc[taskFuncmap](c.sessions.httpTaskFuncmap)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)$`, routex.Func(c.sessions.httpSessionGet), http.MethodGet)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)$`, routex.Func(c.sessions.httpSessionDelete), http.MethodDelete)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/proxy/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Func(c.sessions.httpSessionProxyDelete), http.MethodDelete)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/proxy/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Wrap(valListener, routex.WrapFunc(c.sessions.httpSessionProxyPutPost)), http.MethodPut, http.MethodPost)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/job$`, routex.Func(c.jobs.httpJobsGet), http.MethodGet)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/job/(?P<job>[0-9]+)$`, routex.Func(c.jobs.httpJobGetDelete), http.MethodGet, http.MethodDelete)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/job/(?P<job>[0-9]+)/result$`, routex.Func(c.jobs.httpJobResultGetDelete), http.MethodGet, http.MethodDelete)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/pull$`, routex.Wrap(valTaskPull, routex.WrapFunc(c.sessions.httpTaskPull)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/name$`, routex.Func(c.sessions.httpSessionRename), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/login$`, routex.Wrap(valTaskLogin, routex.WrapFunc(c.sessions.httpTaskLogin)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/io$`, routex.Wrap(valTaskSystemIo, routex.WrapFunc(c.sessions.httpTaskSystemIo)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/ui$`, routex.Wrap(valTaskWindowUI, routex.WrapFunc(c.sessions.httpTaskWindowUI)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/script$`, routex.Wrap(valTaskScript, routex.WrapFunc(c.sessions.httpTaskScript)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/upload$`, routex.Wrap(valTaskUpload, routex.WrapFunc(c.sessions.httpTaskUpload)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/profile$`, routex.Wrap(valTaskProfile, routex.WrapFunc(c.sessions.httpTaskProfile)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/regedit$`, routex.Wrap(valTaskRegistry, routex.WrapFunc(c.sessions.httpTaskRegistry)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/download$`, routex.Wrap(valTaskDownload, routex.WrapFunc(c.sessions.httpTaskDownload)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/dll$`, routex.Marshal[taskDLL](valTaskDLL, routex.MarshalFunc[taskDLL](c.sessions.httpTaskDLL)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/dll/check$`, routex.Marshal[taskCheck](valTaskPatchCheck, routex.MarshalFunc[taskCheck](c.sessions.httpTaskCheck)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/dll/patch$`, routex.Marshal[taskPatch](valTaskPatchCheck, routex.MarshalFunc[taskPatch](c.sessions.httpTaskPatch)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/pexec$`, routex.Marshal[taskPull](valPullEx, routex.MarshalFunc[taskPull](c.sessions.httpTaskPexec)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/spawn$`, routex.Marshal[taskSpawn](valTaskSpawn, routex.MarshalFunc[taskSpawn](c.sessions.httpTaskSpawn)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/sys$`, routex.Marshal[taskSystem](valTaskSystem, routex.MarshalFunc[taskSystem](c.sessions.httpTaskSystem)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/sys/workhours$`, routex.Marshal[taskWorkHours](valTaskWorkHours, routex.MarshalFunc[taskWorkHours](c.sessions.httpTaskWorkHours)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/zombie$`, routex.Marshal[taskZombie](valTaskZombie, routex.MarshalFunc[taskZombie](c.sessions.httpTaskZombie)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/exec$`, routex.Marshal[taskCommand](valTaskSimple, routex.MarshalFunc[taskCommand](c.sessions.httpTaskCommand)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/migrate$`, routex.Marshal[taskMigrate](valTaskMigrate, routex.MarshalFunc[taskMigrate](c.sessions.httpTaskMigrate)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/asm$`, routex.Marshal[taskAssembly](valTaskAssembly, routex.MarshalFunc[taskAssembly](c.sessions.httpTaskAssembly)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/wts$`, routex.Wrap(valTaskWTS, routex.WrapFunc(c.sessions.httpTaskWTS)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/evade$`, routex.Wrap(valTaskEvade, routex.WrapFunc(c.sessions.httpTaskEvade)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/power$`, routex.Marshal[taskPower](valTaskPower, routex.MarshalFunc[taskPower](c.sessions.httpTaskPower)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/net$`, routex.Marshal[taskNetcat](valTaskNetcat, routex.MarshalFunc[taskNetcat](c.sessions.httpTaskNetcat)), http.MethodPut)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/funcmap$`, routex.Marshal[taskFuncmap](valTaskFuncmap, routex.MarshalFunc[taskFuncmap](c.sessions.httpTaskFuncmap)), http.MethodPut)
 }
 
 // TrackStats will enable the CSV and Tracker files. This function can enable
@@ -393,7 +401,7 @@ func NewContext(x context.Context, s *c2.Server, log logx.Log, key string) *Cirr
 	c.profiles = &profileManager{Cirrus: c, e: make(map[string]cfg.Config)}
 	c.listeners = &listenerManager{Cirrus: c, e: make(map[string]*listener)}
 	c.events = &eventManager{Cirrus: c, in: make(chan event, 256), new: make(chan *websocket.Conn, 64)}
-	c.sessions = &sessionManager{Cirrus: c, e: make(map[string]*session), names: make(map[string]*session)}
+	c.sessions = &sessionManager{Cirrus: c, e: make(map[string]*session), names: make(map[string]*session), hw: make(map[string]string)}
 	c.ctx, c.cancel = context.WithCancel(x)
 	c.srv.BaseContext, c.mux = c.context, routex.NewContext(x)
 	c.mux.Middleware(encoding)

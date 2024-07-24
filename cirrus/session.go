@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2023 iDigitalFlame
+// Copyright (C) 2020 - 2024 iDigitalFlame
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -54,6 +54,7 @@ type session struct {
 type sessionManager struct {
 	*Cirrus
 	e     map[string]*session
+	hw    map[string]string
 	names map[string]*session
 	sync.RWMutex
 }
@@ -88,10 +89,19 @@ func (c *Cirrus) newSession(s *c2.Session) {
 	x, ok := c.sessions.e[n]
 	if !ok {
 		x = &session{s: s, h: s.ID.Hash()}
+		k := x.s.ID.Signature()
+		if h := c.sessions.matchHwName(k); len(h) > 0 {
+			x.name = h
+			c.sessions.names[h] = x
+			c.log.Debug(`[cirrus/session] Found Hardware ID mapping for "%s" adding new Session as "%s"!`, k, h)
+		}
 		c.sessions.e[n] = x
+	} else {
+		c.log.Warning(`[cirrus/session] Received new Session signal for existsing Session "%s"!`, n)
+		// NOTE(dij): Should we just return here?
 	}
 	c.sessions.Unlock()
-	c.sessions.events.publishSessionNew(n)
+	c.sessions.events.publishSessionNew(x.ID())
 	s.Shutdown = c.shutdownSession
 	c.log.Debug(`[cirrus/session] Added new Session "%s" (0x%X)!`, n, x.h)
 	c.sessionEvent(s, sSessionNew)
@@ -115,6 +125,7 @@ func (c *Cirrus) newSession(s *c2.Session) {
 	c.watchJob(x, j, "auto script "+z.s)
 }
 func (c *Cirrus) session(n string) *session {
+	c.log.Debug(`[cirrus/session] Requested Session "%s"..`, n)
 	if len(n) == 0 || !isValidName(n) {
 		return nil
 	}
@@ -174,6 +185,19 @@ func (c *Cirrus) shutdownSession(s *c2.Session) {
 	c.sessions.Unlock()
 	c.events.publishSessionDelete(x.ID())
 	c.sessionEvent(s, sSessionDelete)
+}
+func (s *sessionManager) matchHwName(h string) string {
+	v, ok := s.hw[h]
+	if !ok || len(v) == 0 {
+		return ""
+	}
+	for i := 0; i < 64; i++ {
+		n := strings.ToLower(v + "-" + util.Uitoa16(uint64(util.FastRandN(0xFFFF))))
+		if _, ok = s.names[n]; !ok {
+			return n
+		}
+	}
+	return ""
 }
 func syscallPacket(c, a string, f *filter.Filter) (*com.Packet, error) {
 	if len(c) == 0 {
@@ -239,31 +263,6 @@ func syscallPacket(c, a string, f *filter.Filter) (*com.Packet, error) {
 	}
 	return nil, errUnknownCommand
 }
-func (s *sessionManager) updateName(n string, x *session) (string, bool) {
-	o := x.name
-	if len(x.name) > 0 {
-		s.Lock()
-		s.e[x.name] = nil
-		delete(s.e, x.name)
-		s.Unlock()
-		x.name = ""
-	}
-	if len(n) == 0 {
-		return o, true
-	}
-	v := strings.ToLower(n)
-	s.RLock()
-	_, ok := s.names[v]
-	s.RUnlock()
-	if ok {
-		return o, false
-	}
-	x.name = v
-	s.Lock()
-	s.names[v] = x
-	s.Unlock()
-	return o, true
-}
 func syscallSinglePacket(c string, f *filter.Filter) (*com.Packet, error) {
 	switch strings.ToLower(c) {
 	case "ls":
@@ -316,6 +315,38 @@ func (s *session) syscall(c, a string, f *filter.Filter) (*c2.Job, error) {
 		return nil, nil
 	}
 	return s.s.Task(n)
+}
+func (s *sessionManager) updateName(n string, x *session, m bool) (string, bool) {
+	o := x.name
+	if len(x.name) > 0 {
+		s.Lock()
+		s.e[x.name] = nil
+		delete(s.e, x.name)
+		// Only HW mapping on delete / clear.
+		if len(n) == 0 {
+			delete(s.hw, x.s.ID.Signature())
+		}
+		s.Unlock()
+		x.name = ""
+	}
+	if len(n) == 0 {
+		return o, true
+	}
+	v := strings.ToLower(n)
+	s.RLock()
+	_, ok := s.names[v]
+	if s.RUnlock(); ok {
+		return o, false
+	}
+	x.name = v
+	if s.Lock(); m {
+		h := x.s.ID.Signature()
+		s.log.Debug(`[cirrus/session] Adding mapping "%s" for Hardware ID "%s".`, v, h)
+		s.hw[h] = v
+	}
+	s.names[v] = x
+	s.Unlock()
+	return o, true
 }
 func (s *sessionManager) httpSessionGet(_ context.Context, w http.ResponseWriter, r *routex.Request) {
 	x := s.session(r.Values.StringDefault("session", ""))
@@ -379,7 +410,7 @@ func (s *sessionManager) httpSessionRename(_ context.Context, w http.ResponseWri
 		writeError(http.StatusBadRequest, "name is too long (max 64 chars)", w, r)
 		return
 	}
-	u, ok := s.updateName(n, x)
+	u, ok := s.updateName(n, x, c.BoolDefault("map", true))
 	if !ok {
 		writeError(http.StatusConflict, `name "`+n+`" already in use`+n, w, r)
 		return
