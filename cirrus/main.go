@@ -76,7 +76,7 @@ Optional Arguments:
                                   stdout will be used instead.
   -n <log_level [0-5]>          Specify the log level to be used when logging for
                                   the C2 log. By default, or if unspecified, this
-                                  will default ton Informational (2). Values 0-5
+                                  will default to Informational (2). Values 0-5
                                   are valid, anything else will default to
                                   Informational (2). Values are 0: Trace, 1:Debug,
                                   2:Informational, 3:Warning, 4: Error, 5:Fatal.
@@ -85,7 +85,7 @@ Optional Arguments:
                                   stdout will be used instead.
   -k <log_level [0-5]>          Specify the log level to be used when logging for
                                   the CIRRUS log. By default, or if unspecified, this
-                                  will default ton Informational (2). Values 0-5
+                                  will default to Informational (2). Values 0-5
                                   are valid, anything else will default to
                                   Warning (3). Values are 0: Trace, 1:Debug,
                                   2:Informational, 3:Warning, 4: Error, 5:Fatal.
@@ -196,6 +196,7 @@ func Cmdline() {
 	go func() {
 		if err = a.Listen(b); err != http.ErrServerClosed && err != nil {
 			logCirrus.Error(`[cirrus] Error durring startup: %s!`, err.Error())
+			os.Exit(1)
 		}
 		q()
 	}()
