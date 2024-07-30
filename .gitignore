@@ -28,7 +28,8 @@ GOPATH
 GOPATH/*
 GOPATH/**
 
-go.work
+go.sum
+go.work*
 go.work.sum
 
 # Binaries for programs and plugins
