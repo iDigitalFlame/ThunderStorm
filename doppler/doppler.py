@@ -190,6 +190,11 @@ def _print_session_info(x):
     del h, t
 
 
+def _handle_socket_error(err):
+    print(f"websocket error: {err}", file=stderr)
+    exit(1)
+
+
 class Doppler(Api):
     __slots__ = ("watch", "events", "eventer", "last_job")
 
@@ -324,7 +329,7 @@ class Doppler(Api):
         if do_eventer:
             self.eventer = _Thread(self, events)
             self.eventer.start()
-        self.start_events(self._on_event)
+        self.start_events(self._on_event, on_error=_handle_socket_error)
 
     def single(self, timeout=None, init=True, job=None):
         if init:
@@ -553,8 +558,8 @@ class Doppler(Api):
         print(f'{"ID":{w}}', end="")
         if advanced:
             print(
-                f'{"Hostname":20}{"IP":17}{"OS":26}{"Arch":8}{"User":32}'
-                f'{"From":20}{"PID":9}{" Last":8}\n{"=" * (140 + m + w)}'
+                f'{"Hostname":20}{"IP":17}{"OS":32}{"Arch":8}{"User":32}'
+                f'{"From":20}{"PID":9}{" Last":8}\n{"=" * (146 + m + w)}'
             )
         else:
             print(
@@ -596,7 +601,9 @@ class Doppler(Api):
                         o = s["device"]["version"]
                 else:
                     o = s["device"]["version"]
-                if o.startswith("Microsoft Windows"):
+                if o.startswith("Microsoft Windows Server"):
+                    o = o[25:]
+                elif o.startswith("Microsoft Windows "):
                     o = o[10:]
                 if hw:
                     print(f'{s["device"]["id"][:16] + s["id"]:25}', end="")
@@ -625,7 +632,7 @@ class Doppler(Api):
                 if "[" in a:
                     a = a[: a.find("[")].strip() + "*"
                 print(
-                    f"{_trunc(18, h):20}{ip_str(s):17}{_trunc(24, o):26}{a:8}{_trunc(30, u):32}"
+                    f"{_trunc(18, h):20}{ip_str(s):17}{_trunc(30, o):32}{a:8}{_trunc(30, u):32}"
                     f'{v:20}{s["device"]["pid"]:<9}{c}{time_str(t, s["last"])}'
                 )
                 del v, o, u, h, c, a, x
@@ -653,7 +660,7 @@ class Doppler(Api):
             elif "work_hours" in s and len(s["work_hours"]) > 0:
                 c = "W"
             print(
-                f'{_trunc(19, h):20}{ip_str(s):17}{s["device"]["os"]:10}{_trunc(31, u):32}{s["device"]["pid"]:<9}'
+                f'{_trunc(18, h):20}{ip_str(s):17}{s["device"]["os"]:10}{_trunc(30, u):32}{s["device"]["pid"]:<9}'
                 f'{c}{time_str(t, s["last"])}'
             )
             del u, h, c

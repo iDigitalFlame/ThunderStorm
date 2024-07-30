@@ -289,6 +289,7 @@ class CloudSeed(object):
         "_tmp",
         "_gen",
         "_opts",
+        "_state",
         "_paths",
         "_icons",
         "_bolts",
@@ -302,16 +303,19 @@ class CloudSeed(object):
         "_flurries",
         "_overrides",
         "_sentinels",
+        "_state_total",
     )
 
     def __init__(self, config=None):
         self._tmp = None
         self._opts = None
+        self._state = 0
         self._output = dict()
         self._builds = dict()
         self._process = list()
         self._sentinels = list()
         self._overrides = dict()
+        self._state_total = 0
         if nes(config):
             self.load(config)
 
@@ -511,7 +515,10 @@ class CloudSeed(object):
         try:
             for i in range(0, len(self._process)):
                 self._build_thread(w, out, i, osv, arch, self._process[i])
-            self.log.info(f"All {len(w)} thread jobs created, waiting on completion..")
+            self._state_total = len(w)
+            self.log.info(
+                f"All {self._state_total} jobs created, waiting on completion.."
+            )
             r, _ = wait(w, return_when=FIRST_EXCEPTION)
             for v in r:
                 e = v.exception()
@@ -1011,6 +1018,8 @@ class CloudSeed(object):
         r["overrides"] = dict()
         r["generator"] = builder.generator
         del n
+        self._state += 1
+        self.log.info(f"Status: {self._state} of {self._state_total} jobs completed!")
         return (r, builder.name)
 
 

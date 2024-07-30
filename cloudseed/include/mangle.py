@@ -19,12 +19,54 @@ from io import StringIO
 from collections import namedtuple
 from random import choice, randint
 
+
 Path = namedtuple("Path", ["path", "dir", "name"])
 _Class = namedtuple("Class", ["members", "replacable"])
 
 _CLASSES = {
+    "uni_a": _Class("aа", ["lower"]),  # äàáạąą
+    "uni_c": _Class("cс", ["lower"]),  # ċ
+    "uni_d": _Class("dԁɗ", ["lower"]),
+    "uni_e": _Class("eе", ["lower"]),  # ėẹ
+    "uni_g": _Class("gġ", ["lower"]),
+    "uni_h": _Class("hһ", ["lower"]),
+    "uni_i": _Class("iіíï", ["lower", "lookalike_i"]),
+    "uni_j": _Class("jјʝ", ["lower", "lookalike_j"]),
+    "uni_l": _Class("lӏ", ["lower"]),
+    "uni_n": _Class("nո", ["lower"]),
+    "uni_o": _Class("oоοօ", ["lower"]),  # ỏọơ
+    "uni_p": _Class("pр", ["lower"]),
+    "uni_q": _Class("qզ", ["lower"]),
+    "uni_u": _Class("uυս", ["lower"]),  # úù
+    "uni_v": _Class("vνѵ", ["lower"]),
+    "uni_x": _Class("xхҳ", ["lower"]),
+    "uni_y": _Class("yуý", ["lower"]),
+    "uni_z": _Class("zʐż", ["lower"]),
+    "uni_A": _Class("AА", ["lower"]),
+    "uni_B": _Class("BВ", ["lower"]),
+    "uni_C": _Class("CС", ["lower"]),
+    "uni_E": _Class("EЕ", ["lower"]),
+    "uni_G": _Class("GԌ", ["lower"]),
+    "uni_H": _Class("HН", ["lower"]),
+    "uni_I": _Class("IІ", ["lower"]),
+    "uni_J": _Class("JЈ", ["lower"]),
+    "uni_K": _Class("KКK", ["lower"]),
+    "uni_M": _Class("MМ", ["lower"]),
+    "uni_O": _Class("O0О", ["lower"]),
+    "uni_P": _Class("PР", ["lower"]),
+    "uni_Q": _Class("QԚ", ["lower"]),
+    "uni_S": _Class("SЅ", ["lower"]),
+    "uni_T": _Class("TТ", ["lower"]),
+    "uni_V": _Class("VѴ", ["lower"]),
+    "uni_W": _Class("WԜ", ["lower"]),
+    "uni_X": _Class("XХ", ["lower"]),
+    "lookalike_i": _Class("ilI", None),
+    "lookalike_j": _Class("ijlI", None),
     "vowels_lower": _Class("aeiou", ["lower"]),
     "vowels_upper": _Class("AEIOU", ["upper"]),
+    "lookalike_O": _Class("O0", None),
+    "lookalike_m": _Class("mn", None),
+    "lookalike_M": _Class("MN", None),
     "lower": _Class("abcdefghijklmnopqrstuvwx", ["upper", "chars"]),
     "upper": _Class("ABCDEFGHIJKLMNOPQRSTUVWX", ["lower", "chars"]),
     "numbers": _Class("0123456789", None),
@@ -59,6 +101,8 @@ def mangle_name(v):
                 r += 1
             else:
                 b.write(v[x])
+            if r > 0 and randint(0, 3) == 0:
+                break
             del n
         if isinstance(p, int) and p > 0:
             b.write(v[p:])
@@ -72,6 +116,13 @@ def mangle_name(v):
             break
     del u, s
     return o
+
+
+def _match_lower(v, e):
+    for i in e:
+        if v.lower() == i.lower():
+            return True
+    return False
 
 
 def _find_mangle_class(c):
@@ -129,18 +180,20 @@ class Mangler(object):
         if (
             len(sel["names"]) == 0
             or (len(sel["names"]) == 1 and randint(0, 2) == 0)
-            or randint(0, 8) == 0
+            or randint(0, 6) == 0
         ):
             n = choice(self._extras)
-            if n in sel["names"]:
+            if _match_lower(n, sel["names"]):
                 n = mangle_name(n)
         else:
             n = mangle_name(choice(sel["names"]))
-        while n in sel["names"]:
+        while _match_lower(n, sel["names"]):
             if randint(0, 8) == 0:
                 n = choice(self._extras)
-                if n in sel["names"]:
+                if _match_lower(n, sel["names"]):
                     n = mangle_name(n)
+                # else:
+                #    break
             else:
                 n = mangle_name(choice(sel["names"]))
         if isinstance(sz, int) and sz > 0 and len(n) > sz:
@@ -148,6 +201,13 @@ class Mangler(object):
         i = n.rfind(".")
         if i > 0 and len(n) - i == 4:
             n = n[:i]
+        if n.upper() == n:
+            n = n.lower()
+        if _match_lower(n, sel["names"]):
+            return None
+        # Sanity check
+        if _match_lower(n, sel["names"]):
+            raise RuntimeError(f'name {n} found in {sel["names"]}')
         if not isinstance(ext, str):
             n += f'.{choice(sel["exts"])}'
         elif len(ext) > 0:

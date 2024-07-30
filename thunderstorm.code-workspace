@@ -30,6 +30,7 @@
             "HKCU",
             "HKLM",
             "HRESULT",
+            "hwid",
             "illumos",
             "KMGTPEZ",
             "lastcmd",

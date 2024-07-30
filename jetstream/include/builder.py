@@ -690,6 +690,12 @@ def tiny_root(old, new):
         ign=True,
     )
     _sed(
+        join(new, "src", "runtime", "cgo", "libcgo_windows.h"),
+        ["__declspec(dllexport) int _cgo_dummy_export;"],
+        [f"__declspec(dllexport) int _{random_chars(12, True)};"],
+        ign=True,
+    )
+    _sed(
         join(new, "src", "runtime", "proc.go"),
         [
             'var earlycgocallback = []byte("fatal error: cgo callback before cgo call\\n")',
@@ -725,6 +731,15 @@ def tiny_root(old, new):
         join(new, "src", "crypto", "x509", "x509.go"),
         ['override = " (temporarily override with GODEBUG=x509sha1=1)"'],
         ['override = ""'],
+        ign=True,
+    )
+    _sed(
+        join(new, "src", "crypto", "x509", "verify.go"),
+        [
+            'var ignoreCN = !strings.Contains(os.Getenv("GODEBUG"), "x509ignoreCN=0")',
+            '"os"',
+        ],
+        ["var ignoreCN = true", ""],
         ign=True,
     )
     _sed(
@@ -1115,7 +1130,11 @@ def make_cert_target(log, base, target, name):
 
 
 def sign_with_pfx(js, when, file, pfx, pfx_pw):
-    x = [
+    x, f = list(), js.opts.get_support("faketime")
+    if nes(f):
+        x += [js.opts.get_bin("faketime"), f]
+    del f
+    x += [
         js.opts.get_bin("osslsigncode"),
         "sign",
         "-h",
@@ -1139,24 +1158,27 @@ def sign_with_pfx(js, when, file, pfx, pfx_pw):
 
 
 def sign_with_certs(js, when, file, cert, pem):
-    js._exec(
-        [
-            js.opts.get_bin("osslsigncode"),
-            "sign",
-            "-h",
-            "sha2",
-            "-certs",
-            cert,
-            "-key",
-            pem,
-            "-in",
-            file,
-            "-out",
-            f"{file}.sig",
-            "-st",
-            when,
-        ]
-    )
+    x, f = list(), js.opts.get_support("faketime")
+    if nes(f):
+        x += [js.opts.get_bin("faketime"), f]
+    del f
+    x += [
+        js.opts.get_bin("osslsigncode"),
+        "sign",
+        "-h",
+        "sha2",
+        "-certs",
+        cert,
+        "-key",
+        pem,
+        "-in",
+        file,
+        "-out",
+        f"{file}.sig",
+        "-st",
+        when,
+    ]
+    js._exec(x)
     js.log.debug(f'Signed "{file}" with "{cert}" and "{pem}".')
     remove(file)
     rename(f"{file}.sig", file)

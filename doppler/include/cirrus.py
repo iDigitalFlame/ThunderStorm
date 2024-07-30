@@ -131,6 +131,10 @@ def _thread_except(args):
     kill(getpid(), SIGINT)
 
 
+def _socket_except(_, err):
+    print(f"websocket exception: {err}!")
+
+
 def _err_from_stat(r, url, ex):
     if r.status_code == ex:
         return
@@ -1041,9 +1045,13 @@ class Api(object):
             return None, None
         return v, h
 
-    def start_events(self, on_msg, on_close=None):
+    def start_events(self, on_msg, on_close=None, on_error=None):
         self._ws.on_close = on_close
         self._ws.on_message = on_msg
+        if callable(on_error):
+            self._ws.on_error = on_error
+        else:
+            self._ws.on_error = _socket_except
         self._events = _Events(self._ws)
         self._trigger = Event()
         self._ws.on_open = self._detect_open
@@ -1871,8 +1879,8 @@ class Api(object):
         del p
         return self.profile_update(name, c)
 
-    def sessions(self):
-        v = self._req("session", 200, "get")
+    def sessions(self, hw=None):
+        v = self._req(f"session{f'/?hw={hw}' if nes(hw) else ''}", 200, "get")
         v.sort(key=lambda x: x["id"], reverse=True)
         return v
 
@@ -1962,7 +1970,7 @@ class Api(object):
         elif nes(duration) and duration[-1] not in Utils.UNITS:
             duration += "m"  # Make it default to mins.
         v = Utils.str_to_dur(duration) / 1000000000
-        r = list()
+        (r, w) = (list(), 25)
         n = datetime.now()
         for e in self.sessions():
             i = e["session"]
@@ -1972,20 +1980,25 @@ class Api(object):
             if x.total_seconds() > v:
                 if work_hours and "work_hours" in i and len(i["work_hours"]) > 0:
                     continue
-                r.append((i["id"], i["last"]))
+                if nes(e["name"]) and len(e["name"]) > w:
+                    w = len(e["name"])
+                r.append((i["id"], i["last"], e["name"]))
             del x
         del v
         if len(r) == 0:
-            del r
+            del r, w
             if errors:
                 raise ValueError("There were no Bolts matching the prune limit")
             return False
         if verbose:
-            print(f'{"ID":9}Last\n{"=" * 20}')
+            print(f'{"ID":{w}}Last\n{"=" * (w + 15)}')
             for i in r:
-                print(f"{i[0]:9}{time_str(n, i[1], True)}")
+                if nes(i[2]):
+                    print(f"{i[2]:{w}}{time_str(n, i[1], True)}")
+                else:
+                    print(f"{i[0]:{w}}{time_str(n, i[1], True)}")
             print()
-        del n
+        del n, w
         if force or not do_ask(f"Prune {len(r)} Bolts", True):
             del r
             if errors:

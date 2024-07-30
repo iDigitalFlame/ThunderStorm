@@ -357,12 +357,20 @@ func (s *sessionManager) httpSessionGet(_ context.Context, w http.ResponseWriter
 	w.WriteHeader(http.StatusOK)
 	x.JSON(w)
 }
-func (s *sessionManager) httpSessionsGet(_ context.Context, w http.ResponseWriter, _ *routex.Request) {
+func (s *sessionManager) httpSessionsGet(_ context.Context, w http.ResponseWriter, r *routex.Request) {
+	var h string
+	f := r.URL.Query()
+	if len(f) > 0 {
+		h = f.Get("hw")
+	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte{'['})
 	if s.RLock(); len(s.e) > 0 {
 		var n int
 		for _, v := range s.e {
+			if len(h) > 0 && v.s.ID.Signature() != h {
+				continue
+			}
 			if n > 0 {
 				w.Write([]byte{','})
 			}

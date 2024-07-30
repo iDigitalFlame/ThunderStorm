@@ -60,6 +60,7 @@ _DEFAULT_WGCC32 = "i686-w64-mingw32-gcc"
 _DEFAULT_WGCC64 = "x86_64-w64-mingw32-gcc"
 _DEFAULT_GARBLE = "garble"
 _DEFAULT_OPENSSL = "openssl"
+_DEFAULT_SQUIRREL = "squirrel"
 _DEFAULT_FAKETIME = "faketime"
 _DEFAULT_OSSLSIGNCODE = "osslsigncode"
 
@@ -93,6 +94,7 @@ def which_empty(opts):
     _which_empty(opts, "build.bins.wgcc64", _DEFAULT_WGCC64)
     _which_empty(opts, "build.bins.garble", _DEFAULT_GARBLE)
     _which_empty(opts, "build.bins.openssl", _DEFAULT_OPENSSL)
+    _which_empty(opts, "build.bins.squirrel", _DEFAULT_SQUIRREL)
     _which_empty(opts, "build.bins.faketime", _DEFAULT_FAKETIME)
     _which_empty(opts, "build.bins.osslsigncode", _DEFAULT_OSSLSIGNCODE)
 
@@ -484,6 +486,10 @@ class JetStream(object):
             raise ValueError(
                 'check: "garble" is enabled but "garble" binary is missing'
             )
+        if self.opts.get_option("squirrel") and not nes(self.opts.get_bin("squirrel")):
+            raise ValueError(
+                'check: "squirrel" is enabled but "squirrel" binary is missing'
+            )
         if self.opts.get("build.support.sign.enabled"):
             if not nes(self.opts.get_bin("openssl")):
                 raise ValueError(
@@ -509,7 +515,14 @@ class JetStream(object):
                 "Disabling Garble as is does not support this Golang version!"
             )
             self.opts.set("build.options.garble", False)
-        if self.opts.get_option("garble"):
+        if self.opts.get_option("squirrel"):
+            env["ACORN_GO"] = b
+            env["ACORN_GO_ROOT"] = env["GOROOT"]
+            b = self.opts.get_bin("squirrel")
+            if workspace.get("no_clean", False):
+                env["ACORN_LOG"] = join(workspace["dir"], "squirrel.log")
+                env["ACORN_DEBUG"] = "1"
+        elif self.opts.get_option("garble"):
             b = self.opts.get_bin("garble")
             x += ["-tiny", "-seed=random"]
             if workspace.get("no_clean", False):
@@ -522,6 +535,11 @@ class JetStream(object):
             del t
         x.insert(0, b)
         del b
+        f = self.opts.get_support("faketime")
+        if nes(f) and not self.opts.get_option("cgo"):
+            x.insert(f, 0)
+            x.insert(self.opts.get_bin("faketime"), 0)
+        del f
         x += ["build", "-o", out]
         if self.opts._vcs:
             x.append("-buildvcs=false")
@@ -712,6 +730,9 @@ class JetStream(object):
                     "-lkernel32",
                     "-lntdll",
                     "-lws2_32",
+                    # "-nostdlib",
+                    # We'd need to rebuild without stdlib somehow, it
+                    # Imports a lot of function calls.
                     "-O2",
                     "-Wa,--strip-local-absolute",
                     "-Wp,-femit-struct-debug-reduced,-O2",
@@ -738,10 +759,13 @@ class JetStream(object):
                     "-lkernel32",
                     "-lntdll",
                     "-lws2_32",
+                    # "-nostdlib",
                     "-O2",
                     "-Wa,--strip-local-absolute",
                     "-Wp,-femit-struct-debug-reduced,-O2",
-                    "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",
+                    "-Wl,-x,-s,-nostdlib,--insert-timestamp",
+                    # "-Wl,-x,-s,--nostdlib,--insert-timestamp,--exclude-libs,msvcrt.a",
+                    # TODO(dij): ^
                     src,
                 ],
                 env=env,
@@ -760,10 +784,11 @@ class JetStream(object):
                     "-lkernel32",
                     "-lntdll",
                     "-lws2_32",
+                    # "-nostdlib",
                     "-O2",
                     "-Wa,--strip-local-absolute",
                     "-Wp,-femit-struct-debug-reduced,-O2",
-                    "-Wl,-x,-s,-nostdlib,--no-insert-timestamp",
+                    "-Wl,-x,-s,-nostdlib,--insert-timestamp",
                     f"{o}.o",
                     i,
                 ]

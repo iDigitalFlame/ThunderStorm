@@ -60,10 +60,6 @@
 #include "bolt.h"
 
 int main(int argc, char *argv[]) {
-    HANDLE c = GetConsoleWindow();
-    if (c != NULL) {
-        ShowWindow(c, 0);
-    }
     if (argc > 2) {
         $secondary();
     } else {

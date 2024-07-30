@@ -193,6 +193,7 @@ def _cfg_bins(cfg, b):
         cfg["wres64"] = ""
         cfg["garble"] = ""
         cfg["openssl"] = ""
+        cfg["squirrel"] = ""
         cfg["faketime"] = ""
         cfg["osslsigncode"] = ""
         return
@@ -205,6 +206,7 @@ def _cfg_bins(cfg, b):
     cfg["wres64"] = try_find_bin(b.get("wres64", ""))
     cfg["garble"] = try_find_bin(b.get("garble", ""))
     cfg["openssl"] = try_find_bin(b.get("openssl", ""))
+    cfg["squirrel"] = try_find_bin(b.get("squirrel", ""))
     cfg["faketime"] = try_find_bin(b.get("faketime", ""))
     cfg["osslsigncode"] = try_find_bin(b.get("osslsigncode", ""))
     vet_str_exists("build.bins.go", cfg["go"])
@@ -216,6 +218,7 @@ def _cfg_bins(cfg, b):
     vet_str_exists("build.bins.wres64", cfg["wres64"])
     vet_str_exists("build.bins.garble", cfg["garble"])
     vet_str_exists("build.bins.openssl", cfg["openssl"])
+    vet_str_exists("build.bins.squirrel", cfg["squirrel"])
     vet_str_exists("build.bins.faketime", cfg["faketime"])
     vet_str_exists("build.bins.osslsigncode", cfg["osslsigncode"])
 
@@ -258,6 +261,7 @@ def _cfg_options(cfg, b):
         cfg["gopath"] = ""
         cfg["garble"] = True
         cfg["compact"] = True
+        cfg["squirrel"] = True
         return
     cfg["upx"] = b.get("upx", False)
     cfg["cgo"] = b.get("cgo", False)
@@ -267,6 +271,7 @@ def _cfg_options(cfg, b):
     cfg["gopath"] = b.get("gopath", "")
     cfg["garble"] = b.get("garble", True)
     cfg["compact"] = b.get("compact", True)
+    cfg["squirrel"] = b.get("squirrel", True)
     cfg["tags"] = b.get("tags", _DEFAULT_TAGS)
     vet_bool("build.options.upx", cfg["upx"])
     vet_bool("build.options.cgo", cfg["cgo"])
@@ -274,6 +279,7 @@ def _cfg_options(cfg, b):
     vet_bool("build.options.strip", cfg["strip"])
     vet_bool("build.options.garble", cfg["garble"])
     vet_bool("build.options.compact", cfg["compact"])
+    vet_bool("build.options.squirrel", cfg["squirrel"])
     vet_list_strs("build.options.tags", cfg["tags"], null=True)
     vet_str_exists("build.options.goroot", cfg["goroot"], f=isdir)
     vet_str_exists("build.options.gopath", cfg["gopath"], f=isdir)
@@ -321,7 +327,7 @@ def _cfg_multi(n, cfg, b):
 
 
 def _check_ends_no_dll(s):
-    not s.lower().endswith(" dll")
+    return not s.lower().endswith(" dll")
 
 
 def vet_bool(name, v, null=False):
@@ -475,7 +481,7 @@ class Rc(object):
         else:
             i = ""
         if self.title_multi.enabled:
-            if not n.lower().endswith(".dll"):
+            if not n.lower().endswith("dll"):
                 t = self.title_multi.pick(_check_ends_no_dll)
             else:
                 t = self.title_multi.pick()

