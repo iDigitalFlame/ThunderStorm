@@ -261,7 +261,7 @@ def _cfg_options(cfg, b):
         cfg["gopath"] = ""
         cfg["garble"] = True
         cfg["compact"] = True
-        cfg["squirrel"] = True
+        cfg["squirrel"] = False
         return
     cfg["upx"] = b.get("upx", False)
     cfg["cgo"] = b.get("cgo", False)
@@ -271,7 +271,7 @@ def _cfg_options(cfg, b):
     cfg["gopath"] = b.get("gopath", "")
     cfg["garble"] = b.get("garble", True)
     cfg["compact"] = b.get("compact", True)
-    cfg["squirrel"] = b.get("squirrel", True)
+    cfg["squirrel"] = b.get("squirrel", False)
     cfg["tags"] = b.get("tags", _DEFAULT_TAGS)
     vet_bool("build.options.upx", cfg["upx"])
     vet_bool("build.options.cgo", cfg["cgo"])
