@@ -136,6 +136,12 @@ def _trunc(n, s):
     return s[:n] + "~"
 
 
+def _uniq_session_id(x):
+    if nes(x["name"]):
+        return x["name"]
+    return x["session"]["device"]["id"]
+
+
 def _print_session_info(x):
     s = x["session"]
     a = x.get("name", None)
@@ -268,7 +274,7 @@ class Doppler(Api):
         r = super(__class__, self).sessions()
         if not isinstance(r, list) or len(r) == 0:
             return list()
-        r.sort(key=lambda x: x["session"]["device"]["id"], reverse=True)
+        r.sort(key=_uniq_session_id, reverse=False)
         if isinstance(exp, Exp):
             return exp.matches(r)
         return r

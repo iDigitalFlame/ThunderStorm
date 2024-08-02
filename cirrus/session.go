@@ -420,7 +420,7 @@ func (s *sessionManager) httpSessionRename(_ context.Context, w http.ResponseWri
 	}
 	u, ok := s.updateName(n, x, c.BoolDefault("map", true))
 	if !ok {
-		writeError(http.StatusConflict, `name "`+n+`" already in use`+n, w, r)
+		writeError(http.StatusConflict, `name "`+n+`" already in use`, w, r)
 		return
 	}
 	if len(u) == 0 {

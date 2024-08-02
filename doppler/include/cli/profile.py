@@ -222,7 +222,7 @@ class MenuProfiles(object):
         for k, p in self.shell.cirrus.profiles().items():
             print(f'{k + ":":<21}{b64encode(p).decode("UTF-8")}')
 
-    def do_scipts(self, _):
+    def do_scripts(self, _):
         self.shell.set_menu(MENU_SCRIPTS)
 
     def do_listeners(self, _):

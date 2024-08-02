@@ -20,6 +20,7 @@ from base64 import b64encode
 from os.path import basename
 from string import whitespace
 from datetime import datetime
+from include.cirrus import CirrusError
 from include.cli.helpers import is_valid_name, make_menu
 from include.cli.const import (
     EMPTY,
@@ -1087,9 +1088,11 @@ class MenuBolt(object):
             return print("[!] Names must be smaller then than 64 characters!")
         try:
             self.shell.cirrus.session_rename(self.id, n)
-        except ValueError as err:
-            if err.code == 400:
+        except CirrusError as err:
+            if err.code == 400 or err.code == 409:
                 return print(f"[!] {err}")
+            return print(f'[!] Bolt "{self.id}" does not exist!')
+        except ValueError:
             return print(f'[!] Bolt "{self.id}" does not exist!')
         self.shell.cache._bolts = None
         if not nes(n):

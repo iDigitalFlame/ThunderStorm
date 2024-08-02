@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+from include.cirrus import CirrusError
 from include.cli.bolt import _MENU, MenuBolt
 from include.util import nes, do_ask, ip_str, is_true
 from include.cli.helpers import parse_exp, is_valid_name, complete_with_all, make_menu
@@ -162,9 +163,12 @@ class MenuBolts(object):
             return print("[!] Names must be smaller than 64 characters!")
         try:
             self.shell.cirrus.session_rename(id, name, map=True)
-        except ValueError as err:
-            if err.code == 400:
+        except CirrusError as err:
+            print(err, err.code)
+            if err.code == 400 or err.code == 409:
                 return print(f"[!] {err}")
+            return print(f'[!] Bolt "{id}" does not exist!')
+        except ValueError:
             return print(f'[!] Bolt "{id}" does not exist!')
         self.shell.cache._bolts = None
         if not nes(name):
