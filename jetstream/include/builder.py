@@ -330,6 +330,7 @@ def tiny_root(old, new):
             'return fmt.Errorf("certificate is not valid for requested server name: %w", err)',
             'return fmt.Errorf("failed to parse certificate #%d in the chain: %w", j, err)',
             'panic(fmt.Sprintf("unable to generate random session ticket key: %v", err))',
+            'logLine := []byte(fmt.Sprintf("CLIENT_RANDOM %x %x\\n", clientRandom, masterSecret))',
         ],
         [
             "",
@@ -343,6 +344,7 @@ def tiny_root(old, new):
             'return errors.New("cert not valid")',
             'return errors.New("bad cert in chain")',
             'panic("")',
+            'logLine := []byte("00\\n")',
         ],
         ign=True,
     )
@@ -475,6 +477,8 @@ def tiny_root(old, new):
             'st.body.CloseWithError(fmt.Errorf("%w", os.ErrDeadlineExceeded))',
             'return fmt.Sprintf("UNKNOWN_SETTING_%d", uint16(s))',
             "last := fr.lastFrame",
+            'return fmt.Errorf("http2: TLSConfig.CipherSuites is missing an HTTP/2-required AES_128_GCM_SHA256'
+            'cipher.")',
         ],
         [
             'if a := ""; len(a) > 0 {',
@@ -555,6 +559,7 @@ def tiny_root(old, new):
             "st.body.CloseWithError(os.ErrDeadlineExceeded)",
             'return "UNKNOWN_SETTING"',
             "",
+            'return errors.New("cipher error")',
         ],
         ign=True,
     )
