@@ -589,3 +589,12 @@ had direct shell access to the device. Additional functions may be discovered by
 using the shell tab completion function and the `help` command.
 
 _More in-depth guides coming soon..._
+
+## Additional Notes
+
+If for some reason Bolts on *nix do not run properly and crash with `libc` errors,
+use the following build tags to potentially fix the issue.
+
+```text
+netgo,osusergo
+```

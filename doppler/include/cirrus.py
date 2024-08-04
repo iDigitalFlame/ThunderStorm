@@ -1916,7 +1916,7 @@ class Api(object):
             v = ""
         elif len(v) > 64:
             raise ValueError("name must be less than 64 chars")
-        elif len(v) < 4:
+        elif len(v) > 0 and len(v) < 4:
             raise ValueError("name must be at least 4 chars")
         return self._req(f"session/{id}/name", 200, "put", json={"name": v, "map": map})
 

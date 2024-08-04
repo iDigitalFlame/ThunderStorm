@@ -406,11 +406,11 @@ func (s *sessionManager) httpSessionRename(_ context.Context, w http.ResponseWri
 		return
 	}
 	n := c.StringDefault("name", "")
-	if !isValidName(n) {
+	if len(n) > 0 && !isValidName(n) {
 		writeError(http.StatusBadRequest, "name is invalid", w, r)
 		return
 	}
-	if len(n) < 4 {
+	if len(n) > 0 && len(n) < 4 {
 		writeError(http.StatusBadRequest, "name is too short (min 4 chars)", w, r)
 		return
 	}
