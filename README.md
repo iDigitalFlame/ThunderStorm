@@ -115,3 +115,5 @@ Actual JSON config file:
 __DISCLAIMER: Please use for legal reasons only. I'm not responsible if you get__
 __in trouble for using this improperly or if someone owns your environment and is__
 __using ThunderStorm (or a derivative of it).__
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Z8Z4121TDS)
