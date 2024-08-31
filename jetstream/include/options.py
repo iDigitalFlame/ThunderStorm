@@ -669,7 +669,16 @@ class Logger(object):
 
 
 class Options(object):
-    __slots__ = ("lock", "_gens", "_temps", "_config", "_vcs", "_trim", "_mod")
+    __slots__ = (
+        "lock",
+        "_vcs",
+        "_mod",
+        "_gens",
+        "_trim",
+        "_temps",
+        "_config",
+        "_linkflags",
+    )
 
     def __init__(self, d=None):
         self._vcs = True
@@ -679,6 +688,7 @@ class Options(object):
         self._gens = None
         self._temps = None
         self._config = None
+        self._linkflags = True
         if isinstance(d, dict):
             self.load_from(d)
 
@@ -824,7 +834,8 @@ class Options(object):
         if a > 1 or a < 1 or b < 10:
             raise RuntimeError(f"Unsupported Go version: {v}")
         del a, v
-        self._vcs, self._trim, self._mod = b > 17, b > 12, b > 10
+        self._vcs, self._trim = b > 17, b > 12
+        self._mod, self._linkflags = b > 10, b >= 23
         del b
 
     def get(self, n, default=None):

@@ -35,7 +35,7 @@ else
 fi
 
 printf "Building...\n"
-go build -trimpath -buildvcs=false -ldflags "-s -w -X 'github.com/iDigitalFlame/ThunderStorm/cirrus.version=$(date +%F)_$(git rev-parse --short HEAD 2> /dev/null || echo "non-git")'" -o "$output" $buildroot
+go build -trimpath -buildvcs=false -ldflags "-checklinkname=0 -s -w -X 'github.com/iDigitalFlame/ThunderStorm/cirrus.version=$(date +%F)_$(git rev-parse --short HEAD 2> /dev/null || echo "non-git")'" -o "$output" $buildroot
 
 which upx &> /dev/null
 if [ $? -eq 0 ] && [ -f "$output" ]; then

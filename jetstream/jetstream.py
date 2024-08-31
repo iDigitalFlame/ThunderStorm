@@ -553,6 +553,8 @@ class JetStream(object):
             t.extend(a)
         del a
         f = "-w -s"
+        if self.opts._linkflags:
+            f += " -checklinkname=0"
         if nes(ld):
             v = ld.split(" ")
             if len(v) > 0:

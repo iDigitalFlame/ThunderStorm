@@ -515,28 +515,40 @@ class Exp(object):
         if self.ip is not None:
             if isinstance(self.ip, Pattern):
                 b.append(
-                    f"ip:{self.ip.pattern.replace('(?s:', '').replace(')\\Z', '').replace('(?>', '')}"
+                    "ip:"
+                    + self.ip.pattern.replace("(?s:", "")
+                    .replace(")\\Z", "")
+                    .replace("(?>", "")
                 )
             else:
                 b.append(f"ip:{self.ip}")
         if self.os is not None:
             if isinstance(self.os, Pattern):
                 b.append(
-                    f"os:{self.os.pattern.replace('(?s:', '').replace(')\\Z', '').replace('(?>', '')}"
+                    "os:"
+                    + self.os.pattern.replace("(?s:", "")
+                    .replace(")\\Z", "")
+                    .replace("(?>", "")
                 )
             else:
                 b.append(f"os:{self.os}")
         if self.user is not None:
             if isinstance(self.user, Pattern):
                 b.append(
-                    f"user:{self.user.pattern.replace('(?s:', '').replace(')\\Z', '').replace('(?>', '')}"
+                    "user:"
+                    + self.user.pattern.replace("(?s:", "")
+                    .replace(")\\Z", "")
+                    .replace("(?>", "")
                 )
             else:
                 b.append(f"user:{self.user}")
         if self.host is not None:
             if isinstance(self.host, Pattern):
                 b.append(
-                    f"host:{self.host.pattern.replace('(?s:', '').replace(')\\Z', '').replace('(?>', '')}"
+                    "host:"
+                    + self.host.pattern.replace("(?s:", "")
+                    .replace(")\\Z", "")
+                    .replace("(?>", "")
                 )
             else:
                 b.append(f"host:{self.host}")
