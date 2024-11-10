@@ -69,14 +69,14 @@ type and a list of stored filesystem paths (or URLS!) to get a Bolt from.
 *You gotta find the eye of the Storm to know where the action is*
 
 Doppler is a Python frontend CLI that can be used to interact with Cirrus. Doppler
-supports multiple users at once (it can be ran multiple times) and uses the Cirrus
+supports multiple users at once (it can be run multiple times) and uses the Cirrus
 websocket to get real time data on Jobs and Bolts.
 
-The layout of how commands works is similar to the PowerShell Empire format. (Except
+The layout of how commands work is similar to the PowerShell Empire format (except
 exiting the shell doesn't kill the server). Doppler will automatically manage
 filepaths for you (for downloads, uploads, shellcode) and can manage multiple Bolts
 
-Doppler can take command line arguments, environment variables or event a config file!
+Doppler can take command-line arguments, environment variables, or even a config file!
 
 The layout of the config file with the matching env and arguments is below:
 
