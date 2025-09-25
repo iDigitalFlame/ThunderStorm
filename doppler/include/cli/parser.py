@@ -16,9 +16,8 @@
 #
 
 
-from argparse import REMAINDER
 from include.util import Parser
-from argparse import BooleanOptionalAction as Boolean
+from argparse import REMAINDER, BooleanOptionalAction as Boolean
 
 PARSER_RM = 0x0
 PARSER_ASM = 0x1
@@ -40,6 +39,7 @@ PARSER_CHECK = 0x10
 PARSER_POWER = 0x11
 PARSER_FUNCMAP = 0x12
 PARSER_WORKHOURS = 0x13
+PARSER_AUTONAME = 0x14
 
 
 def __parsers():
@@ -51,7 +51,7 @@ def __parsers():
     #  - All Password args are -p/--pass
     #  - All Profile args are -n/--profile
     #  - All Detach args are -x/--detach
-    p = [None] * (PARSER_WORKHOURS + 1)
+    p = [None] * (PARSER_AUTONAME + 1)
     # rm
     # eq    = True
     p[PARSER_RM] = Parser()
@@ -231,6 +231,13 @@ def __parsers():
     p[PARSER_WORKHOURS].add("-d", "--days", type=str, dest="days")
     p[PARSER_WORKHOURS].add("-s", "--start", type=str, dest="start")
     p[PARSER_WORKHOURS].add("-c", "--clear", dest="clear", action="store_true")
+    # autorename
+    # eq    = True
+    # nones = False
+    p[PARSER_AUTONAME] = Parser()
+    p[PARSER_AUTONAME].add("-f", "--force", dest="force", action="store_true")
+    p[PARSER_AUTONAME].add(nargs=1, type=str, dest="target")
+    p[PARSER_AUTONAME].add(nargs=REMAINDER, type=str, dest="prefix")
     return p
 
 

@@ -16,18 +16,18 @@
 #
 
 from include.util import nes, print_hash
-from include.cli.helpers import is_valid_name, make_menu, complete_with_all
+from include.cli.helpers import make_menu, is_valid_name, complete_with_all
 from include.cli.const import (
     EMPTY,
     MENU_BOLT,
     MENU_BOLTS,
     MENU_SCRIPT,
-    MENU_SCRIPTS,
-    MENU_PROFILE,
-    MENU_PROFILES,
-    MENU_BOLT_ALL,
     HELP_MAIN_LS,
+    MENU_PROFILE,
+    MENU_SCRIPTS,
+    MENU_BOLT_ALL,
     MENU_LISTENER,
+    MENU_PROFILES,
     MENU_LISTENERS,
 )
 
@@ -117,10 +117,14 @@ class MenuMain(object):
         if not is_valid_name(id, 4):
             return print("bolt <id|all>")
         try:
-            self.shell.cirrus.session(id)
+            r = id.upper() == self.shell.cirrus.session(id)["id"].upper()
         except ValueError:
             return print(f'[!] Bolt "{id}" does not exist!')
-        self.shell.set_menu(MENU_BOLT, id.upper())
+        if r:
+            self.shell.set_menu(MENU_BOLT, id.upper())
+        else:
+            self.shell.set_menu(MENU_BOLT, id.lower())
+        del r
 
     def do_listener(self, n):
         if len(n) == 0:

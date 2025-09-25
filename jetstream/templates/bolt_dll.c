@@ -69,6 +69,7 @@ DWORD $thread(void) {
 
 EXPORT HRESULT WINAPI VoidFunc(void) {
     $export();
+    return 0;
 }
 EXPORT HRESULT WINAPI DllCanUnloadNow(void) {
     // Always return S_FALSE so we can stay loaded.
@@ -76,12 +77,15 @@ EXPORT HRESULT WINAPI DllCanUnloadNow(void) {
 }
 EXPORT HRESULT WINAPI DllRegisterServer(void) {
     $export();
+    return 0;
 }
 EXPORT HRESULT WINAPI DllUnregisterServer(void) {
     $export();
+    return 0;
 }
 EXPORT HRESULT WINAPI DllInstall(BOOL b, PCWSTR i) {
     $export();
+    return 0;
 }
 EXPORT HRESULT WINAPI TimeProvClose(TimeProvHandle p) {
     return 0;

@@ -18,19 +18,21 @@
 from include.cirrus import CirrusError
 from include.cli.bolt import _MENU, MenuBolt
 from include.util import nes, do_ask, ip_str, is_true
-from include.cli.helpers import parse_exp, is_valid_name, complete_with_all, make_menu
+from include.cli.parser import PARSERS, PARSER_AUTONAME
+from include.cli.helpers import make_menu, parse_exp, is_valid_name, complete_with_all
 from include.cli.const import (
     EMPTY,
     MENU_BOLT,
     MENU_SCRIPTS,
+    HELP_BOLT_ALL,
     MENU_BOLT_ALL,
     MENU_PROFILES,
-    HELP_BOLT_ALL,
     MENU_LISTENERS,
 )
 
 _MENU_BOLTS = [
     "all",
+    "autoname",
     "back",
     "delete",
     "help",
@@ -48,6 +50,38 @@ _MENU_BOLTS = [
     "shutdown",
 ]
 _MENU_BOLTS_ALL = ["display", "nodisplay"] + _MENU
+
+
+def _autoname(shell, *a, fallback=None):
+    r = PARSERS[PARSER_AUTONAME].parse_args(*a, nones=False, eq=True)
+    if not nes(r.target):
+        if fallback:
+            r.target = fallback
+        else:
+            return print("autoname [--force] <targets> [prefix]")
+    try:
+        v = shell.shell.cirrus.sessions_autoname(
+            parse_exp(r.target), prefix=r.prefix, force=r.force, map=True
+        )
+    except CirrusError as err:
+        if err.code == 400 or err.code == 409:
+            return print(f"[!] {err}")
+        return print(f'[!] Bolts matching "{r.target}" not found!')
+    except ValueError as err:
+        return print(f"[!] {err}!")
+    if "new" in v:
+        if not v.get("updated"):
+            return print(
+                f'[!] Bolt "{r.target}" was not updated, use "--force" to force a name update.'
+            )
+        shell.shell.cache._bolts = None
+        return print(f'Auto-named Bolt "{id}" to "{v["new"]}".')
+    n = v.get("changed")
+    if not isinstance(n, dict) or len(n) == 0:
+        return print("[!] No Bolts were updated, check match target!")
+    for i, u in n.items():
+        print(f'Renamed Bolt "{i}" to "{u}".')
+    del n, r, v
 
 
 class MenuBolts(object):
@@ -153,18 +187,22 @@ class MenuBolts(object):
                 return print(f'[!] Bolt "{id}" does not exist!')
             print(f'[!] Job "{id}:{job}" does not exist!')
 
+    def do_autoname(self, *a):
+        if len(a) == 0:
+            return print("autoname [--force] <targets> [prefix]")
+        _autoname(self, a)
+
     def prompt(self, args=None):
         return " > Bolts > "
 
     def do_rename(self, id, name):
         if not is_valid_name(id, 4):
             return print("rename <id|name> [new_name]")
-        if nes(name) and len(name) > 64:
-            return print("[!] Names must be smaller than 64 characters!")
+        if nes(name) and len(name) > 58:
+            return print("[!] Names must be smaller than 58 characters!")
         try:
             self.shell.cirrus.session_rename(id, name, map=True)
         except CirrusError as err:
-            print(err, err.code)
             if err.code == 400 or err.code == 409:
                 return print(f"[!] {err}")
             return print(f'[!] Bolt "{id}" does not exist!')
@@ -199,6 +237,13 @@ class MenuBolts(object):
             if len(c) < 5 or x <= 4:
                 return EMPTY
             return self.shell.cache.jobs(c[4 : x - 1], n)
+        return EMPTY
+
+    def complete_autoname(self, n, *_):
+        if len(n) <= 8:
+            return EMPTY
+        if n.count(" ") == 1 or (n.count(" ") == 2 and "--force" in n):
+            return complete_with_all(self.shell.cache.bolts(n))
         return EMPTY
 
 
@@ -259,11 +304,36 @@ class MenuBoltAll(MenuBolt):
         print("[+] Triggered Bolt(s) shutdown.")
         self.shell.cache._bolts = None
 
+    def do_job(self, id, job):
+        if not is_valid_name(id, 4):
+            return print("job <id> [job]")
+        try:
+            if is_valid_name(job):
+                if self.shell.cirrus.show_result(id, int(job)):
+                    return
+                return print(f"[+] Job {job} returned no content.")
+            return self.shell.cirrus.show_jobs(id, all=False)
+        except ValueError:
+            if not is_valid_name(job):
+                return print(f'[!] Bolt "{id}" does not exist!')
+            print(f'[!] Job "{id}:{job}" does not exist!')
+
     def do_nodisplay(self, _):
         if not self.results:
             return
         self.results = False
         print('[+] Set Command Output to "False".')
+
+    def do_autoname(self, *a):
+        if len(a) == 0:
+            if self.matcher is None or self.matcher.empty():
+                v = ""
+            else:
+                v = f' matching "{self.matcher}"'
+            if not do_ask(f"Rename all Bolts{v}"):
+                return
+            del v
+        _autoname(self, a, fallback=self.matcher)
 
     def do_download(self, p, f):
         if nes(f):
@@ -324,6 +394,17 @@ class MenuBoltAll(MenuBolt):
 
     def completenames(self, n, *_):
         return make_menu(n, _MENU_BOLTS_ALL)
+
+    def complete_job(self, n, c, x, *_):
+        if len(c) == 0:
+            return EMPTY
+        if c.count(" ") == 1:
+            return self.shell.cache.bolts(n)
+        if c.count(" ") == 2:
+            if len(c) < 5 or x <= 4:
+                return EMPTY
+            return self.shell.cache.jobs(c[4 : x - 1], n)
+        return EMPTY
 
     def _system(self, c, filter=None, out=None):
         if nes(out):

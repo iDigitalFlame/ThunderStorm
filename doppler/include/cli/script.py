@@ -20,13 +20,13 @@ from string import whitespace
 from include.cli.bolt import _MENU, MenuBolt
 from include.util import nes, do_ask, is_true
 from include.cli.parser import PARSERS, PARSER_NETCAT
-from include.cli.helpers import is_valid_name, complete_with_all, make_menu
+from include.cli.helpers import make_menu, is_valid_name, complete_with_all
 from include.cli.const import (
     EMPTY,
     HELP_DATA,
     MENU_BOLTS,
-    HELP_STRVAL,
     HELP_SCRIPT,
+    HELP_STRVAL,
     MENU_SCRIPT,
     MENU_SCRIPTS,
     MENU_PROFILES,

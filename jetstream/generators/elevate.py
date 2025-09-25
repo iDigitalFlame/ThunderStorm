@@ -111,9 +111,11 @@ class Elevate(object):
                 templates[t].substitute(
                     pipe=cfg["pipe"],
                     service=cfg["service_name"],
-                    critical="true"
-                    if cfg["critical"] and not workspace["library"]
-                    else "false",
+                    critical=(
+                        "true"
+                        if cfg["critical"] and not workspace["library"]
+                        else "false"
+                    ),
                 )
             )
         del t

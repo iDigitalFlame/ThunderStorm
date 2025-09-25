@@ -18,8 +18,7 @@
 from os import readlink
 from collections import namedtuple
 from include.builder import execute
-from os.path import join, islink, isfile, dirname, normpath
-
+from os.path import join, isfile, islink, dirname, normpath
 
 Certs = namedtuple("Certs", ["ca", "ca_key", "signer", "signer_key"])
 

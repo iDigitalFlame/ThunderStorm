@@ -19,7 +19,7 @@ from os import getcwd
 from include.util import nes
 from sys import argv, stderr
 from os.path import join, basename
-from include.options import Options, try_find_bin, LEVELS
+from include.options import LEVELS, Options, try_find_bin
 from argparse import ArgumentParser, BooleanOptionalAction
 
 _HELP_TEXT = """ JetStream: ThunderStorm Builder

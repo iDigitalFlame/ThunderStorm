@@ -18,16 +18,15 @@
 from glob import glob
 from re import compile
 from io import StringIO
-from random import choice
-from random import randint
 from base64 import b64decode
 from include.util import nes
+from random import choice, randint
 from datetime import datetime, timedelta
-from subprocess import run, CalledProcessError
-from shutil import copytree, copy, move, rmtree
+from subprocess import CalledProcessError, run
+from shutil import copy, move, rmtree, copytree
 from string import ascii_letters, ascii_lowercase
-from os.path import isfile, join, islink, normpath, dirname, isdir
-from os import makedirs, remove, rename, readlink, getcwd, symlink, environ, chmod
+from os.path import join, isdir, isfile, islink, dirname, normpath
+from os import chmod, getcwd, remove, rename, environ, symlink, makedirs, readlink
 
 OS = [
     "aix",
@@ -742,9 +741,10 @@ def tiny_root(old, new):
         join(new, "src", "crypto", "x509", "verify.go"),
         [
             'var ignoreCN = !strings.Contains(os.Getenv("GODEBUG"), "x509ignoreCN=0")',
+            'var ignoreCN = strings.Contains(os.Getenv("GODEBUG"), "x509ignoreCN=1")',
             '"os"',
         ],
-        ["var ignoreCN = true", ""],
+        ["var ignoreCN = true", "var ignoreCN = true", ""],
         ign=True,
     )
     _sed(

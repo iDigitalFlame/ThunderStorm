@@ -18,11 +18,11 @@
 from os import getcwd
 from shlex import split
 from base64 import b64decode
-from fnmatch import translate
 from datetime import datetime
-from re import compile, Pattern, I
+from fnmatch import translate
+from re import I, Pattern, compile
 from include.errors import find_error
-from os.path import expanduser, expandvars, join
+from os.path import join, expanduser, expandvars
 from include.util import nes, ip_str, is_true, perm_str, size_str, time_str
 
 _DONE = [
@@ -63,6 +63,8 @@ def _strip_rn(v):
 def parse_exp(v):
     if not nes(v):
         return None
+    if v == "all":
+        return Exp(None, None, None, None, None, None)
     s = split(v)
     if len(s) == 0:
         return None
@@ -273,20 +275,20 @@ def _print_job_result(id, job, type, res, out, script):
             return print("returned: 0 entries")
         print(
             f'returned: {len(res["entries"])} entries.\n'
-            f'{"ID":<8}{"User":28}{"Status":16}{"Host":10}{"From":16}{"Login":10}{"Last Input":10}\n{"=" * 100}'
+            f'{"ID":<8}{"User":28}{"Status":16}{"Host":16}{"From":16}{"Login":10}{"Last Input":10}\n{"=" * 100}'
         )
         t = datetime.now()
         for i in res["entries"]:
             print(f'{i["id"]:<8}', end="")
-            if len(i["user"]) > 28:
-                print(f'{i["user"][:27]:28}', end="")
+            if len(i["user"]) >= 28:
+                print(f'{i["user"][:26]:28}', end="")
             else:
                 print(f'{i["user"]:28}', end="")
             print(f'{i["status"]:16}', end="")
-            if len(i["host"]) > 10:
-                print(f'{i["host"][:9]:10}', end="")
+            if len(i["host"]) >= 16:
+                print(f'{i["host"][:14]:16}', end="")
             else:
-                print(f'{i["host"]:10}', end="")
+                print(f'{i["host"]:16}', end="")
             print(
                 f'{i["from"]:16}{time_str(t, i["login_time"]):10}{time_str(t, i["last_input_time"]):10}',
             )
@@ -304,7 +306,9 @@ def _print_job_result(id, job, type, res, out, script):
     if type == "upload":
         return print(f'wrote {size_str(res.get("size", 0))} to {res["path"]}')
     if type == "whoami":
-        return print(f'returned.\nUser: {res["user"]}\nPath: {res["path"]}')
+        return print(
+            f'returned.\nPID : {res["pid"]}\nUser: {res["user"]}\nPath: {res["path"]}'
+        )
     if type == "execute":
         return print(
             f'returned.\n[+] PID: {res.get("pid", "n/a")}, Exit Result: {res.get("exit", 0)}\n'
@@ -417,7 +421,10 @@ def _print_job_result(id, job, type, res, out, script):
             f'Exit Result: {res.get("exit", 0)}'
         )
     if type == "processes" or type == "logins_processes":
-        w = max(max([len(i["name"]) for i in res["entries"]]), 64) + 2
+        try:
+            w = min(max([len(i["name"]) for i in res["entries"]]), 64) + 2
+        except ValueError:
+            w = 66
         if "entries" not in res or len(res["entries"]) == 0:
             return print("returned: 0 entries")
         print(

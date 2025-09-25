@@ -19,7 +19,7 @@ from secrets import token_bytes
 from include.config import Config
 from include.util import nes, xor
 from argparse import BooleanOptionalAction
-from os.path import expanduser, expandvars, join
+from os.path import join, expanduser, expandvars
 from include.builder import go_bytes, random_chars
 from include.manager import Manager, is_str, is_file, str_lower
 

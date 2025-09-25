@@ -17,8 +17,8 @@
 
 from glob import glob
 from sys import stderr
-from importlib.util import spec_from_file_location, module_from_spec
-from os.path import dirname, expanduser, expandvars, isdir, join, basename
+from importlib.util import module_from_spec, spec_from_file_location
+from os.path import join, isdir, dirname, basename, expanduser, expandvars
 
 
 def _callable(m, n):

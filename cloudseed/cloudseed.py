@@ -19,28 +19,28 @@ from glob import glob
 from re import compile
 from copy import deepcopy
 from shutil import rmtree
-from sys import stderr, argv
 from include.util import nes
-from json import loads, dumps
+from sys import argv, stderr
+from json import dumps, loads
 from secrets import token_bytes
 from traceback import format_exc
 from include.sign import make_pki
 from collections import namedtuple
-from random import randint, sample
+from random import sample, randint
 from include.sentinel import Sentinel
 from base64 import b64decode, b64encode
-from tempfile import mkdtemp, gettempdir
-from include.mangle import Mangler, Path
+from include.mangle import Path, Mangler
 from json.decoder import JSONDecodeError
+from tempfile import mkdtemp, gettempdir
 from include.args import insert_args_opts
-from os import environ, makedirs, listdir, getcwd
-from datetime import datetime, timedelta, timezone
+from os import getcwd, environ, listdir, makedirs
+from datetime import datetime, timezone, timedelta
 from include.jetstream import JetStream, which_empty
-from include.builder import tiny_root, make_cert_target, pull_in_deps
-from argparse import ArgumentParser, BooleanOptionalAction, Namespace
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
-from os.path import isdir, join, isfile, expanduser, expandvars, basename
-from include.values import Pki, Build, Override, Generator, WINDOWS, UNIX
+from argparse import Namespace, ArgumentParser, BooleanOptionalAction
+from include.builder import tiny_root, pull_in_deps, make_cert_target
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
+from include.values import UNIX, WINDOWS, Pki, Build, Override, Generator
+from os.path import join, isdir, isfile, basename, expanduser, expandvars
 from include.options import LEVELS, Logger, Options, vet_list_strs, vet_str_exists
 
 _HELP_TEXT = """ CloudSeed: ThunderStorm Deployment Pipeline
@@ -550,9 +550,11 @@ class CloudSeed(object):
 
     def _generate(self, x86, pathval):
         self._check_paths(pathval)
+        self.log.info("Generating names and paths..")
         self._generate_sentinels(x86, pathval)
         self._generate_flurries(x86, pathval)
         self._generate_extra(x86, pathval)
+        self.log.info("Generation done!")
 
     def load_from(self, d, verify=True):
         if not isinstance(d, dict):

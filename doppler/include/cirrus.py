@@ -16,20 +16,19 @@
 #
 
 import threading
-
 from sys import stderr
 from signal import SIGINT
-from os import getpid, kill
+from os import kill, getpid
 from requests import session
-from json import dumps, loads
 from datetime import datetime
+from json import dumps, loads
 from websocket import WebSocketApp
-from threading import Thread, Event
+from threading import Event, Thread
 from selectors import DefaultSelector
 from base64 import b64decode, b64encode
-from include.config import Config, Utils
+from include.config import Utils, Config
 from requests.exceptions import ConnectionError
-from os.path import expanduser, expandvars, isfile
+from os.path import isfile, expanduser, expandvars
 from include.util import (
     nes,
     do_ask,
@@ -1884,6 +1883,43 @@ class Api(object):
         v.sort(key=lambda x: x["id"], reverse=True)
         return v
 
+    def sessions_remove(self, ids, shutdown=False):
+        if isinstance(ids, list):
+            if len(ids) == 0:
+                return None
+        elif nes(id):
+            ids = [ids]
+        else:
+            raise ValueError('"ids" must be a non-empty string or array of strings')
+        return self._req(
+            "sessions", 200, "delete", json={"sessions": ids, "shutdown": shutdown}
+        )
+
+    def sessions_auto_rename(self, ids, prefix=None, force=False, map=False):
+        if isinstance(ids, list):
+            if len(ids) == 0:
+                return None
+        elif nes(id):
+            ids = [ids]
+        else:
+            raise ValueError('"ids" must be a non-empty string or array of strings')
+        if isinstance(prefix, str):
+            if len(prefix) > 32:
+                raise ValueError("prefix must be less than 32 chars")
+        elif prefix is not None:
+            raise ValueError('"prefix" must be a non-empty string or none')
+        return self._req(
+            "session",
+            200,
+            "patch",
+            json={
+                "sessions": ids,
+                "prefix": prefix if nes(prefix) else "",
+                "force": force,
+                "map": map,
+            },
+        )
+
     def session(self, id):
         if not nes(id):
             raise ValueError('"id" must be a non-empty string')
@@ -1911,11 +1947,13 @@ class Api(object):
         return self._req(f"session/{id}", 200, "delete", json={"shutdown": shutdown})
 
     def session_rename(self, id, name, map=False):
+        if not nes(id):
+            raise ValueError('"id" must be a non-empty string')
         v = name
         if not nes(v):
             v = ""
-        elif len(v) > 64:
-            raise ValueError("name must be less than 64 chars")
+        elif len(v) > 58:
+            raise ValueError("name must be less than 58 chars")
         elif len(v) > 0 and len(v) < 4:
             raise ValueError("name must be at least 4 chars")
         return self._req(f"session/{id}/name", 200, "put", json={"name": v, "map": map})
@@ -1959,6 +1997,21 @@ class Api(object):
                 f'"{self._base}/session/{id}/proxy/{name}" returned an invalid result'
             )
         return int(r["id"])
+
+    def session_auto_rename(self, id, prefix=None, force=False, map=False):
+        if not nes(id):
+            raise ValueError('"id" must be a non-empty string')
+        if nes(prefix):
+            if len(prefix) > 32:
+                raise ValueError("prefix must be less than 32 chars")
+        elif prefix is not None:
+            raise ValueError('"prefix" must be a non-empty string or none')
+        return self._req(
+            f"session/{id}",
+            200,
+            "patch",
+            json={"prefix": prefix if nes(prefix) else "", "force": force, "map": map},
+        )
 
     def session_prune(
         self, duration=None, force=True, errors=False, verbose=False, work_hours=True
@@ -2004,10 +2057,15 @@ class Api(object):
             if errors:
                 raise ValueError("Aborting prune!")
             return False
-        for i in r:
+        if len(r) == 1:
             self.session_remove(i[0])
             if verbose:
                 print(f"[+] Removed Bolt {i[0]}")
+        else:
+            self.sessions_remove(r)
+            if verbose:
+                for i in r:
+                    print(f"[+] Removed Bolt {i[0]}")
         if verbose:
             print(f"[+] Removed {len(r)} Bolts")
         del r

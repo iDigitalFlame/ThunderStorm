@@ -17,14 +17,14 @@
 
 from json import dumps
 from string import digits
-from tempfile import mkdtemp
 from include.util import nes
 from sys import exit, stderr
+from tempfile import mkdtemp
 from include.options import Rc
 from include.args import Parser
 from shutil import copy, which, rmtree
-from include.crypt import generate_crypt, strip_binary
-from os import getcwd, makedirs, symlink, remove, environ, readlink, chmod, walk
+from include.crypt import strip_binary, generate_crypt
+from os import walk, chmod, getcwd, remove, environ, symlink, makedirs, readlink
 from include.builder import (
     OS,
     ARCH,
@@ -33,19 +33,19 @@ from include.builder import (
     sign,
     execute,
     tiny_root,
-    random_chars,
     pull_in_deps,
+    random_chars,
 )
 from os.path import (
     join,
     isabs,
     isdir,
-    islink,
     isfile,
-    relpath,
+    islink,
     dirname,
-    normpath,
+    relpath,
     basename,
+    normpath,
     splitext,
     expanduser,
     expandvars,
@@ -537,8 +537,8 @@ class JetStream(object):
         del b
         f = self.opts.get_support("faketime")
         if nes(f) and not self.opts.get_option("cgo"):
-            x.insert(f, 0)
-            x.insert(self.opts.get_bin("faketime"), 0)
+            x.insert(0, f)
+            x.insert(0, self.opts.get_bin("faketime"))
         del f
         x += ["build", "-o", out]
         if self.opts._vcs:

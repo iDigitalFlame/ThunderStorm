@@ -30,6 +30,19 @@ import (
 	"github.com/iDigitalFlame/xmt/device/winapi"
 )
 
+var (
+	valSessionsDelete = val.Set{
+		val.Validator{Name: "shutdown", Type: val.Bool, Optional: true},
+		val.Validator{Name: "sessions", Type: val.ListString},
+	}
+	varSessionsRename = val.Set{
+		val.Validator{Name: "sessions", Type: val.ListString},
+		val.Validator{Name: "map", Type: val.Bool, Optional: true},
+		val.Validator{Name: "force", Type: val.Bool, Optional: true},
+		val.Validator{Name: "prefix", Type: val.String, Rules: val.Rules{val.Length{Min: 0, Max: 32}}},
+	}
+)
+
 var valFilter = val.Validator{
 	Name: "filter", Type: val.Object, Optional: true, Rules: val.Rules{
 		val.SubSet{
@@ -320,6 +333,16 @@ type taskWorkHours struct {
 	StartMin  uint8  `json:"start_min"`
 	EndHour   uint8  `json:"end_hour"`
 	EndMin    uint8  `json:"end_min"`
+}
+type taskSessionsRename struct {
+	Map      bool     `json:"map"`
+	Force    bool     `json:"force"`
+	Prefix   string   `json:"prefix"`
+	Sessions []string `json:"sessions"`
+}
+type taskSessionsDelete struct {
+	Shutdown bool     `json:"shutdown"`
+	Sessions []string `json:"sessions"`
 }
 type callableTasklet interface {
 	task.Callable

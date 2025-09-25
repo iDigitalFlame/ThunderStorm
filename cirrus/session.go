@@ -65,6 +65,18 @@ func (s *session) ID() string {
 	}
 	return s.s.ID.String()
 }
+func (s *session) isNamed() bool {
+	return len(s.name) > 0
+}
+func (s *sessionManager) verifyMappings() {
+	for k, v := range s.hw {
+		if len(v) <= 58 {
+			continue
+		}
+		s.log.Warning(`[cirrus/session] Truncating invalid Session mapping for "%s" to 58 chars (was %d chars)`, k, len(v))
+		s.hw[k] = v[:58]
+	}
+}
 func (s *session) JSON(w io.Writer) error {
 	if _, err := w.Write([]byte(`{"id":` + escape.JSON(s.s.ID.String()) + `,"hash":` + util.Uitoa(uint64(s.h)))); err != nil {
 		return err
@@ -130,11 +142,7 @@ func (c *Cirrus) session(n string) *session {
 		return nil
 	}
 	c.sessions.RLock()
-	if f, ok := c.sessions.names[strings.ToLower(n)]; ok {
-		c.sessions.RUnlock()
-		return f
-	}
-	v := c.sessions.e[strings.ToUpper(n)]
+	v := c.sessionNoLock(n)
 	c.sessions.RUnlock()
 	return v
 }
@@ -185,6 +193,12 @@ func (c *Cirrus) shutdownSession(s *c2.Session) {
 	c.sessions.Unlock()
 	c.events.publishSessionDelete(x.ID())
 	c.sessionEvent(s, sSessionDelete)
+}
+func (c *Cirrus) sessionNoLock(n string) *session {
+	if f, ok := c.sessions.names[strings.ToLower(n)]; ok {
+		return f
+	}
+	return c.sessions.e[strings.ToUpper(n)]
 }
 func (s *sessionManager) matchHwName(h string) string {
 	v, ok := s.hw[h]
@@ -316,37 +330,81 @@ func (s *session) syscall(c, a string, f *filter.Filter) (*c2.Job, error) {
 	}
 	return s.s.Task(n)
 }
-func (s *sessionManager) updateName(n string, x *session, m bool) (string, bool) {
-	o := x.name
-	if len(x.name) > 0 {
-		s.Lock()
-		s.e[x.name] = nil
-		delete(s.e, x.name)
-		// Only HW mapping on delete / clear.
-		if len(n) == 0 {
+func (s *sessionManager) updateName(n string, x *session, m, l bool) (string, bool) {
+	if len(n) == 0 {
+		// Delete only.
+		if x.name = ""; l {
+			s.Lock()
+		}
+		if s.e[x.name] = nil; m {
+			// If mapping is true, unset the mapping
 			delete(s.hw, x.s.ID.Signature())
 		}
-		s.Unlock()
-		x.name = ""
+		if delete(s.e, x.name); l {
+			s.Unlock()
+		}
+		return "", true
 	}
-	if len(n) == 0 {
-		return o, true
+	// If setting, we'll first do a check to verify
+	v := strings.ToLower(strings.TrimSpace(n))
+	if len(v) > 58 {
+		v = v[:58]
 	}
-	v := strings.ToLower(n)
-	s.RLock()
+	if l {
+		s.RLock()
+	}
 	_, ok := s.names[v]
-	if s.RUnlock(); ok {
-		return o, false
+	if l {
+		s.RUnlock()
 	}
-	x.name = v
-	if s.Lock(); m {
+	if ok {
+		// Already exists, don't set.
+		return "", false
+	}
+	// Cache old name
+	o := x.name
+	if l {
+		s.Lock()
+	}
+	// If old name exists, unset the mapping first.
+	if len(x.name) > 0 {
+		s.e[x.name] = nil
+		if delete(s.e, x.name); m {
+			// If we're setting a mapping, we need to delete the old one first.
+			delete(s.hw, x.s.ID.Signature())
+		}
+	}
+	if x.name = v; m {
 		h := x.s.ID.Signature()
 		s.log.Debug(`[cirrus/session] Adding mapping "%s" for Hardware ID "%s".`, v, h)
 		s.hw[h] = v
 	}
-	s.names[v] = x
-	s.Unlock()
+	if s.names[v] = x; l {
+		s.Unlock()
+	}
 	return o, true
+}
+func (s *sessionManager) autoUpdateName(x *session, prefix string, f, m, l bool) (string, bool) {
+	if !f && x.isNamed() {
+		return "", true
+	}
+	v := x.s.Device.Hostname
+	if len(v)+len(prefix) < 4 {
+		return "", true
+	}
+	if i := strings.IndexByte(v, '.'); i > 0 {
+		v = v[:i]
+	}
+	if len(prefix) > 0 {
+		v = prefix + "-" + v
+	}
+	if len(v) > 58 {
+		v = v[:58]
+	}
+	if _, u := s.updateName(v, x, m, l); u {
+		return v, true
+	}
+	return "", false
 }
 func (s *sessionManager) httpSessionGet(_ context.Context, w http.ResponseWriter, r *routex.Request) {
 	x := s.session(r.Values.StringDefault("session", ""))
@@ -414,22 +472,46 @@ func (s *sessionManager) httpSessionRename(_ context.Context, w http.ResponseWri
 		writeError(http.StatusBadRequest, "name is too short (min 4 chars)", w, r)
 		return
 	}
-	if len(n) > 64 {
-		writeError(http.StatusBadRequest, "name is too long (max 64 chars)", w, r)
+	if len(n) > 58 {
+		writeError(http.StatusBadRequest, "name is too long (max 58 chars)", w, r)
 		return
 	}
-	u, ok := s.updateName(n, x, c.BoolDefault("map", true))
+	o, ok := s.updateName(n, x, c.BoolDefault("map", true), true)
 	if !ok {
 		writeError(http.StatusConflict, `name "`+n+`" already in use`, w, r)
 		return
 	}
-	if len(u) == 0 {
+	if len(o) == 0 {
 		s.events.publishSessionUpdate(x.s.ID.String())
 	} else {
-		s.events.publishSessionUpdate(u)
+		s.events.publishSessionUpdate(o)
 	}
 	w.WriteHeader(http.StatusOK)
 	x.JSON(w)
+}
+func (s *sessionManager) httpSessionAutoName(_ context.Context, w http.ResponseWriter, r *routex.Request) {
+	x := s.session(r.Values.StringDefault("session", ""))
+	if x == nil {
+		writeError(http.StatusNotFound, msgNoSession, w, r)
+		return
+	}
+	var (
+		f, m bool
+		p    string
+	)
+	if c, err := r.Content(); err == nil {
+		f, m = c.BoolDefault("force", false), c.BoolDefault("map", false)
+		p = c.StringDefault("prefix", "")
+	}
+	switch o, ok := s.autoUpdateName(x, p, f, m, true); {
+	case !ok:
+		writeError(http.StatusConflict, "auto name already in use", w, r)
+	case len(o) == 0:
+		w.Write([]byte(`{"updated":false}`))
+	default:
+		s.events.publishSessionUpdate(o)
+		w.Write([]byte(`{"updated":true,"new":` + escape.JSON(o) + `}`))
+	}
 }
 func (s *sessionManager) httpSessionProxyDelete(_ context.Context, w http.ResponseWriter, r *routex.Request) {
 	x := s.session(r.Values.StringDefault("session", ""))
@@ -451,6 +533,21 @@ func (s *sessionManager) httpSessionProxyDelete(_ context.Context, w http.Respon
 	s.watchJob(x, j, "proxy delete "+n)
 	w.WriteHeader(http.StatusOK)
 	j.JSON(w)
+}
+func (s *sessionManager) httpSessionsDelete(_ context.Context, w http.ResponseWriter, r *routex.Request, v taskSessionsDelete) {
+	if w.WriteHeader(http.StatusOK); len(v.Sessions) == 0 {
+		return
+	}
+	s.RLock()
+	for _, n := range v.Sessions {
+		if len(n) == 0 || !isValidName(n) {
+			continue
+		}
+		if x := s.sessionNoLock(n); x != nil {
+			s.s.Remove(x.s.ID, v.Shutdown)
+		}
+	}
+	s.RUnlock()
 }
 func (s *sessionManager) httpSessionProxyPutPost(_ context.Context, w http.ResponseWriter, r *routex.Request, c routex.Content) {
 	x := s.session(r.Values.StringDefault("session", ""))
@@ -493,4 +590,30 @@ func (s *sessionManager) httpSessionProxyPutPost(_ context.Context, w http.Respo
 		w.WriteHeader(http.StatusCreated)
 	}
 	j.JSON(w)
+}
+func (s *sessionManager) httpSessionsAutoName(_ context.Context, w http.ResponseWriter, r *routex.Request, v taskSessionsRename) {
+	if w.WriteHeader(http.StatusOK); len(v.Sessions) == 0 {
+		return
+	}
+	i := 0
+	w.Write([]byte(`{"changed":{`))
+	s.RLock()
+	for _, n := range v.Sessions {
+		if len(n) == 0 || !isValidName(n) {
+			continue
+		}
+		if x := s.sessionNoLock(n); x != nil {
+			u, ok := s.autoUpdateName(x, v.Prefix, v.Force, v.Map, false)
+			if !ok || len(u) == 0 {
+				continue
+			}
+			if s.events.publishSessionUpdate(u); i > 0 {
+				w.Write([]byte(","))
+			}
+			w.Write([]byte(escape.JSON(n) + `:` + escape.JSON(u)))
+			i++
+		}
+	}
+	s.RUnlock()
+	w.Write([]byte("}}"))
 }

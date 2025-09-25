@@ -182,6 +182,7 @@ func (c *Cirrus) Load(s string) error {
 		if err = json.Unmarshal(t, &c.sessions.hw); err != nil {
 			return err
 		}
+		c.sessions.verifyMappings()
 	}
 	// Load listeners since they rely on all the above to work.
 	if t, ok := m["listeners"]; ok {
@@ -247,8 +248,11 @@ func configureRoutes(c *Cirrus, m *routex.Mux) {
 	m.Must(prefix+`/listener/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Wrap(valListener, routex.WrapFunc(c.listeners.httpListenerPost)), http.MethodPost)
 	m.Must(prefix+`/listener/(?P<name>[a-zA-Z0-9\-._]+)/script$`, routex.Wrap(valListenerScript, routex.WrapFunc(c.listeners.httpListenerScriptPost)), http.MethodPost)
 	m.Must(prefix+`/session\/?$`, routex.Func(c.sessions.httpSessionsGet), http.MethodGet)
+	m.Must(prefix+`/session\/?$`, routex.Marshal[taskSessionsDelete](valSessionsDelete, routex.MarshalFunc[taskSessionsDelete](c.sessions.httpSessionsDelete)), http.MethodDelete)
+	m.Must(prefix+`/session\/?$`, routex.Marshal[taskSessionsRename](varSessionsRename, routex.MarshalFunc[taskSessionsRename](c.sessions.httpSessionsAutoName)), http.MethodPatch)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)$`, routex.Func(c.sessions.httpSessionGet), http.MethodGet)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)$`, routex.Func(c.sessions.httpSessionDelete), http.MethodDelete)
+	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)$`, routex.Func(c.sessions.httpSessionAutoName), http.MethodPatch)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/proxy/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Func(c.sessions.httpSessionProxyDelete), http.MethodDelete)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/proxy/(?P<name>[a-zA-Z0-9\-._]+)$`, routex.Wrap(valListener, routex.WrapFunc(c.sessions.httpSessionProxyPutPost)), http.MethodPut, http.MethodPost)
 	m.Must(prefix+`/session/(?P<session>[a-zA-Z0-9\-._]+)/job$`, routex.Func(c.jobs.httpJobsGet), http.MethodGet)

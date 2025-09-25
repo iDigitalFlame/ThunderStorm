@@ -20,7 +20,7 @@ from io import StringIO
 from base64 import b64decode
 from datetime import datetime
 from argparse import ArgumentParser
-from os.path import expanduser, expandvars, isfile
+from os.path import isfile, expanduser, expandvars
 
 _BOOLEANS = ["1", "on", "t", "true", "y", "yes", "en", "enable"]
 

@@ -20,16 +20,15 @@ from string import Template
 from base64 import b64decode
 from include.util import nes
 from datetime import datetime
-from json import loads, dumps
+from json import dumps, loads
 from include.builder import RC
 from traceback import format_exc
 from random import choice, randint
-from os import listdir, makedirs, chmod
-from subprocess import run, CalledProcessError
+from os import chmod, listdir, makedirs
 from include.generators import load_generators
-from logging import getLogger, Formatter, StreamHandler, FileHandler
-from os.path import expanduser, expandvars, isfile, isdir, isabs, join, dirname
-
+from subprocess import CalledProcessError, run
+from logging import Formatter, FileHandler, StreamHandler, getLogger
+from os.path import join, isabs, isdir, isfile, dirname, expanduser, expandvars
 
 LEVELS = {
     "0": "DEBUG",
@@ -585,9 +584,10 @@ class Logger(object):
     def __init__(self, name, level, file=None):
         if not isinstance(level, str) or len(level) == 0:
             raise ValueError('"level" must be a non-empty String!')
+        n = LEVELS.get(level.lower(), level.upper())
         self._prefix = None
         self._log = getLogger(name)
-        self._log.setLevel(level.upper())
+        self._log.setLevel(n)
         f = Formatter(
             "%(asctime)s [%(levelname)s] %(name)s|%(threadName)s: %(message)s",
             "%m-%d-%H:%M;%S",
@@ -603,7 +603,7 @@ class Logger(object):
             try:
                 h = FileHandler(file)
                 h.setFormatter(f)
-                h.setLevel(level.upper())
+                h.setLevel(n)
                 self._log.addHandler(h)
                 chmod(file, 0o644, follow_symlinks=True)
             except OSError as err:
@@ -614,7 +614,7 @@ class Logger(object):
             s.setFormatter(f)
             self._log.addHandler(s)
             del s
-        del f
+        del f, n
 
     def prefix(self, v):
         self._prefix = v

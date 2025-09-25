@@ -21,15 +21,22 @@ from os import getcwd, getenv
 from traceback import format_exc
 from importlib import import_module
 from include.util import nes, ip_str
-from sys import stdin, stdout, stderr
-from subprocess import run, SubprocessError
-from os.path import expanduser, expandvars, devnull, isdir, join
+from include.cli.bolt import MenuBolt
+from include.cli.main import MenuMain
+from sys import stdin, stderr, stdout
+from include.cirrus import CirrusError
+from subprocess import SubprocessError, run
+from include.cli.bolts import MenuBolts, MenuBoltAll
+from include.cli.script import MenuScript, MenuScripts
+from include.cli.profile import MenuProfile, MenuProfiles
+from include.cli.listener import MenuListener, MenuListeners
+from os.path import join, isdir, devnull, expanduser, expandvars
 from include.cli.const import (
-    MENU_INTRO,
     EMPTY,
     HELP_TEXT,
-    MENU_MAIN,
     MENU_BOLT,
+    MENU_MAIN,
+    MENU_INTRO,
     MENU_BOLT_ALL,
 )
 from readline import (
@@ -42,21 +49,14 @@ from readline import (
     get_line_buffer,
     get_history_item,
     read_history_file,
-    write_history_file,
     set_history_length,
+    write_history_file,
     remove_history_item,
+    get_completer_delims,
     replace_history_item,
     set_completer_delims,
-    get_completer_delims,
     get_current_history_length,
 )
-
-from include.cli.main import MenuMain
-from include.cli.bolt import MenuBolt
-from include.cli.bolts import MenuBolts, MenuBoltAll
-from include.cli.script import MenuScripts, MenuScript
-from include.cli.profile import MenuProfiles, MenuProfile
-from include.cli.listener import MenuListeners, MenuListener
 
 _MENUS = [
     [None, MenuMain],
@@ -138,26 +138,16 @@ class Shell(Cmd):
         self._history = ""
         self.set_menu(0)
 
-    def enter(self):
-        self.init()
-        try:
-            self.cmdloop(MENU_INTRO)
-        except KeyboardInterrupt:
-            print()
-        except Exception as err:
-            print(
-                f"\n[!] {err.__class__.__name__} {err}\n{format_exc(3)}",
-                file=stderr,
-            )
-        self.close()
-
     def close(self):
         if self._history != devnull:
             try:
                 write_history_file(self._history)
             except OSError:
                 pass
-        self.cirrus.close()
+        try:
+            self.cirrus.close()
+        except ValueError as err:
+            print(f"[!] {err}")
 
     def _on_main(self):
         return self._menu is None or isinstance(self._menu, MenuMain)
@@ -208,6 +198,19 @@ class Shell(Cmd):
         except IndexError:
             return None
 
+    def enter(self, debug=False):
+        self.init()
+        try:
+            self.cmdloop(MENU_INTRO)
+        except KeyboardInterrupt:
+            print()
+        except Exception as err:
+            print(
+                f"\n[!] {err.__class__.__name__} {err}\n{format_exc(10 if debug else 3)}",
+                file=stderr,
+            )
+        self.close()
+
     def init(self, single=False):
         if self._init:
             return
@@ -216,6 +219,9 @@ class Shell(Cmd):
                 self.cirrus.start(False)
             else:
                 self.cirrus.start(True, events=self._on_event)
+        except CirrusError as err:
+            self.cirrus.close()
+            return print(f"[!] Error connecting to Cirrus: {err}!")
         except (KeyboardInterrupt, ValueError) as err:
             self.cirrus.close()
             raise err

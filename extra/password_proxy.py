@@ -20,12 +20,12 @@ from json import loads
 from requests import post
 from base64 import b64decode
 from include.util import nes
-from sys import stderr, exit
+from sys import exit, stderr
 from include.cirrus import Api
 from traceback import format_exc
-from include.sentinel import Reader
 from argparse import ArgumentParser
-from os.path import expanduser, expandvars, exists
+from include.sentinel import Reader
+from os.path import exists, expanduser, expandvars
 
 IGNORE_USER = ""
 IGNORE_PASSWORD = ""

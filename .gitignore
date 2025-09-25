@@ -28,6 +28,8 @@ GOPATH
 GOPATH/*
 GOPATH/**
 
+extra/packages/*
+
 go.sum
 go.work*
 go.work.sum

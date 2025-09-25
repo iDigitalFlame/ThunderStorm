@@ -15,15 +15,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-from re import compile
-from json import loads
 from io import BytesIO
+from json import loads
+from re import compile
 from random import choice
 from include.util import xor
 from secrets import token_bytes
 from string import ascii_letters
 from base64 import urlsafe_b64encode
-
 
 PACKAGES = [
     b"\x00bufio",
@@ -66,7 +65,7 @@ PACKAGES = [
 
 CRUMB_ID = b' Go build ID: "'
 CRUMB_VER = b"go1."
-CRUMB_INF = b"\xFF Go buildinf:"
+CRUMB_INF = b"\xff Go buildinf:"
 CRUMB_TAIL = b"/src/runtime/runtime.go\x00\x00"
 CRUMB_DEPS = b"command-line-arguments"
 CRUMB_FILE = b".go\x00"
@@ -99,10 +98,10 @@ CRUMB_HEADERS = [
     b"\x00\x00\x00\x00\x06crypto",
     b"\x00\x00\x00\x00\x06crypto",
     b"\x00\x00\x00\x00\x06error",
-    b"\x00\x00\x00\x00\x0Dcrypto/",
-    b"\x00\x00\x00\x00\x0Dcompress/",
-    b"\x00\x00\x00\x00\x0Ecompress/",
-    b"\x00\x00\x00\x00\x0Econtainer/",
+    b"\x00\x00\x00\x00\x0dcrypto/",
+    b"\x00\x00\x00\x00\x0dcompress/",
+    b"\x00\x00\x00\x00\x0ecompress/",
+    b"\x00\x00\x00\x00\x0econtainer/",
 ]
 
 TABLE_IMPORTS = compile(

@@ -19,7 +19,7 @@ from os.path import join
 from include.util import nes
 from include.builder import random_chars
 from argparse import BooleanOptionalAction
-from include.manager import Manager, is_str, is_int
+from include.manager import Manager, is_int, is_str
 
 _HELP_TEXT = """ Generates a UserAdd build based on the supplied profile and behavior
  arguments.

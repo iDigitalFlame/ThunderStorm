@@ -19,7 +19,7 @@ from string import digits
 from base64 import b64decode
 from datetime import datetime
 from argparse import BooleanOptionalAction
-from os.path import expanduser, expandvars, isfile
+from os.path import isfile, expanduser, expandvars
 
 
 def str_lower(v):

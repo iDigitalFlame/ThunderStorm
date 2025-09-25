@@ -19,8 +19,8 @@ from random import choice
 from include.util import nes
 from datetime import datetime
 from include.sentinel import Filter
-from pathlib import PureWindowsPath, PurePosixPath
-from include.options import vet_str, vet_int, vet_bool, vet_list_strs, vet_str_exists
+from pathlib import PurePosixPath, PureWindowsPath
+from include.options import vet_int, vet_str, vet_bool, vet_list_strs, vet_str_exists
 
 _LINKERS = {
     "tcp": "t",

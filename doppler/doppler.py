@@ -16,22 +16,21 @@
 #
 
 from base64 import b64encode
-from os import getenv, getcwd
-from json import loads, dumps
-from queue import Queue, Empty
+from json import dumps, loads
+from os import getcwd, getenv
+from queue import Empty, Queue
 from traceback import format_exc
-from include.cli.shell import Shell
-from threading import Thread, Event
 from argparse import ArgumentParser
+from include.cli.shell import Shell
+from threading import Event, Thread
 from include.cli.const import MENU_BOLT
-from include.config import Config, Utils
 from datetime import datetime, timedelta
-from sys import exit, stderr, stdin, argv
+from include.config import Utils, Config
+from sys import argv, exit, stdin, stderr
 from include.cirrus import Api, CirrusError
-from include.cli.helpers import Exp, print_job_result, parse_exp
-from include.util import nes, size_str, time_str, ip_str, is_true
-from os.path import expanduser, expandvars, basename, join, isfile
-
+from include.cli.helpers import Exp, parse_exp, print_job_result
+from include.util import nes, ip_str, is_true, size_str, time_str
+from os.path import join, isfile, basename, expanduser, expandvars
 
 _HELP_TEXT = """ Doppler: ThunderStorm C2 Console Interface
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
@@ -85,6 +84,8 @@ Optional Arguments:
                                   instead exit.
   -i          <Bolt ID>          Directly enter into a shell with the specified
   --interact                      Bolt ID.
+  --debug                        Print more error tracing details when a crash
+                                  occurs.
 
  Execution Option Arguments:
   -c          <command>          Run a single shell command and exit. This command
@@ -560,16 +561,19 @@ class Doppler(Api):
         m = 0
         if hw:
             m = 16
-        w = min(max(max(len(i["name"]) for i in e), 64) + 1, 26)
-        print(f'{"ID":{w}}', end="")
+        w = 26
+        for i in e:
+            if len(i["name"]) >= 26:
+                w = 64
+                break
         if advanced:
             print(
-                f'{"Hostname":20}{"IP":17}{"OS":32}{"Arch":8}{"User":32}'
+                f'{"ID":{w}}{"Hostname":20}{"IP":17}{"OS":32}{"Arch":8}{"User":32}'
                 f'{"From":20}{"PID":9}{" Last":8}\n{"=" * (146 + m + w)}'
             )
         else:
             print(
-                f'{"Hostname":20}{"IP":17}{"OS":10}{"User":32}{"PID":9}{"Last":8}\n{"=" * (110 + m + w)}'
+                f'{"ID":26}{"Hostname":20}{"IP":17}{"OS":10}{"User":32}{"PID":9}{"Last":8}\n{"=" * (126 + m)}'
             )
         del m
         for x in e:
@@ -616,7 +620,7 @@ class Doppler(Api):
                 else:
                     a = x["name"]
                     if nes(a):
-                        print(f"{_trunc(w - 1, a):{w}}", end="")
+                        print(f"{_trunc(w - 2, a):{w}}", end="")
                     else:
                         print(f'{s["id"]:{w}}', end="")
                     del a
@@ -644,13 +648,13 @@ class Doppler(Api):
                 del v, o, u, h, c, a, x
                 continue
             if hw:
-                print(f'{s["device"]["id"][:16] + s["id"]:25}', end="")
+                print(f'{s["device"]["id"][:16] + s["id"]:26}', end="")
             else:
                 a = x["name"]
                 if nes(a):
-                    print(f"{_trunc(24, a):25}", end="")
+                    print(f"{_trunc(24, a):26}", end="")
                 else:
-                    print(f'{s["id"]:25}', end="")
+                    print(f'{s["id"]:26}', end="")
             u = ""
             if s["device"]["elevated"]:
                 u = "*"
@@ -692,6 +696,23 @@ class Doppler(Api):
             super(__class__, self).session_proxy_update(id, name, address, profile),
             f"proxy update {name}",
         )
+
+    def sessions_autoname(self, exp, prefix=None, force=False, map=False):
+        r = self._sessions(exp=exp)
+        if len(r) == 0:
+            return None
+        v = list()
+        for i in r:
+            if nes(i["name"]):
+                v.append(i["name"])
+            else:
+                v.append(i["id"])
+        del r
+        if len(v) == 0:
+            raise ValueError("no matches found")
+        if len(v) == 1:
+            return super(__class__, self).sessions_auto_rename(v, prefix, force, map)
+        return super(__class__, self).sessions_auto_rename(v, prefix, force, map)
 
     def task_touch(self, id, path):
         self._watch(id, super(__class__, self).task_touch(id, path), f"touch {path}")
@@ -1158,6 +1179,7 @@ class _Parser(ArgumentParser):
         self.add("oneline", "-k", "--oneline")
         self.add("oneline_no_exit", "-K", "--oneline-ne")
         self.add("shell", "-i", "--interact", bool=True)
+        self.add("debug", "--debug", bool=True)
         # Extra
         self.add_argument(nargs="*", type=str, dest="extra")
 
@@ -1256,7 +1278,7 @@ def _main():
     try:
         d = Doppler(r.cirrus, r.cirrus_password)
     except (OSError, ValueError) as err:
-        print(f"Error: {str(err)}!\n{format_exc(3)}", file=stderr)
+        print(f"Error: {str(err)}!\n{format_exc(10 if r.debug else 3)}", file=stderr)
         exit(1)
     try:
         if r.jobs:
@@ -1303,9 +1325,9 @@ def _main():
         if r.shell and nes(r.extra):
             d.session(r.extra)
             s.set_menu(MENU_BOLT, r.extra)
-        s.enter()
+        s.enter(debug=r.debug)
     except (OSError, ValueError, CirrusError) as err:
-        print(f"Error: {str(err)}!\n{format_exc(3)}", file=stderr)
+        print(f"Error: {str(err)}!\n{format_exc(10 if r.debug else 3)}", file=stderr)
         exit(1)
     finally:
         d.close()

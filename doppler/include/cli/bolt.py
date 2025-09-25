@@ -18,26 +18,9 @@
 from shlex import split
 from base64 import b64encode
 from os.path import basename
-from string import whitespace
 from datetime import datetime
-from include.cirrus import CirrusError
-from include.cli.helpers import is_valid_name, make_menu
-from include.cli.const import (
-    EMPTY,
-    MENU_BOLT,
-    MENU_BOLTS,
-    HELP_DATA,
-    HELP_PIPE,
-    HELP_STRVAL,
-)
-from include.cirrus import (
-    Filter,
-    ACTIONS_REG,
-    ACTIONS_WTS,
-    ACTIONS_TROLL,
-    ACTIONS_WINDOW,
-    ACTIONS_FUNCMAP,
-)
+from string import whitespace
+from include.cli.helpers import make_menu, is_valid_name
 from include.util import (
     nes,
     do_ask,
@@ -46,31 +29,49 @@ from include.util import (
     bytes_from_src,
     split_user_domain,
 )
+from include.cli.const import (
+    EMPTY,
+    HELP_DATA,
+    HELP_PIPE,
+    MENU_BOLT,
+    MENU_BOLTS,
+    HELP_STRVAL,
+)
+from include.cirrus import (
+    ACTIONS_REG,
+    ACTIONS_WTS,
+    ACTIONS_TROLL,
+    ACTIONS_WINDOW,
+    ACTIONS_FUNCMAP,
+    Filter,
+    CirrusError,
+)
 from include.cli.parser import (
     PARSERS,
     PARSER_RM,
-    PARSER_WTS,
     PARSER_ASM,
     PARSER_DEX,
     PARSER_DLL,
     PARSER_RUN,
+    PARSER_WTS,
     PARSER_PULL,
-    PARSER_POWER,
-    PARSER_CREDS,
-    PARSER_RUNAS,
-    PARSER_PROXY,
     PARSER_CHECK,
+    PARSER_CREDS,
+    PARSER_POWER,
+    PARSER_PROXY,
+    PARSER_RUNAS,
     PARSER_SPAWN,
+    PARSER_NETCAT,
     PARSER_PARENT,
     PARSER_ZOMBIE,
-    PARSER_NETCAT,
-    PARSER_REGEDIT,
     PARSER_FUNCMAP,
+    PARSER_REGEDIT,
     PARSER_WORKHOURS,
 )
 
 _MENU = [
     "asm",
+    "autoname",
     "back",
     "cat",
     "cd",
@@ -1074,7 +1075,7 @@ class MenuBolt(object):
         be displayed on the Bolts menu and can be used in place of the Bolt ID value.
         This will update the name for all currently connected operator sessions.
 
-        Names have a minimum of 4 characters and a maximum of 64 characters.
+        Names have a minimum of 4 characters and a maximum of 58 characters.
 
         If the "new name" argument is omitted or empty, the name will be revered to the
         Bolt ID.
@@ -1084,8 +1085,8 @@ class MenuBolt(object):
         """
         if nes(n) and len(n) < 4:
             return print("[!] Names must be longer than 4 characters!")
-        if nes(n) and len(n) > 64:
-            return print("[!] Names must be smaller then than 64 characters!")
+        if nes(n) and len(n) > 58:
+            return print("[!] Names must be smaller then than 58 characters!")
         try:
             self.shell.cirrus.session_rename(self.id, n)
         except CirrusError as err:
@@ -1801,7 +1802,7 @@ class MenuBolt(object):
         be displayed on the Bolts menu and can be used in place of the Bolt ID value.
         This will update the name for all currently connected operator sessions.
 
-        Names have a minimum of 4 characters and a maximum of 64 characters.
+        Names have a minimum of 4 characters and a maximum of 58 characters.
 
         If the "new name" argument is omitted or empty, the name will be revered to the
         Bolt ID.
@@ -2873,6 +2874,63 @@ class MenuBolt(object):
         self._system("elevate", filter=f)
         del f
 
+    def do_autoname(self, *a):
+        """
+        autoname [--force] [prefix]
+
+        OS:    n/a
+        OPsec: n/a
+        Admin: n/a
+
+        Changes the display name of this Bolt to match it's current hostname. This
+        will be displayed on the Bolts menu and can be used in place of the Bolt ID value.
+        This will update the name for all currently connected operator sessions.
+
+        If the Bolt currently has a given name, the name will NOT be updated unless
+        the "--force" option is specified.
+
+        The "prefix" option may be specified to add a value before the hostname
+        appended with a dash "-". The "prefix" cannot be longer than 32 characyers.
+
+        Unlike the "rename" function, this function will add the updated name as
+        a Hardware mapping.
+        """
+        if _is_help(a):
+            return self.do_help("autoname")
+        f, p = False, ""
+        if len(a) >= 1:
+            if a[0] == "--force":
+                f = True
+            else:
+                p = a[0]
+        if len(a) >= 2:
+            if not f and a[1] == "--force":
+                f = True
+            else:
+                p = a[1]
+        del a
+        if nes(p) and len(p) > 32:
+            return print("[!] Prefixes must be smaller then than 32 characters!")
+        try:
+            r = self.shell.cirrus.session_auto_rename(self.id, prefix=p, force=f)
+        except CirrusError as err:
+            if err.code == 400 or err.code == 409:
+                return print(f"[!] {err}")
+            return print(f'[!] Bolt "{self.id}" does not exist!')
+        except ValueError:
+            return print(f'[!] Bolt "{self.id}" does not exist!')
+        del f, p
+        if not r["updated"]:
+            return print(
+                '[!] Bolt was not updated, use "--force" to force a name update.'
+            )
+        self.shell.cache._bolts = None
+        v = r["new"]
+        del r
+        print(f'Renamed Bolt "{self.id}" to "{v}".')
+        self.id = v.lower()
+        self.shell.set_menu(MENU_BOLT, v.lower())
+
     def do_workhours(self, *a):
         """
         workhours [-d|--days <SMTWRFS>] [-s|--start <HH:MM>] [-e|--end <HH:MM>]
@@ -3101,7 +3159,7 @@ class MenuBolt(object):
                     )
                 except ValueError:
                     return print("[!] WTF argument must be a number of seconds!")
-            return self._exec(self.shell.cirrus.task_troll, action=a, arg1=None)
+            return self._exec(self.shell.cirrus.task_troll, action=a, seconds=None)
         self._exec(
             self.shell.cirrus.task_troll, action=a, enable=not nes(arg) or is_true(arg)
         )

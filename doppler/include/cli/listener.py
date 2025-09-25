@@ -20,14 +20,14 @@ from base64 import b64decode
 from include.config import Config
 from include.util import nes, do_ask, print_hash
 from include.cli.parser import PARSERS, PARSER_LISTENER
-from include.cli.helpers import is_valid_name, complete_with_all, make_menu
+from include.cli.helpers import make_menu, is_valid_name, complete_with_all
 from include.cli.const import (
     EMPTY,
     MENU_BOLTS,
-    MENU_SCRIPTS,
     MENU_PROFILE,
-    MENU_PROFILES,
+    MENU_SCRIPTS,
     MENU_LISTENER,
+    MENU_PROFILES,
     MENU_LISTENERS,
 )
 

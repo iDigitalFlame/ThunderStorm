@@ -10,6 +10,7 @@ For the output of `help strval` see the [String-Var Dynamic Values](StringValues
 ## ToC
 
 - [asm](#asm)
+- [autoname](#autoname)
 - [back](#back)
 - [cat](#cat)
 - [cd](#cd)
@@ -129,6 +130,35 @@ shellcode on the server side before being sent to the client.
 
 The "-e" or "--entry" argument can be used to specify the function started
 after DLLMain (if the file is a DLL or DLL bytes).
+
+## autoname
+
+```shell
+asm [-x|--detach] [-e|--entry <function>] <data>
+```
+
+|       |     |
+| ----- | --- |
+| OS    | n/a |
+| OPsec | n/a |
+| Admin | n/a |
+
+```shell
+autoname [--force] [prefix]
+```
+
+Changes the display name of this Bolt to match it's current hostname. This
+will be displayed on the Bolts menu and can be used in place of the Bolt ID value.
+This will update the name for all currently connected operator sessions.
+
+If the Bolt currently has a given name, the name will NOT be updated unless
+the "--force" option is specified.
+
+The "prefix" option may be specified to add a value before the hostname
+appended with a dash "-". The "prefix" cannot be longer than 32 characyers.
+
+Unlike the "rename" function, this function will add the updated name as
+a Hardware mapping.
 
 ### Examples:
 

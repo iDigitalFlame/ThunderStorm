@@ -258,7 +258,7 @@ func (j *jobManager) httpJobResultGetDelete(_ context.Context, w http.ResponseWr
 	case v.Result == nil || v.Result.Empty():
 		w.WriteHeader(http.StatusNoContent)
 	default:
-		if err := writeJobJSON(false, v.Type, v.Result, w); err != nil {
+		if err := writeJobJSON(false, v.Type, v.Session(), v.Result, w); err != nil {
 			writeError(http.StatusInternalServerError, "job type is invalid", w, r)
 			j.log.Warning("[cirrus/http] httpJobResultGetDelete(): Error on writeJobJSON(): %s!", err.Error())
 		}

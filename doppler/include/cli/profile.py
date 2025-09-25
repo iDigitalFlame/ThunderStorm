@@ -19,12 +19,12 @@ from json import dumps
 from base64 import b64encode
 from include.util import nes, do_ask
 from os.path import expanduser, expandvars
-from include.cli.helpers import is_valid_name, complete_with_all, make_menu
+from include.cli.helpers import make_menu, is_valid_name, complete_with_all
 from include.cli.const import (
     EMPTY,
     MENU_BOLTS,
-    MENU_SCRIPTS,
     MENU_PROFILE,
+    MENU_SCRIPTS,
     MENU_PROFILES,
     MENU_LISTENERS,
 )
