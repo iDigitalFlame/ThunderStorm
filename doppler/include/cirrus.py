@@ -1892,7 +1892,7 @@ class Api(object):
         else:
             raise ValueError('"ids" must be a non-empty string or array of strings')
         return self._req(
-            "sessions", 200, "delete", json={"sessions": ids, "shutdown": shutdown}
+            "session", 200, "delete", json={"sessions": ids, "shutdown": shutdown}
         )
 
     def sessions_auto_rename(self, ids, prefix=None, force=False, map=False):
@@ -2062,7 +2062,7 @@ class Api(object):
             if verbose:
                 print(f"[+] Removed Bolt {i[0]}")
         else:
-            self.sessions_remove(r)
+            self.sessions_remove([i[0] for i in r])
             if verbose:
                 for i in r:
                     print(f"[+] Removed Bolt {i[0]}")
