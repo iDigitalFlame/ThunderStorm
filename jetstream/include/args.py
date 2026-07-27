@@ -24,7 +24,7 @@ from argparse import ArgumentParser, BooleanOptionalAction
 
 _HELP_TEXT = """ JetStream: ThunderStorm Builder
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
-(c) 2019 - 2023 iDigitalFlame
+(c) 2019 - 2026 iDigitalFlame
 
 {proc} [-c config] [-C clone] [-g generator] [-o output] [various options] target
 

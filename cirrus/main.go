@@ -34,7 +34,7 @@ var version = "unknown"
 
 const usage = ` Cirrus: ThunderStorm C2/Rest Engine
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
-(c) 2019 - 2023 iDigitalFlame
+(c) 2019 - 2026 iDigitalFlame
 
 Usage: cirrus -b <bind_address:port> [-p password] [-no-auth] [-f data_file] [-l log_file] [-n log_level] [-c csv_output] [-t tracker]
 

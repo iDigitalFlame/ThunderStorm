@@ -34,7 +34,7 @@ from os.path import join, isfile, basename, expanduser, expandvars
 
 _HELP_TEXT = """ Doppler: ThunderStorm C2 Console Interface
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
-(c) 2019 - 2023 iDigitalFlame
+(c) 2019 - 2026 iDigitalFlame
 
 Usage: {proc} -a <cirrus> [-p password] [-A] [-D] [-b] [-B] [-f] [-j] [-l] [-x] [-s] [-i] [-c cmd] [...]
 

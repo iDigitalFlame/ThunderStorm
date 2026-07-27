@@ -45,7 +45,7 @@ from include.options import LEVELS, Logger, Options, vet_list_strs, vet_str_exis
 
 _HELP_TEXT = """ CloudSeed: ThunderStorm Deployment Pipeline
 Part of the |||||| ThunderStorm Project (https://dij.sh/ts)
-(c) 2019 - 2023 iDigitalFlame
+(c) 2019 - 2026 iDigitalFlame
 
 {proc} [-c config] [-g generator] [-o output] [various options] target
 

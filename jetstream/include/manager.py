@@ -179,18 +179,25 @@ class _Option(object):
         if self._action is not None and isinstance(self._action, str):
             return parser.add_argument(
                 *self._args,
+                dest=f"{name}_{self._name}",
                 type=self._type,
                 nargs=self._nargs,
                 action=self._action,
                 default=self._default,
+            )
+        if self._action == BooleanOptionalAction:
+            return parser.add_argument(
+                *self._args,
                 dest=f"{name}_{self._name}",
+                action=self._action,
+                default=None,
             )
         parser.add_argument(
             *self._args,
+            dest=f"{name}_{self._name}",
             type=self._type,
             action=self._action,
-            dest=f"{name}_{self._name}",
-            default=None if self._action == BooleanOptionalAction else self._default,
+            default=self._default,
         )
 
     def _parse(self, name, config, results):
