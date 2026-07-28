@@ -261,6 +261,7 @@ def _cfg_options(cfg, b):
         cfg["garble"] = True
         cfg["compact"] = True
         cfg["squirrel"] = False
+        cfg["goversion"] = ""
         return
     cfg["upx"] = b.get("upx", False)
     cfg["cgo"] = b.get("cgo", False)
@@ -272,6 +273,7 @@ def _cfg_options(cfg, b):
     cfg["compact"] = b.get("compact", True)
     cfg["squirrel"] = b.get("squirrel", False)
     cfg["tags"] = b.get("tags", _DEFAULT_TAGS)
+    cfg["goversion"] = b.get("goversion", "")
     vet_bool("build.options.upx", cfg["upx"])
     vet_bool("build.options.cgo", cfg["cgo"])
     vet_bool("build.options.crypt", cfg["crypt"])
@@ -282,6 +284,7 @@ def _cfg_options(cfg, b):
     vet_list_strs("build.options.tags", cfg["tags"], null=True)
     vet_str_exists("build.options.goroot", cfg["goroot"], f=isdir)
     vet_str_exists("build.options.gopath", cfg["gopath"], f=isdir)
+    vet_str("build.options.goversion", cfg["goversion"], null=True)
 
 
 def _cfg_support(cfg, b):
@@ -810,20 +813,24 @@ class Options(object):
             return
         # Check Golang version
         # We need to determine if we can use "-trimpath" and "-buildvcs"
-        try:
-            r = run(
-                [self.get_bin("go"), "version"],
-                text=True,
-                check=True,
-                shell=False,
-                capture_output=True,
-            )
-        except CalledProcessError:
-            return
-        v = r.stdout[13:]
-        v = v[: v.find(" ")]
+        v = self.get_option("goversion")
+        if not nes(v):
+            try:
+                r = run(
+                    [self.get_bin("go"), "version"],
+                    text=True,
+                    check=True,
+                    shell=False,
+                    capture_output=True,
+                )
+            except CalledProcessError:
+                return
+            else:
+                v = r.stdout[13:]
+                v = v[: v.find(" ")]
+            finally:
+                del r
         n = v.strip().split(".")
-        del r
         if len(n) != 3:
             return
         try:
