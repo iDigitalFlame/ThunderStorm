@@ -15,8 +15,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+from json import load
 from io import BytesIO
-from json import loads
 from re import compile
 from random import choice
 from include.util import xor
@@ -473,8 +473,8 @@ class _CryptBuilder(BytesIO):
         self.write(bytearray(1))
 
     def read_file(self, f, tags):
-        with open(f, "r") as b:
-            d = loads(b.read())
+        with open(f) as b:
+            d = load(b)
         if not isinstance(d, dict) or len(d) == 0:
             return
         c = [None] * len(d)

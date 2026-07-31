@@ -20,8 +20,8 @@ from re import compile
 from copy import deepcopy
 from shutil import rmtree
 from include.util import nes
+from json import load, dumps
 from sys import argv, stderr
-from json import dumps, loads
 from secrets import token_bytes
 from traceback import format_exc
 from include.sign import make_pki
@@ -743,8 +743,8 @@ class CloudSeed(object):
         else:
             v = "cloudseed.conf"
         if isfile(v):
-            with open(v) as f:
-                d = loads(f.read())
+            with open(v, encoding="utf-8-sig") as f:
+                d = load(f)
             if not isinstance(d, dict):
                 raise ValueError(f'load: options file "{v}" is invalid')
         else:
@@ -907,9 +907,9 @@ class CloudSeed(object):
         o, a = j.check(target, None, None, False, False)
         del j, v
         self._opts.vet()
-        with open(expanduser(expandvars(self._paths))) as f:
+        with open(expanduser(expandvars(self._paths)), encoding="utf-8-sig") as f:
             try:
-                d = loads(f.read())
+                d = load(f)
             except JSONDecodeError as err:
                 raise ValueError(f'bad JSON in "{self._paths}": {err}')
             self._mangle = Mangler(d["paths"], d.get("names"))

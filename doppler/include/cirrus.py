@@ -21,8 +21,8 @@ from signal import SIGINT
 from os import kill, getpid
 from requests import session
 from datetime import datetime
-from json import dumps, loads
 from websocket import WebSocketApp
+from json import load, dumps, loads
 from threading import Event, Thread
 from selectors import DefaultSelector
 from base64 import b64decode, b64encode
@@ -1246,7 +1246,7 @@ class Api(object):
         if file[0] == "!":
             file = file[1:]
         with open(expanduser(expandvars(file))) as f:
-            d = loads(f.read())
+            d = load(f)
         self.script_update(
             name,
             d.get("commands"),
@@ -2023,7 +2023,7 @@ class Api(object):
         elif nes(duration) and duration[-1] not in Utils.UNITS:
             duration += "m"  # Make it default to mins.
         v = Utils.str_to_dur(duration) / 1000000000
-        (r, w) = (list(), 25)
+        r, w = (list(), 25)
         n = datetime.now()
         for e in self.sessions():
             i = e["session"]

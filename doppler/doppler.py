@@ -16,12 +16,12 @@
 #
 
 from base64 import b64encode
-from json import dumps, loads
 from os import getcwd, getenv
 from queue import Empty, Queue
 from traceback import format_exc
 from argparse import ArgumentParser
 from include.cli.shell import Shell
+from json import load, dumps, loads
 from threading import Event, Thread
 from include.cli.const import MENU_BOLT
 from datetime import datetime, timedelta
@@ -1191,7 +1191,7 @@ class _Parser(ArgumentParser):
         if nes(r.config):
             try:
                 with open(expandvars(expanduser(r.config))) as f:
-                    c = loads(f.read())
+                    c = load(f)
             except ValueError as err:
                 raise ValueError(f'reading config "{r.config}": {err}')
         else:
@@ -1199,7 +1199,7 @@ class _Parser(ArgumentParser):
             if isfile(p):
                 try:
                     with open(p) as f:
-                        c = loads(f.read())
+                        c = load(f)
                 except ValueError as err:
                     raise ValueError(f'reading config "{p}": {err}')
             del p

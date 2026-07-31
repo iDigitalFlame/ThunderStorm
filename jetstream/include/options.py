@@ -19,8 +19,8 @@ from shutil import which
 from string import Template
 from base64 import b64decode
 from include.util import nes
+from json import load, dumps
 from datetime import datetime
-from json import dumps, loads
 from include.builder import RC
 from traceback import format_exc
 from random import choice, randint
@@ -441,7 +441,7 @@ class Rc(object):
         if not isfile(p):
             raise ValueError(f'"build.support.rc.json" path "{p}" does not exist')
         with open(p) as f:
-            d = loads(f.read())
+            d = load(f)
         if d is not None and not isinstance(d, dict):
             raise ValueError(
                 f'"build.support.rc.json" path "{p}" did not parse to a dict'
@@ -724,7 +724,7 @@ class Options(object):
             v = "jetstream.conf"
         if isfile(v):
             with open(v) as f:
-                d = loads(f.read())
+                d = load(f)
             if not isinstance(d, dict):
                 raise ValueError(f'load: options file "{v}" is invalid')
         else:
