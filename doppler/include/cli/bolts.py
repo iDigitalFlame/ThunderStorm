@@ -69,6 +69,8 @@ def _autoname(shell, *a, fallback=None):
         return print(f'[!] Bolts matching "{r.target}" not found!')
     except ValueError as err:
         return print(f"[!] {err}!")
+    if v is None:
+        return print("[!] No Bolts were updated, check match target!")
     if "new" in v:
         if not v.get("updated"):
             return print(
@@ -368,7 +370,7 @@ class MenuBoltAll(MenuBolt):
             a = x["name"]
             if nes(a):
                 if len(a) > 25:
-                    print(f'{x["name"]:24:25}', end="")
+                    print(f'{x["name"]:25}', end="")
                 else:
                     print(f'{x["name"]:25}', end="")
             else:

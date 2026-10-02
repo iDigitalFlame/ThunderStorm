@@ -352,7 +352,7 @@ def vet_str(name, v, null=False, b64=False):
     if not b64:
         return
     try:
-        b64decode(v, validate=True)
+        b64decode(v)
         return
     except ValueError:
         pass

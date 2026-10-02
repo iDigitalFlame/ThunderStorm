@@ -31,6 +31,7 @@ import (
 	"github.com/iDigitalFlame/xmt/c2/task"
 	"github.com/iDigitalFlame/xmt/cmd/filter"
 	"github.com/iDigitalFlame/xmt/com"
+	"github.com/iDigitalFlame/xmt/device"
 	"github.com/iDigitalFlame/xmt/util"
 	"github.com/iDigitalFlame/xmt/util/xerr"
 )
@@ -538,16 +539,22 @@ func (s *sessionManager) httpSessionsDelete(_ context.Context, w http.ResponseWr
 	if w.WriteHeader(http.StatusOK); len(v.Sessions) == 0 {
 		return
 	}
+	e := make([]device.ID, 0, len(v.Sessions))
 	s.RLock()
 	for _, n := range v.Sessions {
 		if len(n) == 0 || !isValidName(n) {
 			continue
 		}
 		if x := s.sessionNoLock(n); x != nil {
-			s.s.Remove(x.s.ID, v.Shutdown)
+			e = append(e, x.s.ID)
 		}
 	}
-	s.RUnlock()
+	if s.RUnlock(); len(e) == 0 {
+		return
+	}
+	for i := range e {
+		s.s.Remove(e[i], v.Shutdown)
+	}
 }
 func (s *sessionManager) httpSessionProxyPutPost(_ context.Context, w http.ResponseWriter, r *routex.Request, c routex.Content) {
 	x := s.session(r.Values.StringDefault("session", ""))
